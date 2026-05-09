@@ -281,13 +281,21 @@ Real docs are not guaranteed to have contiguous heading levels. Schema
 either allows skips or wraps the offending region in a permissive
 container.
 
-### Mass highlighting lives on the paragraph default rPr
+### Paragraph-mark formatting in `<w:pPr>/<w:rPr>` does NOT propagate to runs
 
-When Verbatim's `UniHighlight` or similar applies highlight to a
-paragraph, it stores the highlight on `<w:pPr>/<w:rPr>/<w:highlight>`,
-not per-run. All runs in the paragraph inherit the default unless they
-override. **Importer rule**: collect paragraph-level rPr defaults and
-apply them to runs that don't already specify the matching properties.
+This was misread during the original survey. Real Word docs sometimes
+contain `<w:pPr><w:rPr>...</w:rPr></w:pPr>` with formatting on it, but
+per OOXML 17.7.5.10 that describes only the formatting of the
+*paragraph-mark glyph* (the ¶), NOT the runs in the paragraph. Runs
+take their formatting from their own `<w:rPr>` plus the paragraph's
+`<w:pStyle>`'s linked character style. They do NOT inherit from
+`<w:pPr>/<w:rPr>`.
+
+When real-doc users do mass-formatting operations (Verbatim's
+`UniHighlight` etc.), Word actually applies the formatting to every
+run individually. The pPr/rPr is incidental noise that affects only
+the paragraph-mark glyph. **Importer rule**: ignore pPr/rPr; parse
+each run's rPr independently.
 
 ### Run-level rPr churn is normal
 

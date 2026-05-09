@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="/src/editor/style.css" />
   </head>
   <body>
+    <div id="nav-panel"></div>
     <main id="app">
       <header>
         <h1>prosemirror-debate</h1>
@@ -18,6 +19,7 @@
         <div class="controls">
           <input type="file" id="dropzone" accept=".docx" />
           <button id="export-btn" type="button" disabled>Export to .docx</button>
+          <button id="settings-btn" type="button" title="Settings" aria-label="Settings">⚙</button>
         </div>
       </header>
       <section id="editor"></section>

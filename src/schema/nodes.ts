@@ -41,11 +41,13 @@ export function ensureId(attrs: Record<string, unknown> | null): { id: string } 
 
 /**
  * Block-level content that's legal inside a scratchpad and at the doc
- * root. Note: `tag` is *not* in this list — tags only appear as the
- * required first child of a `card`.
+ * root. Note: `tag` and `analytic` are *not* in this list — tags only
+ * appear as the required first child of a `card`, analytics only appear
+ * inside an `analytic_unit` (or as a cite-position alternative inside
+ * a card).
  */
 const BLOCK_CONTENT =
-  '(scratchpad | pocket | hat | block | analytic | card | paragraph | undertag | cite_paragraph | card_body)*';
+  '(scratchpad | pocket | hat | block | card | analytic_unit | paragraph | undertag | cite_paragraph | card_body)*';
 
 export const nodes: { [name: string]: NodeSpec } = {
   /** Top-level container. Sequence of block-level content. */
@@ -95,12 +97,16 @@ export const nodes: { [name: string]: NodeSpec } = {
   },
 
   /**
-   * A card: required tag, optional cite paragraph (or in-card analytic),
-   * zero or more body paragraphs. This IS a real schema container — the
-   * user cares about cards as objects.
+   * A card: required tag, optional undertag(s) attached to the tag,
+   * optional cite paragraph (or in-card analytic), zero or more body
+   * paragraphs.
+   *
+   * Undertags belong to the tag they follow — they don't mark a card
+   * boundary. This is enforced by including `undertag*` in the content
+   * expression right after `tag`.
    */
   card: {
-    content: 'tag (cite_paragraph | analytic)? card_body*',
+    content: 'tag undertag* (cite_paragraph | analytic)? card_body*',
     defining: true,
     isolating: true,
     parseDOM: [{ tag: 'div.pmd-card' }],
@@ -135,9 +141,10 @@ export const nodes: { [name: string]: NodeSpec } = {
   },
 
   /**
-   * Analytic — outline-level-4 paragraph, sibling to Tag, with stable id.
-   * Distinct from a tag in styling (color #1F3864) and semantic role.
-   * Can appear standalone at the block level OR inside a card.
+   * Analytic paragraph — outline-level-4 with stable id. Distinct from
+   * a tag in styling (color #1F3864) and semantic role. Appears as the
+   * required first child of an `analytic_unit`, OR as a cite-position
+   * alternative inside a `card`.
    */
   analytic: {
     content: 'inline*',
@@ -149,6 +156,23 @@ export const nodes: { [name: string]: NodeSpec } = {
       { class: 'pmd-analytic', 'data-id': node.attrs['id'] ?? '' },
       0,
     ],
+  },
+
+  /**
+   * An analytic-rooted unit, peer to `card`. Required analytic, optional
+   * undertag(s), zero+ body paragraphs. Drags as a unit. Real usage is
+   * typically just the analytic with no body, but the schema allows
+   * multi-paragraph analytics for parity with cards.
+   *
+   * Note: no cite_paragraph slot — analytics are commentary, not
+   * external evidence with a citation.
+   */
+  analytic_unit: {
+    content: 'analytic undertag* card_body*',
+    defining: true,
+    isolating: true,
+    parseDOM: [{ tag: 'div.pmd-analytic-unit' }],
+    toDOM: () => ['div', { class: 'pmd-analytic-unit' }, 0],
   },
 
   /** Undertag paragraph (linked to UndertagChar). */

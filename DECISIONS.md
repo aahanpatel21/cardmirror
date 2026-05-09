@@ -128,6 +128,75 @@ the FIRST Normal as `cite_paragraph` and subsequent Normals as
 the heuristic is fine for v0. A smarter classifier (text-shape based)
 can replace it later if we encounter mis-classifications.
 
+## 2026-05-08: Reverted paragraph-default rPr inheritance entirely
+
+User flagged that an analytic paragraph with `<w:pPr><w:rPr><w:u/></w:rPr></w:pPr>`
+was rendering ALL of its text underlined when only some runs should be.
+Inspecting the OOXML spec (17.7.5.10):
+
+> The rPr element ... when it is the child of a pPr element, the run
+> properties are applied to the glyph used to represent the physical
+> location of the paragraph mark.
+
+So `<w:pPr>/<w:rPr>` defines the formatting of the paragraph-mark glyph
+(the ¶), not the runs in the paragraph. Runs are formatted by their
+own `<w:rPr>` and the `<w:pStyle>`'s linked character style. They do
+NOT inherit from `<w:pPr>/<w:rPr>`.
+
+Earlier in this session I had introduced inheritance of `<w:pPr>/<w:rPr>`
+onto runs, motivated by a (mis-)reading of the survey notes about
+"mass highlighting affecting pPr/rPr." That's now reverted. The
+importer reads each run's own rPr only and ignores pPr/rPr's run
+properties.
+
+Round-trip impact: mark counts on Aff went from ~17,791 underline_marks
+(inflated by bogus inheritance) down to 16,311, matching the survey's
+ground-truth count of 16,211 StyleUnderline rStyle uses + ~100 runs
+that have direct `<w:u>` (no rStyle). Round-trip remains lossless.
+
+## 2026-05-08: Named-style marks override paragraph-default font_size on import (now obsolete)
+
+(This decision rests on paragraph-default rPr inheritance, which was
+reverted above. Both this and the inheritance behavior are gone.)
+
+User feedback while reviewing the v0 playground: in shrunk imported
+docs (where the shrink macro sets paragraph-default `<w:sz w:val="16"/>`
+to render the body at 8pt), underlined/emphasized text was rendering
+at 8pt instead of staying at the canonical 11pt. The user expected
+contrast — small body, full-size underline.
+
+Root cause: my `mergeMarks` was inheriting paragraph-default font_size
+onto every run, including runs that have a named-style mark
+(underline_mark / emphasis_mark / cite_mark / etc.). Per OOXML's
+character-style cascade, the named character style's implicit font
+size declaration (e.g., StyleUnderline → sz=22 / 11pt) overrides the
+paragraph default. Word renders accordingly.
+
+Fix: in `mergeMarks`, skip inheriting `font_size` from defaults when
+the run has any named-style mark. The run renders via its CSS class's
+inherited size (typically 11pt from #editor). An explicit run-level
+`<w:sz>` still applies (becomes a font_size mark on the run, wins via
+inline style on the inner span).
+
+Round-trip remains lossless — the fix changes what marks get attached
+on import, but per-run explicit sizes are still preserved both ways.
+
+## 2026-05-08: Undertags absorbed into cards (don't end card boundary)
+
+User feedback while reviewing the v0 playground: an undertag paragraph
+following a tag was breaking the card's hover-bar continuity, because
+the undertag wasn't included in the card's content expression and ended
+up as a sibling of the card.
+
+Schema fix: card content expression is now
+`tag undertag* (cite_paragraph | analytic)? card_body*`. Undertags
+attached to a tag belong inside the same card.
+
+Importer also updated: after consuming the tag, the card-grouping pass
+absorbs any number of undertags before looking for cite/analytic/body.
+Standalone undertags (between cards) are still legal at doc / scratchpad
+/ block-level positions, just not orphaned within a card sequence.
+
 ## 2026-05-08: Paragraph-default rPr inheritance with named-style guard
 
 Real docx files (per `NOTES-verbatim.md §6`) put mass-applied

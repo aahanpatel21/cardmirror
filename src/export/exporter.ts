@@ -52,7 +52,12 @@ const RELS_CLOSE = '</Relationships>';
 const HEADING_LIKE = new Set(['pocket', 'hat', 'block', 'tag', 'analytic']);
 
 /** Schema container nodes whose children we emit at the parent level. */
-const TRANSPARENT_CONTAINERS = new Set(['doc', 'card', 'scratchpad']);
+const TRANSPARENT_CONTAINERS = new Set([
+  'doc',
+  'card',
+  'analytic_unit',
+  'scratchpad',
+]);
 
 class DocxExporter {
   private parts: string[] = [];

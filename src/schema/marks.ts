@@ -175,11 +175,17 @@ export const marks: { [name: string]: MarkSpec } = {
         },
       },
     ],
-    toDOM: (mark) => [
-      'span',
-      { 'data-half-points': String(mark.attrs['halfPoints'] ?? 22) },
-      0,
-    ],
+    toDOM: (mark) => {
+      const hp = Number(mark.attrs['halfPoints'] ?? 22);
+      return [
+        'span',
+        {
+          style: `font-size: ${hp / 2}pt`,
+          'data-half-points': String(hp),
+        },
+        0,
+      ];
+    },
   },
 
   shading: {

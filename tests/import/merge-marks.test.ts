@@ -1,8 +1,14 @@
 /**
- * Unit tests for the paragraph-default rPr inheritance behavior.
- * These exercise a subtle merging rule: named-style marks share an
- * OOXML slot, so a run with any named-style mark overrides ALL
- * named-style marks from defaults.
+ * Run-formatting parsing behavior.
+ *
+ * Per OOXML spec 17.7.5.10, `<w:pPr>/<w:rPr>` describes the formatting
+ * of the paragraph-mark glyph (¶), NOT the runs in the paragraph. So
+ * the importer parses each run's own `<w:rPr>` independently. Properties
+ * declared on `<w:pPr>/<w:rPr>` do not propagate to runs.
+ *
+ * (We tried inheritance briefly during development and it caused mass
+ * over-formatting on real docs that have `<w:pPr><w:rPr><w:u/></w:rPr></w:pPr>`
+ * for paragraph-mark formatting only — see DECISIONS.md.)
  */
 
 import { describe, expect, it } from 'vitest';
@@ -13,93 +19,54 @@ function bodyXml(inner: string): string {
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${inner}</w:body></w:document>`;
 }
 
-describe('paragraph-default rPr inheritance', () => {
-  it('inherits highlight from paragraph default to run with no rPr', () => {
-    const xml = bodyXml(`
-      <w:p>
-        <w:pPr>
-          <w:pStyle w:val="Heading4"/>
-          <w:rPr><w:highlight w:val="yellow"/></w:rPr>
-        </w:pPr>
-        <w:r><w:t>tag text</w:t></w:r>
-      </w:p>
-    `);
+describe('run-formatting parsing', () => {
+  it('a run with no rPr has no marks', () => {
+    const xml = bodyXml(`<w:p><w:r><w:t>plain</w:t></w:r></w:p>`);
     const doc = importDoc(xml);
-    const card = doc.firstChild!;
-    const tag = card.firstChild!;
-    const text = tag.firstChild!;
-    expect(text.text).toBe('tag text');
-    const hl = text.marks.find((m) => m.type.name === 'highlight');
-    expect(hl).toBeDefined();
-    expect(hl!.attrs['color']).toBe('yellow');
+    const text = doc.firstChild!.firstChild!;
+    expect(text.marks).toHaveLength(0);
   });
 
-  it('inherits underline_mark from paragraph default rStyle', () => {
+  it('runs are parsed independently of <w:pPr>/<w:rPr>', () => {
+    // The paragraph-mark formatting (in pPr/rPr) does NOT propagate to runs.
     const xml = bodyXml(`
       <w:p>
         <w:pPr>
-          <w:pStyle w:val="Heading4"/>
-          <w:rPr><w:rStyle w:val="StyleUnderline"/></w:rPr>
-        </w:pPr>
-        <w:r><w:t>tag</w:t></w:r>
-      </w:p>
-    `);
-    const doc = importDoc(xml);
-    const text = doc.firstChild!.firstChild!.firstChild!;
-    expect(text.marks.some((m) => m.type.name === 'underline_mark')).toBe(true);
-  });
-
-  it('run-specific named-style mark overrides paragraph-default named-style mark (single rStyle slot)', () => {
-    // Paragraph default: StyleUnderline; run: Style13ptBold (Cite).
-    // Result: only cite_mark (the run wins; underline_mark from default is dropped
-    // because both are named-style marks sharing the same OOXML rStyle slot).
-    const xml = bodyXml(`
-      <w:p>
-        <w:pPr>
-          <w:pStyle w:val="Heading4"/>
-          <w:rPr><w:rStyle w:val="StyleUnderline"/></w:rPr>
-        </w:pPr>
-        <w:r><w:rPr><w:rStyle w:val="Style13ptBold"/></w:rPr><w:t>cited</w:t></w:r>
-      </w:p>
-    `);
-    const doc = importDoc(xml);
-    const text = doc.firstChild!.firstChild!.firstChild!;
-    const namedMarks = text.marks.filter((m) =>
-      ['cite_mark', 'underline_mark', 'emphasis_mark', 'undertag_mark', 'analytic_mark'].includes(m.type.name),
-    );
-    expect(namedMarks).toHaveLength(1);
-    expect(namedMarks[0]!.type.name).toBe('cite_mark');
-  });
-
-  it('non-named-style marks from default still inherit even when run has a named-style', () => {
-    // Default: highlight=yellow + StyleUnderline; run: Style13ptBold.
-    // Highlight inherits (different slot from rStyle); named-style replaces.
-    const xml = bodyXml(`
-      <w:p>
-        <w:pPr>
-          <w:pStyle w:val="Heading4"/>
           <w:rPr>
-            <w:rStyle w:val="StyleUnderline"/>
+            <w:u w:val="single"/>
             <w:highlight w:val="yellow"/>
           </w:rPr>
         </w:pPr>
-        <w:r><w:rPr><w:rStyle w:val="Style13ptBold"/></w:rPr><w:t>cited</w:t></w:r>
+        <w:r><w:t>plain run</w:t></w:r>
       </w:p>
     `);
     const doc = importDoc(xml);
-    const text = doc.firstChild!.firstChild!.firstChild!;
-    expect(text.marks.some((m) => m.type.name === 'cite_mark')).toBe(true);
-    expect(text.marks.some((m) => m.type.name === 'underline_mark')).toBe(false);
-    expect(text.marks.some((m) => m.type.name === 'highlight')).toBe(true);
+    const text = doc.firstChild!.firstChild!;
+    expect(text.marks).toHaveLength(0);
   });
 
-  it('run-specific bold overrides paragraph-default bold (same slot)', () => {
-    // Default: bold; run: <w:b w:val="0"/> (explicit no-bold).
+  it('a run with explicit rPr is parsed; pPr/rPr is ignored', () => {
+    // Some runs have own underline; others (no rPr) stay plain.
     const xml = bodyXml(`
       <w:p>
         <w:pPr>
-          <w:rPr><w:b/></w:rPr>
+          <w:rPr><w:u w:val="single"/></w:rPr>
         </w:pPr>
+        <w:r><w:t xml:space="preserve">plain </w:t></w:r>
+        <w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t>underlined</w:t></w:r>
+        <w:r><w:t xml:space="preserve"> plain</w:t></w:r>
+      </w:p>
+    `);
+    const doc = importDoc(xml);
+    const para = doc.firstChild!;
+    expect(para.child(0).marks).toHaveLength(0);
+    expect(para.child(1).marks.some((m) => m.type.name === 'underline_mark')).toBe(true);
+    expect(para.child(2).marks).toHaveLength(0);
+  });
+
+  it('explicit-disable properties (b val=0) result in absence of the mark', () => {
+    const xml = bodyXml(`
+      <w:p>
         <w:r><w:rPr><w:b w:val="0"/></w:rPr><w:t>not bold</w:t></w:r>
       </w:p>
     `);
@@ -108,20 +75,31 @@ describe('paragraph-default rPr inheritance', () => {
     expect(text.marks.some((m) => m.type.name === 'bold')).toBe(false);
   });
 
-  it('paragraph-default does not leak across paragraphs', () => {
+  it('rStyle is recognized as a named-style mark', () => {
     const xml = bodyXml(`
       <w:p>
-        <w:pPr><w:rPr><w:highlight w:val="yellow"/></w:rPr></w:pPr>
-        <w:r><w:t>highlighted</w:t></w:r>
-      </w:p>
-      <w:p>
-        <w:r><w:t>not highlighted</w:t></w:r>
+        <w:r><w:rPr><w:rStyle w:val="StyleUnderline"/></w:rPr><w:t>u</w:t></w:r>
       </w:p>
     `);
     const doc = importDoc(xml);
-    const para1 = doc.child(0).firstChild!;
-    const para2 = doc.child(1).firstChild!;
-    expect(para1.marks.some((m) => m.type.name === 'highlight')).toBe(true);
-    expect(para2.marks.some((m) => m.type.name === 'highlight')).toBe(false);
+    const text = doc.firstChild!.firstChild!;
+    expect(text.marks.some((m) => m.type.name === 'underline_mark')).toBe(true);
+  });
+
+  it('explicit run-level font_size applies even with named-style mark', () => {
+    const xml = bodyXml(`
+      <w:p>
+        <w:r>
+          <w:rPr><w:rStyle w:val="StyleUnderline"/><w:sz w:val="44"/></w:rPr>
+          <w:t>large</w:t>
+        </w:r>
+      </w:p>
+    `);
+    const doc = importDoc(xml);
+    const text = doc.firstChild!.firstChild!;
+    expect(text.marks.some((m) => m.type.name === 'underline_mark')).toBe(true);
+    const fs = text.marks.find((m) => m.type.name === 'font_size');
+    expect(fs).toBeDefined();
+    expect(fs!.attrs['halfPoints']).toBe(44);
   });
 });

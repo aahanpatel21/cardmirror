@@ -169,20 +169,40 @@ describe('node construction', () => {
     }).toThrow();
   });
 
-  it('allows analytic both standalone and inside a card', () => {
-    // standalone:
-    const standalone = schema.nodes['doc']!.createChecked(null, [
-      schema.nodes['analytic']!.create({ id: newHeadingId() }, schema.text('A standalone analytic')),
+  it('standalone analytics live inside an analytic_unit (peer to card)', () => {
+    const docNode = schema.nodes['doc']!.createChecked(null, [
+      schema.nodes['analytic_unit']!.create(null, [
+        schema.nodes['analytic']!.create({ id: newHeadingId() }, schema.text('A standalone analytic')),
+      ]),
     ]);
-    expect(standalone.firstChild!.type.name).toBe('analytic');
+    expect(docNode.firstChild!.type.name).toBe('analytic_unit');
+    expect(docNode.firstChild!.firstChild!.type.name).toBe('analytic');
+  });
 
-    // in-card:
+  it('rejects a bare analytic at doc level (must be inside analytic_unit or card)', () => {
+    expect(() => {
+      schema.nodes['doc']!.createChecked(null, [
+        schema.nodes['analytic']!.create({ id: newHeadingId() }, schema.text('Stray analytic')),
+      ]);
+    }).toThrow();
+  });
+
+  it('allows an analytic inside a card (cite-position alternative)', () => {
     const card = schema.nodes['card']!.createChecked(null, [
       schema.nodes['tag']!.create({ id: newHeadingId() }, schema.text('Tag')),
       schema.nodes['analytic']!.create({ id: newHeadingId() }, schema.text('In-card analytic')),
       schema.nodes['card_body']!.create(null, schema.text('Body')),
     ]);
     expect(card.child(1).type.name).toBe('analytic');
+  });
+
+  it('analytic_unit absorbs body paragraphs', () => {
+    const unit = schema.nodes['analytic_unit']!.createChecked(null, [
+      schema.nodes['analytic']!.create({ id: newHeadingId() }, schema.text('Header')),
+      schema.nodes['card_body']!.create(null, schema.text('Body 1')),
+      schema.nodes['card_body']!.create(null, schema.text('Body 2')),
+    ]);
+    expect(unit.childCount).toBe(3);
   });
 });
 

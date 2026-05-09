@@ -53,18 +53,12 @@ interface ImportContext {
   rels: RelMap;
   /** Track active hyperlink rId stack while walking inline content. */
   hyperlinkStack: string[];
-  /**
-   * Marks from the paragraph's default `<w:pPr><w:rPr>` that runs inherit
-   * unless they specify a conflicting property. Real docs use this for
-   * mass highlighting on tags (per NOTES-verbatim.md §6).
-   */
-  paragraphDefaultMarks: Mark[];
 }
 
 /** Public entry: parse document.xml + rels into a schema doc. */
 export function importDoc(documentXml: string, relsXml: string | null = null): PMNode {
   const rels = relsXml ? parseRels(relsXml) : {};
-  const ctx: ImportContext = { rels, hyperlinkStack: [], paragraphDefaultMarks: [] };
+  const ctx: ImportContext = { rels, hyperlinkStack: [] };
 
   const root = parseXml(documentXml);
   const docEl = findChild(root, 'w:document');
@@ -104,20 +98,16 @@ function parseParagraph(pNode: XmlNode, ctx: ImportContext): ParaInfo {
   const pChildren = childrenOf(pNode, 'w:p');
 
   // Look for <w:pPr>/<w:pStyle> for the paragraph style.
+  // Note: <w:pPr>/<w:rPr> describes the paragraph-mark glyph's formatting
+  // per OOXML spec 17.7.5.10 — it does NOT propagate to runs in the
+  // paragraph. Runs are formatted by their own rPr plus the pStyle's
+  // linked character style. We deliberately do not parse pPr/rPr.
   const pPr = findChild(pChildren, 'w:pPr');
   let pStyle: string | null = null;
-  let defaultRPrMarks: Mark[] = [];
   if (pPr) {
-    const pPrChildren = childrenOf(pPr, 'w:pPr');
-    const pStyleEl = findChild(pPrChildren, 'w:pStyle');
+    const pStyleEl = findChild(childrenOf(pPr, 'w:pPr'), 'w:pStyle');
     if (pStyleEl) {
       pStyle = attrsOf(pStyleEl)['w:val'] ?? null;
-    }
-    // Paragraph-default run properties: runs inherit these unless they
-    // explicitly override. Real docs use this for mass-highlighted Tags.
-    const defaultRPr = findChild(pPrChildren, 'w:rPr');
-    if (defaultRPr) {
-      defaultRPrMarks = parseMarks(defaultRPr);
     }
   }
 
@@ -136,15 +126,11 @@ function parseParagraph(pNode: XmlNode, ctx: ImportContext): ParaInfo {
     }
   }
 
-  // Walk inline content: <w:r>, <w:hyperlink>, etc., with paragraph-default
-  // marks merged into runs.
-  const prevDefaults = ctx.paragraphDefaultMarks;
-  ctx.paragraphDefaultMarks = defaultRPrMarks;
+  // Walk inline content: <w:r>, <w:hyperlink>, etc.
   const inlines: PMNode[] = [];
   for (const c of pChildren) {
     collectInlines(c, ctx, inlines);
   }
-  ctx.paragraphDefaultMarks = prevDefaults;
 
   const nodeType = resolveNodeType(pStyle, inlines);
 
@@ -169,14 +155,7 @@ function collectInlines(node: XmlNode, ctx: ImportContext, out: PMNode[]): void 
 function parseRun(rNode: XmlNode, ctx: ImportContext, out: PMNode[]): void {
   const rChildren = childrenOf(rNode, 'w:r');
   const rPrEl = findChild(rChildren, 'w:rPr');
-  const parsed: ParsedRPr = rPrEl
-    ? parseRPr(rPrEl)
-    : { marks: [], disabled: new Set(), clearedRStyle: false };
-
-  // Merge paragraph-default rPr marks: defaults come first, run-specific
-  // marks override conflicts; named-style marks share an OOXML rStyle
-  // slot; explicit disables in the run remove the type from defaults.
-  const marks = mergeMarks(ctx.paragraphDefaultMarks, parsed);
+  const marks = rPrEl ? [...parseRPr(rPrEl).marks] : [];
 
   // Apply hyperlink mark from active stack.
   if (ctx.hyperlinkStack.length > 0) {
@@ -213,54 +192,19 @@ function parseRun(rNode: XmlNode, ctx: ImportContext, out: PMNode[]): void {
   }
 }
 
-/** Named-style marks (correspond to OOXML w:rStyle — only one per run). */
-const NAMED_STYLE_MARKS = new Set([
-  'cite_mark',
-  'underline_mark',
-  'emphasis_mark',
-  'undertag_mark',
-  'analytic_mark',
-]);
-
 interface ParsedRPr {
   marks: Mark[];
-  /**
-   * Mark types the rPr explicitly disables (e.g., <w:b w:val="0"/>).
-   * When this rPr is being merged with paragraph-default marks, types
-   * in this set are excluded from the inherited defaults.
-   */
-  disabled: Set<string>;
-  /**
-   * Whether this rPr explicitly clears the rStyle slot (`<w:rStyle w:val=""/>`).
-   * Rare, but a run can in principle override a paragraph-default named-style
-   * by providing an empty rStyle.
-   */
-  clearedRStyle: boolean;
 }
 
 /**
- * Merge paragraph-default marks with run-specific parsed rPr.
- * Run wins on type conflicts; explicit disables in the run remove the
- * type from inherited defaults; named-style marks share a single slot.
+ * Parse a <w:rPr> element into a set of marks.
+ *
+ * Per OOXML 17.7.5.10, this is meaningful only when rPr is a child of
+ * <w:r>. When it's a child of <w:pPr>, it describes the paragraph mark
+ * (¶) only — see parseParagraph, which deliberately ignores pPr/rPr.
  */
-function mergeMarks(defaults: Mark[], run: ParsedRPr): Mark[] {
-  const runTypeNames = new Set(run.marks.map((m) => m.type.name));
-  const runHasNamedStyle = run.marks.some((m) => NAMED_STYLE_MARKS.has(m.type.name)) || run.clearedRStyle;
-
-  const inherited = defaults.filter((m) => {
-    if (runTypeNames.has(m.type.name)) return false;
-    if (run.disabled.has(m.type.name)) return false;
-    if (runHasNamedStyle && NAMED_STYLE_MARKS.has(m.type.name)) return false;
-    return true;
-  });
-
-  return [...inherited, ...run.marks];
-}
-
 function parseRPr(rPr: XmlNode): ParsedRPr {
   const marks: Mark[] = [];
-  const disabled = new Set<string>();
-  let clearedRStyle = false;
   const props = childrenOf(rPr, 'w:rPr');
 
   for (const prop of props) {
@@ -271,36 +215,28 @@ function parseRPr(rPr: XmlNode): ParsedRPr {
     switch (tag) {
       case 'w:rStyle': {
         const styleId = a['w:val'];
-        if (!styleId) {
-          clearedRStyle = true;
-        } else if (styleId in RSTYLE_TO_MARK) {
+        if (styleId && styleId in RSTYLE_TO_MARK) {
           const markName = RSTYLE_TO_MARK[styleId]!;
           marks.push(schema.marks[markName]!.create());
         }
-        // Unknown rStyles are dropped (stylepox cleanup).
+        // Unknown / empty rStyles are dropped (stylepox cleanup).
         break;
       }
       case 'w:b': {
-        if (a['w:val'] === '0' || a['w:val'] === 'false') {
-          disabled.add('bold');
-        } else {
+        if (a['w:val'] !== '0' && a['w:val'] !== 'false') {
           marks.push(schema.marks['bold']!.create());
         }
         break;
       }
       case 'w:i': {
-        if (a['w:val'] === '0' || a['w:val'] === 'false') {
-          disabled.add('italic');
-        } else {
+        if (a['w:val'] !== '0' && a['w:val'] !== 'false') {
           marks.push(schema.marks['italic']!.create());
         }
         break;
       }
       case 'w:u': {
         const val = a['w:val'];
-        if (val === 'none' || val === '0') {
-          disabled.add('underline_mark');
-        } else if (val) {
+        if (val && val !== 'none' && val !== '0') {
           if (!marks.some((m) => m.type.name === 'underline_mark')) {
             marks.push(schema.marks['underline_mark']!.create());
           }
@@ -324,9 +260,7 @@ function parseRPr(rPr: XmlNode): ParsedRPr {
       }
       case 'w:highlight': {
         const c = a['w:val'];
-        if (!c || c === 'none') {
-          disabled.add('highlight');
-        } else {
+        if (c && c !== 'none') {
           marks.push(schema.marks['highlight']!.create({ color: c }));
         }
         break;
@@ -342,12 +276,7 @@ function parseRPr(rPr: XmlNode): ParsedRPr {
     }
   }
 
-  return { marks, disabled, clearedRStyle };
-}
-
-/** Convenience: just the marks, no disable info. Used where merging isn't needed. */
-function parseMarks(rPr: XmlNode): Mark[] {
-  return parseRPr(rPr).marks;
+  return { marks };
 }
 
 function resolveNodeType(pStyle: string | null, _inlines: PMNode[]): string {
@@ -387,8 +316,47 @@ function assembleDoc(paragraphs: ParaInfo[]): PMNode {
   while (i < paragraphs.length) {
     const para = paragraphs[i]!;
 
+    if (para.nodeType === 'analytic') {
+      // Start an analytic_unit: analytic + undertag* + card_body*
+      const analyticNode = schema.nodes['analytic']!.create(
+        attrsForHeading(para.headingId),
+        para.inlines,
+      );
+      const unitChildren: PMNode[] = [analyticNode];
+      let j = i + 1;
+
+      // Consume undertags directly attached to the analytic.
+      while (j < paragraphs.length && paragraphs[j]!.nodeType === 'undertag') {
+        unitChildren.push(
+          schema.nodes['undertag']!.create(null, paragraphs[j]!.inlines),
+        );
+        j++;
+      }
+
+      // Body paragraphs: any Normal paragraphs that follow.
+      while (j < paragraphs.length && paragraphs[j]!.nodeType === 'paragraph') {
+        unitChildren.push(
+          schema.nodes['card_body']!.create(null, paragraphs[j]!.inlines),
+        );
+        j++;
+      }
+
+      try {
+        const unitNode = schema.nodes['analytic_unit']!.createChecked(null, unitChildren);
+        docNodes.push(unitNode);
+      } catch (_e) {
+        const scratch = schema.nodes['scratchpad']!.createChecked(
+          null,
+          unitChildren.map((n) => coerceToScratchpadChild(n)),
+        );
+        docNodes.push(scratch);
+      }
+      i = j;
+      continue;
+    }
+
     if (para.nodeType === 'tag') {
-      // Start a card: consume tag + (optional cite_paragraph) + body*
+      // Start a card: tag + undertag* + (cite_paragraph | analytic)? + card_body*
       const tagNode = schema.nodes['tag']!.create(
         attrsForHeading(para.headingId),
         para.inlines,
@@ -396,19 +364,26 @@ function assembleDoc(paragraphs: ParaInfo[]): PMNode {
       const cardChildren: PMNode[] = [tagNode];
       let j = i + 1;
 
-      // Optional cite_paragraph: first Normal-shaped paragraph after Tag
-      // is classified as cite for v0. Skip if next paragraph is a
-      // heading-level node.
+      // Consume undertags directly attached to the tag.
+      while (j < paragraphs.length && paragraphs[j]!.nodeType === 'undertag') {
+        cardChildren.push(
+          schema.nodes['undertag']!.create(null, paragraphs[j]!.inlines),
+        );
+        j++;
+      }
+
+      // Optional cite_paragraph: first Normal-shaped paragraph (after any
+      // undertags) is classified as cite for v0. Skip if it's a heading-
+      // level node, undertag, or end of doc.
       if (j < paragraphs.length) {
         const next = paragraphs[j]!;
         if (next.nodeType === 'paragraph') {
-          // Reclassify as cite_paragraph for v0 import.
           cardChildren.push(
             schema.nodes['cite_paragraph']!.create(null, next.inlines),
           );
           j++;
         } else if (next.nodeType === 'analytic') {
-          // In-card analytic immediately after tag.
+          // In-card analytic immediately after tag (or undertags).
           cardChildren.push(
             schema.nodes['analytic']!.create(
               attrsForHeading(next.headingId),
@@ -481,9 +456,12 @@ function paragraphToNode(para: ParaInfo): PMNode | null {
 
 function coerceToScratchpadChild(node: PMNode): PMNode {
   // If it's already valid in scratchpad's content expression, return as-is.
-  // Tags can't appear at scratchpad-level; wrap in a card if so.
+  // Tags / analytics can't appear at scratchpad-level; wrap appropriately.
   if (node.type.name === 'tag') {
     return schema.nodes['card']!.createChecked(null, [node]);
+  }
+  if (node.type.name === 'analytic') {
+    return schema.nodes['analytic_unit']!.createChecked(null, [node]);
   }
   return node;
 }

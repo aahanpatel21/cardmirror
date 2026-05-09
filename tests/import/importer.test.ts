@@ -28,10 +28,27 @@ describe('importer — paragraph kinds', () => {
     expect(doc.firstChild!.type.name).toBe('block');
   });
 
-  it('imports an Analytic paragraph as analytic', () => {
+  it('imports an Analytic paragraph as analytic_unit > analytic', () => {
     const xml = bodyXml(`<w:p><w:pPr><w:pStyle w:val="Analytic"/></w:pPr><w:r><w:t>An analytic</w:t></w:r></w:p>`);
     const doc = importDoc(xml);
-    expect(doc.firstChild!.type.name).toBe('analytic');
+    expect(doc.firstChild!.type.name).toBe('analytic_unit');
+    expect(doc.firstChild!.firstChild!.type.name).toBe('analytic');
+    expect(doc.firstChild!.firstChild!.textContent).toBe('An analytic');
+  });
+
+  it('absorbs body paragraphs after a standalone analytic into the unit', () => {
+    const xml = bodyXml(`
+      <w:p><w:pPr><w:pStyle w:val="Analytic"/></w:pPr><w:r><w:t>Header</w:t></w:r></w:p>
+      <w:p><w:r><w:t>Body 1</w:t></w:r></w:p>
+      <w:p><w:r><w:t>Body 2</w:t></w:r></w:p>
+    `);
+    const doc = importDoc(xml);
+    const unit = doc.firstChild!;
+    expect(unit.type.name).toBe('analytic_unit');
+    expect(unit.childCount).toBe(3);
+    expect(unit.child(0).type.name).toBe('analytic');
+    expect(unit.child(1).type.name).toBe('card_body');
+    expect(unit.child(2).type.name).toBe('card_body');
   });
 
   it('imports an Undertag paragraph as undertag', () => {
@@ -91,6 +108,38 @@ describe('importer — card grouping', () => {
     expect(doc.childCount).toBe(2);
     expect(doc.child(0).type.name).toBe('card');
     expect(doc.child(1).type.name).toBe('card');
+  });
+
+  it('absorbs undertags after a tag into the same card', () => {
+    const xml = bodyXml(`
+      <w:p><w:pPr><w:pStyle w:val="Heading4"/></w:pPr><w:r><w:t>Tag text</w:t></w:r></w:p>
+      <w:p><w:pPr><w:pStyle w:val="Undertag"/></w:pPr><w:r><w:t>Sub-tag note</w:t></w:r></w:p>
+      <w:p><w:r><w:t>Author 2024</w:t></w:r></w:p>
+      <w:p><w:r><w:t>Body</w:t></w:r></w:p>
+    `);
+    const doc = importDoc(xml);
+    expect(doc.firstChild!.type.name).toBe('card');
+    const card = doc.firstChild!;
+    expect(card.child(0).type.name).toBe('tag');
+    expect(card.child(1).type.name).toBe('undertag');
+    expect(card.child(1).textContent).toBe('Sub-tag note');
+    expect(card.child(2).type.name).toBe('cite_paragraph');
+    expect(card.child(3).type.name).toBe('card_body');
+  });
+
+  it('absorbs multiple undertags after a single tag', () => {
+    const xml = bodyXml(`
+      <w:p><w:pPr><w:pStyle w:val="Heading4"/></w:pPr><w:r><w:t>Tag</w:t></w:r></w:p>
+      <w:p><w:pPr><w:pStyle w:val="Undertag"/></w:pPr><w:r><w:t>Note 1</w:t></w:r></w:p>
+      <w:p><w:pPr><w:pStyle w:val="Undertag"/></w:pPr><w:r><w:t>Note 2</w:t></w:r></w:p>
+      <w:p><w:r><w:t>Body</w:t></w:r></w:p>
+    `);
+    const doc = importDoc(xml);
+    const card = doc.firstChild!;
+    expect(card.child(0).type.name).toBe('tag');
+    expect(card.child(1).type.name).toBe('undertag');
+    expect(card.child(2).type.name).toBe('undertag');
+    expect(card.child(3).type.name).toBe('cite_paragraph');
   });
 
   it('handles in-card analytic between tag and body', () => {

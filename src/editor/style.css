@@ -16,10 +16,17 @@ body {
   color: #222;
 }
 
+/* The nav panel is a fixed-position left rail (Word-style). The main
+   content fills the remaining width; the page scrolls naturally inside
+   the main content while the rail stays put. The width is shared via
+   a CSS custom property so the resize-handle can drive both at once. */
+:root {
+  --nav-width: 300px;
+}
 #app {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 2rem 1rem;
+  margin-left: var(--nav-width);
+  padding: 1.5rem;
+  min-height: 100vh;
 }
 
 header {
@@ -56,6 +63,23 @@ code {
   display: flex;
   gap: 0.75rem;
   margin-top: 0.75rem;
+  align-items: center;
+}
+
+#settings-btn {
+  background: #fff;
+  border: 1px solid #c8c8c8;
+  border-radius: 4px;
+  width: 2rem;
+  height: 2rem;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+#settings-btn:hover {
+  background: #ebebeb;
 }
 
 #editor {
@@ -115,20 +139,27 @@ code {
   margin: 0.75rem 0 0.25rem 0;
 }
 
-/* Card body, cite, generic paragraph. */
+/* Body-level paragraphs (card body, cite paragraph, generic paragraph,
+   undertag) — no extra vertical spacing. Headings provide their own
+   before/after margins so the overall flow has rhythm at the right
+   places without inflating runs of card body text. */
 .pmd-cite-para,
 .pmd-card-body,
-p {
-  margin: 0.4rem 0;
+.pmd-undertag,
+#editor p {
+  margin: 0;
 }
 
-/* Card container — outline so card boundaries are visible. */
-.pmd-card {
+/* Card and analytic-unit — block-level draggable units. Transparent
+   border holds layout; hover reveals the boundary. */
+.pmd-card,
+.pmd-analytic-unit {
   border-left: 2px solid transparent;
   padding-left: 0.5rem;
 }
 
-.pmd-card:hover {
+.pmd-card:hover,
+.pmd-analytic-unit:hover {
   border-left-color: #c0c0c0;
 }
 
@@ -148,20 +179,48 @@ p {
   margin: 0.5rem 0;
 }
 
-/* ---------------------------------------------- Marks */
+/* ---------------------------------------------- Marks
+   Character-style marks add visual cues (underline, color, border)
+   *on top of* the parent paragraph's typography. Size, weight, style,
+   and family inherit from the parent unless the run carries an explicit
+   font_size / italic / bold direct-formatting mark (which renders via
+   inline style and wins on specificity). This matches Word's effective
+   behavior when these styles are applied to text inside headings — the
+   parent's bold/13pt persists, and the character style just adds its
+   distinguishing visual treatment (underline, box, color). */
 
-.pmd-cite { font-weight: bold; font-size: 13pt; }
+/* Style13ptBold (Cite): adds bold prominence. The "13pt" in the style
+   name is the canonical declared size, which kicks in only when the
+   parent is smaller (typical in cite paragraphs at 11pt). When inside
+   a heading already at ≥13pt, the heading's size dominates. */
+.pmd-cite {
+  font-weight: bold;
+  font-size: 13pt;
+}
 
-.pmd-underline { text-decoration: underline; }
+/* StyleUnderline: just an underline. */
+.pmd-underline {
+  text-decoration: underline;
+}
 
+/* Emphasis: underline + character border ("the box"). */
 .pmd-emphasis {
   text-decoration: underline;
   border: 1px solid #333;
   padding: 0 2px;
 }
 
-.pmd-undertag-mark { font-style: italic; color: #385623; }
-.pmd-analytic-mark { color: #1F3864; }
+/* UndertagChar (inline form): green italic. */
+.pmd-undertag-mark {
+  font-style: italic;
+  color: #385623;
+}
+
+/* AnalyticChar (inline form): bold dark blue. */
+.pmd-analytic-mark {
+  font-weight: bold;
+  color: #1F3864;
+}
 
 mark {
   background: #ffff66; /* default; data-color overrides via attribute selector */
@@ -174,6 +233,319 @@ mark[data-color="red"] { background: #ff8888; }
 
 /* ProseMirror selection visibility */
 .ProseMirror:focus { outline: none; }
+
+/* ---------------------------------------------- Navigation panel */
+
+.pmd-nav-panel {
+  background: #fff;
+  border-right: 1px solid #d0d0d0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--nav-width);
+  font-family: 'Calibri', 'Helvetica Neue', sans-serif;
+  font-size: 0.85rem;
+  z-index: 10;
+  /* Flex column: header is fixed-height, list scrolls independently
+     inside the panel. The panel itself does not scroll — keeps the
+     scrollbar OFF the right edge so it can't cover the resize handle. */
+  display: flex;
+  flex-direction: column;
+}
+
+/* Resize handle: a thin strip overlaying the right edge. Drag to
+   change the panel width. */
+.pmd-nav-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 11;
+  background: transparent;
+  transition: background-color 0.1s ease;
+}
+
+.pmd-nav-resize-handle:hover,
+.pmd-nav-panel.pmd-nav-resizing .pmd-nav-resize-handle {
+  background: rgba(0, 80, 200, 0.15);
+}
+
+/* While dragging: disable text selection and keep the col-resize cursor
+   over the whole document so quick mouse moves don't lose state. */
+body.pmd-nav-resize-active {
+  user-select: none;
+  cursor: col-resize !important;
+}
+
+.pmd-nav-panel header {
+  flex: 0 0 auto;
+  padding: 0.5rem 0.75rem 0.5rem 1rem;
+  border-bottom: 1px solid #e0e0e0;
+  background: #fafafa;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.pmd-nav-title {
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #666;
+}
+
+.pmd-nav-level-group {
+  display: flex;
+  gap: 2px;
+}
+
+.pmd-nav-level-btn {
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 1px solid #c8c8c8;
+  background: #fff;
+  color: #555;
+  cursor: pointer;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.pmd-nav-level-btn:hover {
+  background: #ebebeb;
+}
+
+.pmd-nav-level-btn-active {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+
+.pmd-nav-level-btn-active:hover {
+  background: #1d4ed8;
+}
+
+.pmd-nav-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  /* Leave room on the right so the scrollbar doesn't run into the handle. */
+  padding-right: 8px;
+  list-style: none;
+  margin: 0;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  padding-left: 0;
+}
+
+.pmd-nav-empty {
+  margin: 0;
+  padding: 1rem;
+  color: #999;
+  font-style: italic;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.pmd-nav-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  padding: 0.2rem 0.75rem;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  position: relative;
+}
+
+.pmd-nav-item:hover {
+  background: #f3f3f3;
+  border-left-color: #b0b0b0;
+}
+
+.pmd-nav-chevron {
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 1em;
+  text-align: center;
+  font-size: 0.7em;
+  color: #888;
+  user-select: none;
+}
+
+.pmd-nav-chevron-active:hover {
+  color: #333;
+}
+
+.pmd-nav-chevron-leaf {
+  visibility: hidden;
+}
+
+.pmd-nav-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Hover-only cite preview: overlays the right portion of the row,
+   fades in when the row is hovered. The white backdrop hides the
+   tag-text underneath cleanly when the cite is wider than expected. */
+.pmd-nav-cite-preview {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  max-width: 65%;
+  padding: 0 0.5rem 0 1.75rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #555;
+  /* Wider, fully-opaque fade. The preview's body sits past the fade
+     zone (padding-left: 1.75rem), so the cite text reads on solid
+     background and never overlaps the tag text underneath. */
+  background: linear-gradient(to right, transparent 0, #f3f3f3 1.5rem);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.pmd-nav-item:hover .pmd-nav-cite-preview {
+  opacity: 1;
+}
+
+/* Empty headings still occupy a normal line's worth of height. */
+.pmd-nav-label:empty::before {
+  content: '\00a0';
+}
+
+/* Indent + emphasis per outline level (Word's nav pane convention). */
+.pmd-nav-level-1 { padding-left: 0.75rem;  font-weight: 700; font-size: 0.95rem; }
+.pmd-nav-level-2 { padding-left: 1.5rem;   font-weight: 600; font-size: 0.9rem; }
+.pmd-nav-level-3 { padding-left: 2.25rem;  font-weight: 500; }
+.pmd-nav-level-4 { padding-left: 3rem;     font-size: 0.85rem; color: #444; }
+
+/* Type-specific color cues — same hues as the canonical Verbatim render. */
+.pmd-nav-type-analytic .pmd-nav-label       { color: #1F3864; }
+.pmd-nav-type-analytic:hover .pmd-nav-label { color: #1F3864; }
+
+/* ---------------------------------------------- Settings modal */
+
+.pmd-settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.pmd-settings-dialog {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  width: 90%;
+  max-width: 480px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  font-family: 'Calibri', 'Helvetica Neue', sans-serif;
+}
+
+.pmd-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #e0e0e0;
+  flex: 0 0 auto;
+}
+
+.pmd-settings-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.pmd-settings-close {
+  background: transparent;
+  border: none;
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+  color: #666;
+  padding: 0 0.4rem;
+}
+
+.pmd-settings-close:hover {
+  color: #000;
+}
+
+.pmd-settings-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0.5rem 1.25rem 1.25rem;
+}
+
+.pmd-settings-empty {
+  text-align: center;
+  color: #888;
+  font-style: italic;
+  margin: 2rem 0;
+}
+
+.pmd-settings-row {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #ececec;
+}
+
+.pmd-settings-row:last-child {
+  border-bottom: none;
+}
+
+.pmd-settings-row-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  cursor: pointer;
+}
+
+.pmd-settings-row-text {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.pmd-settings-row-title {
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+.pmd-settings-row-desc {
+  font-size: 0.85rem;
+  color: #666;
+  line-height: 1.4;
+}
+
+.pmd-settings-toggle {
+  flex: 0 0 auto;
+  margin-top: 0.2rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  cursor: pointer;
+}
 
 /* Read-mode hide-class hint (toggle this on the editor root) */
 .pmd-read-mode .pmd-card-body:not(.has-highlighted-text),

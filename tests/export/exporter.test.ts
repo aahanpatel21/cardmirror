@@ -71,9 +71,11 @@ describe('exporter — paragraph styles', () => {
     expect(documentXml).toContain('<w:pStyle w:val="Heading4"/>');
   });
 
-  it('emits Analytic pStyle for analytic', () => {
+  it('emits Analytic pStyle for analytic inside analytic_unit', () => {
     const doc = schema.nodes['doc']!.createChecked(null, [
-      schema.nodes['analytic']!.create({ id: newHeadingId() }, schema.text('Analytic')),
+      schema.nodes['analytic_unit']!.create(null, [
+        schema.nodes['analytic']!.create({ id: newHeadingId() }, schema.text('Analytic')),
+      ]),
     ]);
     const { documentXml } = exportDoc(doc);
     expect(documentXml).toContain('<w:pStyle w:val="Analytic"/>');

@@ -15,10 +15,17 @@ import { baseKeymap } from 'prosemirror-commands';
 import { Node as PMNode } from 'prosemirror-model';
 import { schema, newHeadingId } from '../schema/index.js';
 import { fromDocx, toDocx } from '../index.js';
+import { NavigationPanel } from './nav-panel.js';
+import { openSettings } from './settings-ui.js';
 
 const editorEl = document.getElementById('editor')!;
+const navEl = document.getElementById('nav-panel')!;
 const dropzone = document.getElementById('dropzone') as HTMLInputElement;
 const exportBtn = document.getElementById('export-btn') as HTMLButtonElement;
+const settingsBtn = document.getElementById('settings-btn') as HTMLButtonElement;
+settingsBtn.addEventListener('click', () => openSettings());
+
+const navPanel = new NavigationPanel(navEl);
 
 let currentDoc: PMNode = makeStarterDoc();
 let view: EditorView | null = null;
@@ -33,6 +40,8 @@ function makeStarterDoc(): PMNode {
     schema.nodes['block']!.create({ id: newHeadingId() }, schema.text('A block containing two cards')),
     schema.nodes['card']!.create(null, [
       schema.nodes['tag']!.create({ id: newHeadingId() }, schema.text('Climate action delays catastrophic — IPCC')),
+      // Undertags belong to the tag — they sit inside the card, not after it.
+      schema.nodes['undertag']!.create(null, schema.text('Sub-tag note that explains the tag (green italic).')),
       schema.nodes['cite_paragraph']!.create(null, [
         schema.text('IPCC AR6 ', [schema.marks['cite_mark']!.create()]),
         schema.text('2023, '),
@@ -53,11 +62,15 @@ function makeStarterDoc(): PMNode {
         ]),
       ]),
     ]),
-    schema.nodes['analytic']!.create(
-      { id: newHeadingId() },
-      schema.text('A standalone analytic between cards (dark blue).'),
-    ),
-    schema.nodes['undertag']!.create(null, schema.text('A loose undertag note (green italic).')),
+    schema.nodes['analytic_unit']!.create(null, [
+      schema.nodes['analytic']!.create(
+        { id: newHeadingId() },
+        schema.text('A standalone analytic between cards (dark blue).'),
+      ),
+      schema.nodes['card_body']!.create(null, [
+        schema.text('Body paragraphs after the analytic are absorbed into the unit, so the whole thing drags as one. Hover to see the gray bar — same boundary indicator as cards.'),
+      ]),
+    ]),
     schema.nodes['scratchpad']!.create(null, [
       schema.nodes['paragraph']!.create(null, schema.text('Scratchpad text — schema escape hatch.')),
     ]),
@@ -81,10 +94,14 @@ function mountView(doc: PMNode): void {
       if (!view) return;
       const next = view.state.apply(tx);
       view.updateState(next);
-      currentDoc = next.doc;
+      if (tx.docChanged) {
+        currentDoc = next.doc;
+        navPanel.update(next.doc);
+      }
     },
   });
   currentDoc = doc;
+  navPanel.attach(view);
   exportBtn.disabled = false;
 }
 
