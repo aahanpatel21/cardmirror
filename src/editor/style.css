@@ -16,44 +16,90 @@ body {
   color: #222;
 }
 
-/* The nav panel is a fixed-position left rail (Word-style). The main
-   content fills the remaining width; the page scrolls naturally inside
-   the main content while the rail stays put. The width is shared via
-   a CSS custom property so the resize-handle can drive both at once. */
+/* Layout: full-width ribbon at the top, fixed nav panel on the left
+   (offset by the ribbon's height), main content fills the remainder.
+   Both ribbon and nav-panel widths/heights are CSS custom properties so
+   the rest of the layout reads from them. */
 :root {
   --nav-width: 300px;
+  --ribbon-height: 4rem;
 }
-#app {
-  margin-left: var(--nav-width);
-  min-height: 100vh;
+
+#ribbon {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--ribbon-height);
+  background: #f3f3f3;
+  border-bottom: 1px solid #d0d0d0;
+  display: flex;
+  align-items: center;
+  padding: 0 0.5rem;
+  z-index: 20;
+  font-size: 0.85rem;
+}
+
+.ribbon-section {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.ribbon-left { flex: 0 0 auto; }
+.ribbon-center { flex: 1 1 auto; justify-content: center; }
+.ribbon-right { flex: 0 0 auto; }
+
+/* All ribbon buttons share the same icon-button look: square, centered
+   glyph, no padding-driven asymmetry. Flexbox centering avoids
+   line-height alignment quirks (which is what was making the gear sit
+   off-center). */
+#ribbon button {
+  font-family: inherit;
+  background: #fff;
+  border: 1px solid #c8c8c8;
+  border-radius: 3px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  width: 1.7rem;
+  height: 1.7rem;
+  font-size: 0.95rem;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+#ribbon button:hover:not(:disabled) {
+  background: #ebebeb;
+}
+
+#ribbon button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Stacked pair of icon buttons (e.g., Open / Export). Each button
+   half-height of the stack so two fit within the ribbon. */
+.ribbon-button-stack {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
-header {
-  background: #fafafa;
-  border-bottom: 1px solid #d0d0d0;
-  padding: 0.5rem 0.75rem;
-  flex: 0 0 auto;
-}
-
-header h1 {
-  margin: 0;
+.ribbon-button-stack button {
+  height: 1.65rem;
+  width: 2rem;
   font-size: 0.95rem;
-  font-weight: 600;
-  display: inline-block;
-  margin-right: 0.75rem;
 }
 
-header p {
-  margin: 0;
-  font-size: 0.8rem;
-  color: #666;
-  display: inline;
-}
-
-.hint {
-  display: none; /* dev hint; not worth the vertical space */
+#app {
+  margin-top: var(--ribbon-height);
+  margin-left: var(--nav-width);
+  min-height: calc(100vh - var(--ribbon-height));
+  display: flex;
+  flex-direction: column;
 }
 
 code {
@@ -61,30 +107,6 @@ code {
   padding: 0.1rem 0.3rem;
   border-radius: 3px;
   font-family: 'JetBrains Mono', 'Menlo', monospace;
-}
-
-.controls {
-  display: inline-flex;
-  gap: 0.5rem;
-  margin-left: 0.75rem;
-  align-items: center;
-  vertical-align: middle;
-}
-
-#settings-btn {
-  background: #fff;
-  border: 1px solid #c8c8c8;
-  border-radius: 4px;
-  width: 1.7rem;
-  height: 1.7rem;
-  font-size: 0.9rem;
-  cursor: pointer;
-  padding: 0;
-  line-height: 1;
-}
-
-#settings-btn:hover {
-  background: #ebebeb;
 }
 
 #editor {
@@ -244,7 +266,7 @@ mark[data-color="red"] { background: #ff8888; }
   background: #fff;
   border-right: 1px solid #d0d0d0;
   position: fixed;
-  top: 0;
+  top: var(--ribbon-height);
   left: 0;
   bottom: 0;
   width: var(--nav-width);

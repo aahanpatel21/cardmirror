@@ -21,8 +21,10 @@ import { openSettings } from './settings-ui.js';
 const editorEl = document.getElementById('editor')!;
 const navEl = document.getElementById('nav-panel')!;
 const dropzone = document.getElementById('dropzone') as HTMLInputElement;
+const openBtn = document.getElementById('open-btn') as HTMLButtonElement;
 const exportBtn = document.getElementById('export-btn') as HTMLButtonElement;
 const settingsBtn = document.getElementById('settings-btn') as HTMLButtonElement;
+openBtn.addEventListener('click', () => dropzone.click());
 settingsBtn.addEventListener('click', () => openSettings());
 
 const navPanel = new NavigationPanel(navEl);
