@@ -117,26 +117,82 @@ export const nodes: { [name: string]: NodeSpec } = {
           };
         },
       },
+      {
+        // Placeholder span — for non-browser-renderable formats (EMF /
+        // WMF / TIFF). Carries the same data attributes so re-saving
+        // through DOM round-trip works.
+        tag: 'span[data-pmd-image]',
+        getAttrs: (dom: HTMLElement) => {
+          const data = dom.getAttribute('data-image-data') ?? '';
+          const contentType = dom.getAttribute('data-content-type') ?? 'application/octet-stream';
+          const widthEmu = parseInt(dom.getAttribute('data-width-emu') ?? '0', 10);
+          const heightEmu = parseInt(dom.getAttribute('data-height-emu') ?? '0', 10);
+          return {
+            data,
+            contentType,
+            widthEmu: Number.isFinite(widthEmu) ? widthEmu : 0,
+            heightEmu: Number.isFinite(heightEmu) ? heightEmu : 0,
+            alt: dom.getAttribute('data-alt') ?? '',
+          };
+        },
+      },
     ],
     toDOM: (node) => {
       const data = String(node.attrs['data'] ?? '');
       const contentType = String(node.attrs['contentType'] ?? 'image/png');
       const widthEmu = Number(node.attrs['widthEmu'] ?? 0);
       const heightEmu = Number(node.attrs['heightEmu'] ?? 0);
+      const alt = String(node.attrs['alt'] ?? '');
+
       // 914400 EMU per inch; 96 px per inch → 9525 EMU per pixel.
       const widthPx = widthEmu > 0 ? Math.round(widthEmu / 9525) : 0;
       const heightPx = heightEmu > 0 ? Math.round(heightEmu / 9525) : 0;
-      const attrs: Record<string, string> = {
-        'data-pmd-image': '',
-        src: data ? `data:${contentType};base64,${data}` : '',
-        alt: String(node.attrs['alt'] ?? ''),
-        'data-width-emu': String(widthEmu),
-        'data-height-emu': String(heightEmu),
-        style: 'max-width: 100%; height: auto;',
-      };
-      if (widthPx > 0) attrs['width'] = String(widthPx);
-      if (heightPx > 0) attrs['height'] = String(heightPx);
-      return ['img', attrs];
+
+      // Browser-renderable raster + svg formats: emit as <img data:>.
+      // Non-renderable formats (EMF, WMF, TIFF, octet-stream): emit a
+      // styled placeholder span instead of a broken image tag. Bytes
+      // are still preserved on the element so round-trip works.
+      const RENDERABLE = new Set([
+        'image/png', 'image/jpeg', 'image/gif',
+        'image/webp', 'image/bmp', 'image/svg+xml',
+      ]);
+
+      if (data && RENDERABLE.has(contentType)) {
+        const attrs: Record<string, string> = {
+          'data-pmd-image': '',
+          src: `data:${contentType};base64,${data}`,
+          alt,
+          'data-width-emu': String(widthEmu),
+          'data-height-emu': String(heightEmu),
+          style: 'max-width: 100%; height: auto;',
+        };
+        if (widthPx > 0) attrs['width'] = String(widthPx);
+        if (heightPx > 0) attrs['height'] = String(heightPx);
+        return ['img', attrs];
+      }
+
+      // Placeholder for unsupported formats. Style replicates the
+      // approximate footprint so layout looks roughly right.
+      const sizeStyle = widthPx > 0 && heightPx > 0
+        ? `width: ${widthPx}px; height: ${heightPx}px;`
+        : 'min-width: 80px; min-height: 80px;';
+      const subtype = contentType.replace(/^image\//, '').replace(/^x-/, '');
+      const label = `[${subtype} image]`;
+      return [
+        'span',
+        {
+          'data-pmd-image': '',
+          'data-image-data': data,
+          'data-content-type': contentType,
+          'data-width-emu': String(widthEmu),
+          'data-height-emu': String(heightEmu),
+          'data-alt': alt,
+          class: 'pmd-image-placeholder',
+          title: alt ? `${label} — ${alt}` : label,
+          style: `display: inline-block; ${sizeStyle} background: #f0f0f0; border: 1px dashed #999; vertical-align: middle; text-align: center; color: #666; font-size: 0.8em; line-height: 1.2; padding: 0.25em; box-sizing: border-box; overflow: hidden;`,
+        },
+        label,
+      ];
     },
   },
 
