@@ -23,7 +23,7 @@ import {
   type DisplaySizes,
   type DisplayTypography,
 } from './settings.js';
-import { readModePlugin } from './read-mode-plugin.js';
+import { readModePlugin, PMD_READ_MODE_TOGGLE } from './read-mode-plugin.js';
 import { absorbPlugin } from './absorb-plugin.js';
 import { fontSizeClassPlugin } from './font-size-class-plugin.js';
 import {
@@ -169,7 +169,14 @@ function applyReadMode(on: boolean): void {
     on && settings.get('hideEmphasisBordersInReadMode'),
   );
   readModeBtn.classList.toggle('pmd-active', on);
-  if (view) view.setProps({ editable: () => !on });
+  if (view) {
+    view.setProps({ editable: () => !on });
+    // Force the read-mode plugin to (re)compute decorations. With the
+    // optimization that skips decoration work while read mode is off,
+    // toggling on/off needs an explicit trigger since the plugin
+    // otherwise only reacts to doc changes.
+    view.dispatch(view.state.tr.setMeta(PMD_READ_MODE_TOGGLE, true));
+  }
 }
 
 const navPanel = new NavigationPanel(navEl);
@@ -252,16 +259,33 @@ function mountView(doc: PMNode): void {
       view.updateState(next);
       if (tx.docChanged) {
         currentDoc = next.doc;
-        navPanel.update(next.doc);
       }
-      // Selection or doc change → refresh the word-count strip.
-      refreshWordCount();
+      // Walking the doc to rebuild the nav pane and tally read-aloud
+      // word count is the dominant per-keystroke cost on big docs.
+      // Debounce so we only do it after typing pauses.
+      scheduleHeavyUpdate();
     },
   });
   currentDoc = doc;
   navPanel.attach(view);
   exportBtn.disabled = false;
+  // Initial paint: do the heavy update synchronously so the user sees
+  // the right thing immediately on doc load.
+  navPanel.update(doc);
   refreshWordCount();
+}
+
+let pendingHeavyUpdate: ReturnType<typeof setTimeout> | null = null;
+const HEAVY_UPDATE_DELAY_MS = 200;
+
+function scheduleHeavyUpdate(): void {
+  if (pendingHeavyUpdate !== null) clearTimeout(pendingHeavyUpdate);
+  pendingHeavyUpdate = setTimeout(() => {
+    pendingHeavyUpdate = null;
+    if (!view) return;
+    navPanel.update(view.state.doc);
+    refreshWordCount();
+  }, HEAVY_UPDATE_DELAY_MS);
 }
 
 dropzone.addEventListener('change', async () => {

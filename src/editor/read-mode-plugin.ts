@@ -12,9 +12,17 @@
  *   - Elsewhere (heading paragraphs etc.): no decoration — block-level
  *     CSS handles whether they show.
  *
- * The decorations are emitted unconditionally; CSS in style.css
- * activates the hide/show behavior only when the editor's root carries
- * `.pmd-read-mode`.
+ * The decorations are emitted only when read mode is *active*; with
+ * read mode off there's nothing to render and we keep an empty set.
+ * Toggling the setting fires a meta-flagged no-op transaction
+ * (`PMD_READ_MODE_TOGGLE`) so the plugin can rebuild the set on
+ * demand.
+ *
+ * Doc edits trigger an *incremental* update: existing decorations get
+ * mapped through the transaction (positions adjust), then decorations
+ * inside the touched region (expanded to top-level container) are
+ * recomputed. This is O(touched-region) instead of O(whole-doc) per
+ * keystroke — the dominant typing-latency win for large docs.
  *
  * Why the plugin instead of pure CSS: marks nest in the rendered DOM
  * (a highlight inside an underline ends up inside the underline's
@@ -26,15 +34,36 @@
 import { Plugin } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
 import type { Node as PMNode } from 'prosemirror-model';
+import { settings } from './settings.js';
+import { changedRange, expandToTopLevel } from './decoration-range.js';
+
+/** Meta key used to force a recompute when read mode toggles. */
+export const PMD_READ_MODE_TOGGLE = 'pmdReadModeToggle';
 
 export const readModePlugin: Plugin<DecorationSet> = new Plugin<DecorationSet>({
   state: {
     init(_, { doc }) {
-      return computeDecorations(doc);
+      return settings.get('readMode') ? computeFullSet(doc) : DecorationSet.empty;
     },
-    apply(tr, prev) {
+    apply(tr, prev, _oldState, newState) {
+      if (tr.getMeta(PMD_READ_MODE_TOGGLE)) {
+        return settings.get('readMode') ? computeFullSet(newState.doc) : DecorationSet.empty;
+      }
       if (!tr.docChanged) return prev;
-      return computeDecorations(tr.doc);
+      // When read mode is off the decoration set is empty and stays
+      // empty — skip the walk entirely.
+      if (!settings.get('readMode')) return prev;
+
+      const range = changedRange(tr);
+      if (!range) return prev.map(tr.mapping, tr.doc);
+
+      // Map existing decorations through the change, then replace any
+      // that fall inside the recompute window.
+      const expanded = expandToTopLevel(tr.doc, range.from, range.to);
+      const mapped = prev.map(tr.mapping, tr.doc);
+      const stale = mapped.find(expanded.from, expanded.to);
+      const fresh = computeDecorationsInRange(tr.doc, expanded.from, expanded.to);
+      return mapped.remove(stale).add(tr.doc, fresh);
     },
   },
   props: {
@@ -44,9 +73,19 @@ export const readModePlugin: Plugin<DecorationSet> = new Plugin<DecorationSet>({
   },
 });
 
-function computeDecorations(doc: PMNode): DecorationSet {
+function computeFullSet(doc: PMNode): DecorationSet {
+  return DecorationSet.create(doc, computeDecorationsInRange(doc, 0, doc.content.size));
+}
+
+/**
+ * Build the decoration list for text nodes whose start position lies
+ * within [from, to]. Callers pass a `from`/`to` already expanded to
+ * top-level container boundaries so partial paragraphs aren't
+ * visited mid-traversal.
+ */
+function computeDecorationsInRange(doc: PMNode, from: number, to: number): Decoration[] {
   const decos: Decoration[] = [];
-  doc.descendants((node, pos) => {
+  doc.nodesBetween(from, to, (node, pos) => {
     if (!node.isText || !node.text) return;
 
     const $pos = doc.resolve(pos);
@@ -67,5 +106,5 @@ function computeDecorations(doc: PMNode): DecorationSet {
       }),
     );
   });
-  return DecorationSet.create(doc, decos);
+  return decos;
 }

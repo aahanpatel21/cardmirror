@@ -33,11 +33,17 @@
  * font_size mark values (any half-points integer) need to map to a
  * font-size — pre-enumerated CSS rules would have gaps for unusual
  * values (e.g. 3pt, 2pt, 5.5pt). Inline style handles any value.
+ *
+ * Per-keystroke incremental update: existing decorations get mapped
+ * through each transaction; only paragraphs in the touched
+ * (top-level-expanded) range are recomputed. This keeps typing latency
+ * O(touched-region) instead of O(whole-doc) on large docs.
  */
 
 import { Plugin } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
 import type { Node as PMNode } from 'prosemirror-model';
+import { changedRange, expandToTopLevel } from './decoration-range.js';
 
 const BODY_PARA_TYPES = new Set([
   'card_body',
@@ -52,11 +58,19 @@ const DEFAULT_HALF_POINTS = 22;
 export const fontSizeClassPlugin: Plugin<DecorationSet> = new Plugin<DecorationSet>({
   state: {
     init(_, { doc }) {
-      return computeDecorations(doc);
+      return computeFullSet(doc);
     },
     apply(tr, prev) {
       if (!tr.docChanged) return prev;
-      return computeDecorations(tr.doc);
+
+      const range = changedRange(tr);
+      if (!range) return prev.map(tr.mapping, tr.doc);
+
+      const expanded = expandToTopLevel(tr.doc, range.from, range.to);
+      const mapped = prev.map(tr.mapping, tr.doc);
+      const stale = mapped.find(expanded.from, expanded.to);
+      const fresh = computeDecorationsInRange(tr.doc, expanded.from, expanded.to);
+      return mapped.remove(stale).add(tr.doc, fresh);
     },
   },
   props: {
@@ -66,11 +80,14 @@ export const fontSizeClassPlugin: Plugin<DecorationSet> = new Plugin<DecorationS
   },
 });
 
-function computeDecorations(doc: PMNode): DecorationSet {
-  const decos: Decoration[] = [];
-  doc.descendants((node, pos) => {
-    if (!BODY_PARA_TYPES.has(node.type.name)) return;
+function computeFullSet(doc: PMNode): DecorationSet {
+  return DecorationSet.create(doc, computeDecorationsInRange(doc, 0, doc.content.size));
+}
 
+function computeDecorationsInRange(doc: PMNode, from: number, to: number): Decoration[] {
+  const decos: Decoration[] = [];
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (!BODY_PARA_TYPES.has(node.type.name)) return;
     const minHp = computeMinHalfPoints(node);
     if (minHp >= DEFAULT_HALF_POINTS) return;
 
@@ -83,22 +100,7 @@ function computeDecorations(doc: PMNode): DecorationSet {
       }),
     );
   });
-  return DecorationSet.create(doc, decos);
-}
-
-/**
- * Line-height multiplier scaled by the shrunk size. Smaller text packs
- * tighter; sizes near the default ease toward the regular 1.4. Mixed
- * lines (containing larger named-style content) aren't affected — the
- * larger spans' own line-height dictates the line-box.
- */
-function lineHeightFor(hp: number): number {
-  if (hp <= 12) return 1;     // ≤ 6pt
-  if (hp <= 14) return 1.1;   // 7pt
-  if (hp <= 16) return 1.2;   // 8pt
-  if (hp <= 18) return 1.3;   // 9pt
-  if (hp <= 20) return 1.35;  // 10pt
-  return 1.4;                 // ≥ 11pt (shouldn't hit; default isn't decorated)
+  return decos;
 }
 
 /**
@@ -117,4 +119,19 @@ export function computeMinHalfPoints(para: PMNode): number {
     if (hp < min) min = hp;
   });
   return min;
+}
+
+/**
+ * Line-height multiplier scaled by the shrunk size. Smaller text packs
+ * tighter; sizes near the default ease toward the regular 1.4. Mixed
+ * lines (containing larger named-style content) aren't affected — the
+ * larger spans' own line-height dictates the line-box.
+ */
+function lineHeightFor(hp: number): number {
+  if (hp <= 12) return 1;     // ≤ 6pt
+  if (hp <= 14) return 1.1;   // 7pt
+  if (hp <= 16) return 1.2;   // 8pt
+  if (hp <= 18) return 1.3;   // 9pt
+  if (hp <= 20) return 1.35;  // 10pt
+  return 1.4;                 // ≥ 11pt (shouldn't hit; default isn't decorated)
 }
