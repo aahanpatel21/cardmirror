@@ -625,5 +625,20 @@ function collectCiteText(node: PMNode): string {
       parts.push(descendant.text ?? '');
     }
   });
-  return parts.join('');
+  return fixAmpersandSpacing(parts.join(''));
+}
+
+/**
+ * "Author1 & Author2" cites occasionally come through as "Author1 &Author2"
+ * when the cite_mark in the source doc spans the ampersand and the second
+ * author's name without including the trailing space. Restore a space so
+ * the preview reads naturally.
+ *
+ * The rule: a free-standing ampersand (whitespace before, non-whitespace
+ * after) gets a space inserted after it. This leaves embedded ampersands
+ * in organization names alone — `AT&T`, `R&D`, etc. — because they're
+ * preceded by a non-whitespace character.
+ */
+function fixAmpersandSpacing(s: string): string {
+  return s.replace(/(^|\s)&(\S)/g, '$1& $2');
 }
