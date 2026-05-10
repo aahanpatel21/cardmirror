@@ -11,10 +11,12 @@ import {
   SETTING_METADATA,
   settings,
   DISPLAY_SIZE_KEYS,
+  DISPLAY_COLOR_KEYS,
   type SettingMeta,
   type ReaderConfig,
   type DisplaySizes,
   type DisplayTypography,
+  type DisplayColors,
 } from './settings.js';
 import { isFontAvailable } from './font-detect.js';
 
@@ -174,6 +176,10 @@ class SettingsModal {
       row.appendChild(text);
       row.appendChild(buildTypographyEditor());
       return row;
+    } else if (meta.kind === 'displayColors') {
+      row.appendChild(text);
+      row.appendChild(buildColorsEditor());
+      return row;
     } else if (meta.kind === 'bodyFont') {
       row.appendChild(text);
       row.appendChild(buildBodyFontEditor());
@@ -220,6 +226,8 @@ function buildTypographyEditor(): HTMLElement {
   wrap.appendChild(flagRow('emphasisBold', 'Emphasis: bold'));
   wrap.appendChild(flagRow('emphasisItalic', 'Emphasis: italic'));
   wrap.appendChild(flagRow('emphasisBox', 'Emphasis: boxed'));
+  wrap.appendChild(flagRow('undertagItalic', 'Undertag: italic'));
+  wrap.appendChild(flagRow('undertagBold', 'Undertag: bold'));
 
   const sizeRow = document.createElement('label');
   sizeRow.className = 'pmd-typography-size-row';
@@ -259,11 +267,61 @@ function buildTypographyEditor(): HTMLElement {
     const checkboxes = wrap.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
     const flagKeys: (keyof DisplayTypography)[] = [
       'citeUnderlined', 'underlineBold', 'emphasisBold', 'emphasisItalic', 'emphasisBox',
+      'undertagItalic', 'undertagBold',
     ];
     flagKeys.forEach((k, i) => {
       const cb = checkboxes[i];
       if (cb) cb.checked = !!t[k];
     });
+  });
+  wrap.addEventListener('DOMNodeRemoved', () => unsubscribe());
+
+  return wrap;
+}
+
+function buildColorsEditor(): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'pmd-colors-editor';
+
+  const inputs: Partial<Record<keyof DisplayColors, HTMLInputElement>> = {};
+
+  const LABELS: Record<keyof DisplayColors, string> = {
+    analytic: 'Analytic',
+    undertag: 'Undertag',
+  };
+
+  for (const key of DISPLAY_COLOR_KEYS) {
+    const row = document.createElement('label');
+    row.className = 'pmd-colors-row';
+
+    const lbl = document.createElement('span');
+    lbl.className = 'pmd-colors-label';
+    lbl.textContent = LABELS[key];
+    row.appendChild(lbl);
+
+    const picker = document.createElement('input');
+    picker.type = 'color';
+    picker.className = 'pmd-colors-input';
+    picker.value = settings.get('displayColors')[key];
+    picker.addEventListener('input', () => {
+      settings.set('displayColors', {
+        ...settings.get('displayColors'),
+        [key]: picker.value,
+      });
+    });
+    row.appendChild(picker);
+
+    inputs[key] = picker;
+    wrap.appendChild(row);
+  }
+
+  // Sync if settings change elsewhere (e.g. another tab).
+  const unsubscribe = settings.subscribe(() => {
+    const c = settings.get('displayColors');
+    for (const key of DISPLAY_COLOR_KEYS) {
+      const inp = inputs[key];
+      if (inp && inp.value !== c[key]) inp.value = c[key];
+    }
   });
   wrap.addEventListener('DOMNodeRemoved', () => unsubscribe());
 

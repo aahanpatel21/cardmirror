@@ -20,8 +20,10 @@ import { openSettings } from './settings-ui.js';
 import {
   settings,
   DISPLAY_SIZE_KEYS,
+  DISPLAY_COLOR_KEYS,
   type DisplaySizes,
   type DisplayTypography,
+  type DisplayColors,
 } from './settings.js';
 import { readModePlugin, PMD_READ_MODE_TOGGLE } from './read-mode-plugin.js';
 import { absorbPlugin } from './absorb-plugin.js';
@@ -101,7 +103,20 @@ function applyDisplayTypography(t: DisplayTypography): void {
   editorEl.classList.toggle('pmd-emphasis-bold', t.emphasisBold);
   editorEl.classList.toggle('pmd-emphasis-italic', t.emphasisItalic);
   editorEl.classList.toggle('pmd-emphasis-box', t.emphasisBox);
+  editorEl.classList.toggle('pmd-undertag-italic', t.undertagItalic);
+  editorEl.classList.toggle('pmd-undertag-bold', t.undertagBold);
   editorEl.style.setProperty('--pmd-emphasis-box-size', `${t.emphasisBoxSize}pt`);
+}
+
+/**
+ * Push displayColors into CSS custom properties on the document root
+ * so both the editor and the nav pane (which lives outside #editor)
+ * inherit the same values. CSS rules consume `var(--pmd-color-*)`.
+ */
+function applyDisplayColors(c: DisplayColors): void {
+  for (const key of DISPLAY_COLOR_KEYS) {
+    document.documentElement.style.setProperty(`--pmd-color-${key}`, c[key]);
+  }
 }
 
 /** CSS generic font categories — always available, picked by the
@@ -131,6 +146,7 @@ settings.subscribe((s) => {
   applyZoom(s.zoomPct);
   applyDisplaySizes(s.displaySizes);
   applyDisplayTypography(s.displayTypography);
+  applyDisplayColors(s.displayColors);
   applyBodyFont(s.bodyFont);
   applyLineHeight(s.lineHeight);
   refreshWordCount();
@@ -139,6 +155,7 @@ applyReadMode(settings.get('readMode'));
 applyZoom(settings.get('zoomPct'));
 applyDisplaySizes(settings.get('displaySizes'));
 applyDisplayTypography(settings.get('displayTypography'));
+applyDisplayColors(settings.get('displayColors'));
 applyBodyFont(settings.get('bodyFont'));
 applyLineHeight(settings.get('lineHeight'));
 

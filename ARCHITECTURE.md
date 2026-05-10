@@ -847,7 +847,68 @@ Hard requirements:
 The web edition is explicitly not for tournament use; its target is
 collaboration and accessibility for users without full desktop machines.
 
-## 18. Out of scope for v1
+## 18. Accessibility and customization
+
+Accessibility is a baseline requirement, not a deferred polish task. Two
+specific things need to be true from the ground up:
+
+1. **The visual layer is fully customizable.** Every color, font choice,
+   and typography decoration the user sees should be reachable through
+   the display-config layer (§5). Hard-coded colors in CSS are a bug —
+   they prevent a future colorblind palette, dark mode, or per-user
+   override from working.
+2. **Alt text is a schema-level concern.** Image nodes carry an `alt`
+   attribute that round-trips through OOXML's `<wp:docPr descr="…">`.
+   Any future image-edit UI must expose alt text editing as a
+   first-class control, not an advanced/hidden one.
+
+### What's wired now
+
+- **Color variables.** The major UI and editor colors are CSS custom
+  properties defined in one place (`:root` for chrome, `#editor` for
+  document-style colors). Changing a palette is a swap of variable
+  values, not a sweep through 1000+ lines of CSS.
+- **Per-style color overrides.** `displayColors.{analytic,undertag}` in
+  settings let users pick those two per-style colors directly. The same
+  mechanism extends to other styles when needed.
+- **Per-style typography flags** continue the §5 pattern: each flag
+  toggles a class on `#editor`; CSS rules predicated on the class apply
+  the decoration. Adding a new flag is one line in DisplayTypography +
+  one CSS rule.
+- **Image alt attribute** is in the schema (`image.attrs.alt`) and
+  preserved on round-trip; OOXML import reads `<wp:docPr descr>`,
+  export writes it.
+
+### What's deferred (but the wiring should anticipate)
+
+- **Dark mode.** Reuses the color-variable infrastructure. Implemented
+  as an alternate set of `:root` variable values gated on a
+  `data-theme="dark"` (or `prefers-color-scheme`).
+- **High-contrast / colorblind palettes.** Same mechanism — alternate
+  variable values selected via a setting.
+- **Dyslexia-friendly font preset.** `bodyFont` already accepts any
+  family; a preset library (OpenDyslexic, Lexie Readable, etc.) plugs
+  into the existing setting. Fonts will need to be bundled (offline
+  desktop) or loaded from a CDN (web).
+- **Image alt-text editing UI.** A small dialog accessed from a
+  selected `image` node; sets the schema attribute. Not yet built.
+- **Reduced-motion respect.** Drag pickup animation (vacuum) and any
+  other transitions should be gated on
+  `@media (prefers-reduced-motion: reduce)` once we ship more motion.
+- **Screen-reader semantics.** Heading nodes (pocket/hat/block/tag)
+  already render as `<h1>`–`<h4>`, which screen readers handle. As
+  more interactive UI lands (drag handles, menus, etc.), each needs
+  appropriate ARIA labels.
+
+### The principle
+
+If a contributor finds themselves writing a hex literal in a CSS file
+or a hard-coded color anywhere in the codebase, that's a smell. There
+should be a CSS variable for it (or a setting that drives one). The
+cost of doing this on the way in is roughly zero; the cost of
+retrofitting it later is high and tends not to happen.
+
+## 19. Out of scope for v1
 
 - Multi-user real-time collaboration (transclusion option 1, live
   shared cards). Defers to a phase that has backend infrastructure.

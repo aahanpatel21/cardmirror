@@ -12,8 +12,8 @@
 body {
   font-family: 'Calibri', 'Helvetica Neue', sans-serif;
   margin: 0;
-  background: #fff;
-  color: #222;
+  background: var(--pmd-c-bg);
+  color: var(--pmd-c-text);
 }
 
 /* Layout: full-width ribbon at the top, fixed nav panel on the left
@@ -24,6 +24,65 @@ body {
   --nav-width: 300px;
   --ribbon-height: 4rem;
   --status-bar-height: 1.8rem;
+
+  /* Color palette. Every UI color flows through one of these tokens
+     so dark mode / colorblind / high-contrast presets can swap a small
+     set of values rather than sweeping through 1000+ lines of CSS.
+     See ARCHITECTURE.md §18. New colors should reuse a token if a
+     reasonable fit exists; only add a new token when the role is
+     genuinely distinct from the existing ones.
+
+     Per-style document colors (analytic, undertag) live on `#editor`,
+     not here, because they're settings-driven (per-user display config). */
+
+  /* Surface */
+  --pmd-c-bg: #fff;                    /* page / panel / button bg */
+  --pmd-c-surface-soft: #fafafa;       /* nav header bg */
+  --pmd-c-surface: #f3f3f3;            /* ribbon, status bar, nav scrolled-bg */
+  --pmd-c-surface-alt: #ececec;        /* editor viewport bg, code bg, divider */
+  --pmd-c-overlay: rgba(0, 0, 0, 0.4); /* modal scrim */
+
+  /* Borders & dividers */
+  --pmd-c-border: #c8c8c8;             /* button borders */
+  --pmd-c-border-soft: #d0d0d0;        /* chrome borders (ribbon, nav) */
+  --pmd-c-divider: #e0e0e0;            /* subtle horizontal divider */
+  --pmd-c-divider-faint: #ececec;      /* near-invisible row divider */
+
+  /* Text */
+  --pmd-c-text: #222;                  /* body text */
+  --pmd-c-text-strong: #000;           /* maximum-contrast text (rare) */
+  --pmd-c-text-secondary: #555;        /* mid-strength UI text */
+  --pmd-c-text-muted: #666;            /* dimmer secondary */
+  --pmd-c-text-faint: #888;            /* faint annotations */
+  --pmd-c-text-on-accent: #fff;        /* text on a filled accent surface */
+
+  /* Hover / active */
+  --pmd-c-hover: #ebebeb;              /* button + row hover */
+  --pmd-c-hover-strong: #e0e0e0;       /* selected/pressed */
+
+  /* Accent (primary action / brand) */
+  --pmd-c-accent: #2563eb;
+  --pmd-c-accent-hover: #1d4ed8;
+
+  /* Drop indicators / drag affordances */
+  --pmd-c-drop: #2867d8;
+  --pmd-c-drop-soft: #eaf2ff;
+  --pmd-c-drop-mid: #d8e7ff;
+  --pmd-c-drop-tint: rgba(40, 103, 216, 0.06);
+
+  /* Editor-specific decorations */
+  --pmd-c-card-hover: #c0c0c0;         /* card left-border on hover */
+  --pmd-c-emphasis-box: #333;          /* emphasis box border */
+  --pmd-c-image-placeholder-bg: #f0f0f0;
+  --pmd-c-image-placeholder-border: #999;
+  --pmd-c-highlight-default: #ffff66;  /* default user-applied highlight color */
+
+  /* Per-style document colors. Defaults match Verbatim's canonical
+     hues; settings.displayColors pushes overrides onto the document
+     root at runtime so both the editor and the nav pane (which lives
+     outside the #editor element) stay in sync. */
+  --pmd-color-analytic: #1F3864;
+  --pmd-color-undertag: #385623;
 }
 
 #ribbon {
@@ -32,8 +91,8 @@ body {
   left: 0;
   right: 0;
   height: var(--ribbon-height);
-  background: #f3f3f3;
-  border-bottom: 1px solid #d0d0d0;
+  background: var(--pmd-c-surface);
+  border-bottom: 1px solid var(--pmd-c-border-soft);
   display: flex;
   align-items: center;
   padding: 0 0.5rem;
@@ -57,8 +116,8 @@ body {
    off-center). */
 #ribbon button {
   font-family: inherit;
-  background: #fff;
-  border: 1px solid #c8c8c8;
+  background: var(--pmd-c-bg);
+  border: 1px solid var(--pmd-c-border);
   border-radius: 3px;
   cursor: pointer;
   display: inline-flex;
@@ -73,7 +132,7 @@ body {
 }
 
 #ribbon button:hover:not(:disabled) {
-  background: #ebebeb;
+  background: var(--pmd-c-hover);
 }
 
 #ribbon button:disabled {
@@ -112,15 +171,15 @@ body {
   left: var(--nav-width);
   right: 0;
   height: var(--status-bar-height);
-  background: #f3f3f3;
-  border-top: 1px solid #d0d0d0;
+  background: var(--pmd-c-surface);
+  border-top: 1px solid var(--pmd-c-border-soft);
   display: flex;
   align-items: center;
   padding: 0 0.75rem;
   z-index: 15;
   font-size: 0.8rem;
   gap: 1rem;
-  color: #555;
+  color: var(--pmd-c-text-secondary);
 }
 
 .status-segment {
@@ -149,8 +208,8 @@ body {
 
 .zoom-controls button {
   font-family: inherit;
-  background: #fff;
-  border: 1px solid #c8c8c8;
+  background: var(--pmd-c-bg);
+  border: 1px solid var(--pmd-c-border);
   border-radius: 3px;
   cursor: pointer;
   width: 1.4rem;
@@ -164,14 +223,14 @@ body {
 }
 
 .zoom-controls button:hover {
-  background: #ebebeb;
+  background: var(--pmd-c-hover);
 }
 
 #zoom-pct {
   min-width: 3rem;
   text-align: center;
   font-variant-numeric: tabular-nums;
-  color: #555;
+  color: var(--pmd-c-text-secondary);
 }
 
 .zoom-controls button:disabled {
@@ -187,7 +246,7 @@ body {
 }
 
 code {
-  background: #ececec;
+  background: var(--pmd-c-surface-alt);
   padding: 0.1rem 0.3rem;
   border-radius: 3px;
   font-family: 'JetBrains Mono', 'Menlo', monospace;
@@ -214,7 +273,7 @@ code {
   --pmd-body-font: "Calibri";
   --pmd-line-height: 1.4;
 
-  background: #fff;
+  background: var(--pmd-c-bg);
   flex: 1 1 auto;
   min-height: 400px;
   padding: 0.75rem 1.25rem;
@@ -238,7 +297,7 @@ code {
   font-size: var(--pmd-size-pocket);
   font-weight: bold;
   text-align: center;
-  border: 3px solid #333;
+  border: 3px solid var(--pmd-c-emphasis-box);
   padding: 0.5rem 1rem;
   margin: 1.5rem 0 0.75rem 0;
   page-break-before: always;
@@ -272,11 +331,12 @@ code {
 /* Analytic = same outline level as Tag, dark blue. The id-scoped
    selector is needed because `#editor p { margin: 0 }` has higher
    specificity than a bare `.pmd-analytic` rule and would otherwise
-   strip the before-margin. */
+   strip the before-margin. Color is settings-driven via
+   --pmd-color-analytic — see ARCHITECTURE.md §18. */
 #editor .pmd-analytic {
   font-size: var(--pmd-size-analytic);
   font-weight: bold;
-  color: #1F3864;
+  color: var(--pmd-color-analytic);
   margin: 0.75rem 0 0.25rem 0;
 }
 
@@ -302,15 +362,23 @@ code {
 
 .pmd-card:hover,
 .pmd-analytic-unit:hover {
-  border-left-color: #c0c0c0;
+  border-left-color: var(--pmd-c-card-hover);
 }
 
-/* Undertag paragraph = green italic. */
+/* Undertag paragraph. Color is settings-driven (--pmd-color-undertag);
+   italic / bold are gated on typography-flag classes on #editor. */
 .pmd-undertag {
-  font-style: italic;
-  color: #385623;
+  color: var(--pmd-color-undertag);
   font-family: 'Times New Roman', serif;
   font-size: var(--pmd-size-undertag);
+}
+
+#editor.pmd-undertag-italic .pmd-undertag {
+  font-style: italic;
+}
+
+#editor.pmd-undertag-bold .pmd-undertag {
+  font-weight: bold;
 }
 
 /* ---------------------------------------------- Marks
@@ -353,16 +421,26 @@ code {
   text-decoration: underline;
 }
 
-/* UndertagChar (inline form): green italic. */
+/* UndertagChar (inline form): same color/decoration rules as the
+   block-level undertag — driven by --pmd-color-undertag and the
+   typography flag classes. */
 .pmd-undertag-mark {
-  font-style: italic;
-  color: #385623;
+  color: var(--pmd-color-undertag);
 }
 
-/* AnalyticChar (inline form): bold dark blue. */
+#editor.pmd-undertag-italic .pmd-undertag-mark {
+  font-style: italic;
+}
+
+#editor.pmd-undertag-bold .pmd-undertag-mark {
+  font-weight: bold;
+}
+
+/* AnalyticChar (inline form): bold; color settings-driven via
+   --pmd-color-analytic. */
 .pmd-analytic-mark {
   font-weight: bold;
-  color: #1F3864;
+  color: var(--pmd-color-analytic);
 }
 
 /* Per-style typography flags (settings.displayTypography). Each flag
@@ -386,7 +464,7 @@ code {
 }
 
 #editor.pmd-emphasis-box .pmd-emphasis {
-  border: var(--pmd-emphasis-box-size) solid #333;
+  border: var(--pmd-emphasis-box-size) solid var(--pmd-c-emphasis-box);
   padding: 0 2px;
 }
 
@@ -395,11 +473,11 @@ code {
    overridden — in particular by the read-mode `display: none` rule. */
 .pmd-image-placeholder {
   display: inline-block;
-  background: #f0f0f0;
-  border: 1px dashed #999;
+  background: var(--pmd-c-image-placeholder-bg);
+  border: 1px dashed var(--pmd-c-image-placeholder-border);
   vertical-align: middle;
   text-align: center;
-  color: #666;
+  color: var(--pmd-c-text-muted);
   font-size: 0.8em;
   line-height: 1.2;
   padding: 0.25em;
@@ -432,7 +510,7 @@ code {
 }
 
 .pmd-highlight {
-  background: #ffff66; /* default; data-highlight overrides */
+  background: var(--pmd-c-highlight-default); /* default; data-highlight overrides */
 }
 .pmd-highlight[data-highlight="green"]   { background: #88ff88; }
 .pmd-highlight[data-highlight="cyan"]    { background: #88ffff; }
@@ -446,8 +524,8 @@ code {
 /* ---------------------------------------------- Navigation panel */
 
 .pmd-nav-panel {
-  background: #fff;
-  border-right: 1px solid #d0d0d0;
+  background: var(--pmd-c-bg);
+  border-right: 1px solid var(--pmd-c-border-soft);
   position: fixed;
   top: var(--ribbon-height);
   left: 0;
@@ -494,8 +572,8 @@ body.pmd-nav-resize-active {
 .pmd-nav-panel header {
   flex: 0 0 auto;
   padding: 0.5rem 0.75rem 0.5rem 1rem;
-  border-bottom: 1px solid #e0e0e0;
-  background: #fafafa;
+  border-bottom: 1px solid var(--pmd-c-divider);
+  background: var(--pmd-c-surface-soft);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -507,7 +585,7 @@ body.pmd-nav-resize-active {
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #666;
+  color: var(--pmd-c-text-muted);
 }
 
 .pmd-nav-level-group {
@@ -522,26 +600,26 @@ body.pmd-nav-resize-active {
   width: 1.6rem;
   height: 1.6rem;
   padding: 0;
-  border: 1px solid #c8c8c8;
-  background: #fff;
-  color: #555;
+  border: 1px solid var(--pmd-c-border);
+  background: var(--pmd-c-bg);
+  color: var(--pmd-c-text-secondary);
   cursor: pointer;
   border-radius: 3px;
   line-height: 1;
 }
 
 .pmd-nav-level-btn:hover {
-  background: #ebebeb;
+  background: var(--pmd-c-hover);
 }
 
 .pmd-nav-level-btn-active {
-  background: #2563eb;
-  color: #fff;
-  border-color: #2563eb;
+  background: var(--pmd-c-accent);
+  color: var(--pmd-c-text-on-accent);
+  border-color: var(--pmd-c-accent);
 }
 
 .pmd-nav-level-btn-active:hover {
-  background: #1d4ed8;
+  background: var(--pmd-c-accent-hover);
 }
 
 .pmd-nav-list {
@@ -559,7 +637,7 @@ body.pmd-nav-resize-active {
 .pmd-nav-empty {
   margin: 0;
   padding: 1rem;
-  color: #999;
+  color: var(--pmd-c-text-faint);
   font-style: italic;
   font-size: 0.85rem;
   text-align: center;
@@ -576,8 +654,8 @@ body.pmd-nav-resize-active {
 }
 
 .pmd-nav-item:hover {
-  background: #f3f3f3;
-  border-left-color: #b0b0b0;
+  background: var(--pmd-c-surface);
+  border-left-color: var(--pmd-c-card-hover);
 }
 
 /* Source item dimming during drag. */
@@ -590,12 +668,12 @@ body.pmd-nav-resize-active {
    subtle blue tint; the active item shows a slightly stronger left
    border to distinguish it. */
 .pmd-nav-item.pmd-nav-item-selected {
-  background: #eaf2ff;
-  border-left-color: #2867d8;
+  background: var(--pmd-c-drop-soft);
+  border-left-color: var(--pmd-c-drop);
 }
 
 .pmd-nav-item.pmd-nav-item-selected:hover {
-  background: #d8e7ff;
+  background: var(--pmd-c-drop-mid);
 }
 
 /* Drop indicator: a thin gap between nav entries when a drag is
@@ -614,7 +692,7 @@ body.pmd-nav-resize-active {
   right: 4px;
   top: 1px;
   height: 2px;
-  background: #2867d8;
+  background: var(--pmd-c-drop);
   border-radius: 1px;
   box-shadow: 0 0 0 1px rgba(40, 103, 216, 0.25);
 }
@@ -640,9 +718,9 @@ body.pmd-nav-resize-active {
   position: absolute;
   left: 0;
   right: 0;
-  outline: 2px dashed #2867d8;
+  outline: 2px dashed var(--pmd-c-drop);
   outline-offset: -2px;
-  background: rgba(40, 103, 216, 0.06);
+  background: var(--pmd-c-drop-tint);
   border-radius: 4px;
   pointer-events: none;
   z-index: 90;
@@ -667,7 +745,7 @@ body.pmd-nav-resize-active {
   right: 4px;
   top: -1px;
   height: 2px;
-  background: #2867d8;
+  background: var(--pmd-c-drop);
   border-radius: 1px;
   box-shadow: 0 0 0 1px rgba(40, 103, 216, 0.25);
 }
@@ -676,8 +754,8 @@ body.pmd-nav-resize-active {
 .pmd-nav-pickup-pill {
   position: fixed;
   z-index: 10000;
-  background: #2867d8;
-  color: #fff;
+  background: var(--pmd-c-drop);
+  color: var(--pmd-c-text-on-accent);
   font-family: 'Calibri', 'Helvetica Neue', sans-serif;
   font-size: 0.85rem;
   font-weight: 600;
@@ -704,12 +782,12 @@ body.pmd-nav-resize-active {
   width: 1em;
   text-align: center;
   font-size: 0.7em;
-  color: #888;
+  color: var(--pmd-c-text-faint);
   user-select: none;
 }
 
 .pmd-nav-chevron-active:hover {
-  color: #333;
+  color: var(--pmd-c-emphasis-box);
 }
 
 .pmd-nav-chevron-leaf {
@@ -739,11 +817,11 @@ body.pmd-nav-resize-active {
   text-overflow: ellipsis;
   font-size: 0.75rem;
   font-weight: 600;
-  color: #555;
+  color: var(--pmd-c-text-secondary);
   /* Wider, fully-opaque fade. The preview's body sits past the fade
      zone (padding-left: 1.75rem), so the cite text reads on solid
      background and never overlaps the tag text underneath. */
-  background: linear-gradient(to right, transparent 0, #f3f3f3 1.5rem);
+  background: linear-gradient(to right, transparent 0, var(--pmd-c-surface) 1.5rem);
   opacity: 0;
   transition: opacity 0.15s ease;
   pointer-events: none;
@@ -762,11 +840,12 @@ body.pmd-nav-resize-active {
 .pmd-nav-level-1 { padding-left: 0.75rem;  font-weight: 700; font-size: 0.95rem; }
 .pmd-nav-level-2 { padding-left: 1.5rem;   font-weight: 600; font-size: 0.9rem; }
 .pmd-nav-level-3 { padding-left: 2.25rem;  font-weight: 500; }
-.pmd-nav-level-4 { padding-left: 3rem;     font-size: 0.85rem; color: #444; }
+.pmd-nav-level-4 { padding-left: 3rem;     font-size: 0.85rem; color: var(--pmd-c-text-muted); }
 
-/* Type-specific color cues — same hues as the canonical Verbatim render. */
-.pmd-nav-type-analytic .pmd-nav-label       { color: #1F3864; }
-.pmd-nav-type-analytic:hover .pmd-nav-label { color: #1F3864; }
+/* Type-specific color cues — analytic uses the same settings-driven
+   color as in the editor surface so changing it propagates everywhere. */
+.pmd-nav-type-analytic .pmd-nav-label       { color: var(--pmd-color-analytic); }
+.pmd-nav-type-analytic:hover .pmd-nav-label { color: var(--pmd-color-analytic); }
 
 /* ---------------------------------------------- Read mode
 
@@ -876,13 +955,13 @@ body.pmd-nav-resize-active {
 
 /* Active state for the read-mode button (matches the level-N buttons). */
 #read-mode-btn.pmd-active {
-  background: #2563eb;
-  color: #fff;
-  border-color: #2563eb;
+  background: var(--pmd-c-accent);
+  color: var(--pmd-c-text-on-accent);
+  border-color: var(--pmd-c-accent);
 }
 
 #read-mode-btn.pmd-active:hover:not(:disabled) {
-  background: #1d4ed8;
+  background: var(--pmd-c-accent-hover);
 }
 
 /* While read mode is active, ProseMirror's contenteditable=false makes
@@ -895,8 +974,8 @@ body.pmd-nav-resize-active {
 
 .pmd-nav-context-menu {
   position: fixed;
-  background: #fff;
-  border: 1px solid #d0d0d0;
+  background: var(--pmd-c-bg);
+  border: 1px solid var(--pmd-c-border-soft);
   border-radius: 4px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
   padding: 0.25rem 0;
@@ -916,26 +995,26 @@ body.pmd-nav-resize-active {
   padding: 0.35rem 1.5rem 0.35rem 1.75rem;
   font-family: inherit;
   font-size: inherit;
-  color: #222;
+  color: var(--pmd-c-text);
   cursor: pointer;
   position: relative;
 }
 
 .pmd-nav-context-item:hover {
-  background: #ebebeb;
+  background: var(--pmd-c-hover);
 }
 
 .pmd-nav-context-item-checked::before {
   content: '✓';
   position: absolute;
   left: 0.5rem;
-  color: #2563eb;
+  color: var(--pmd-c-accent);
   font-weight: 600;
 }
 
 .pmd-nav-context-separator {
   height: 1px;
-  background: #e0e0e0;
+  background: var(--pmd-c-divider);
   margin: 0.25rem 0;
 }
 
@@ -944,7 +1023,7 @@ body.pmd-nav-resize-active {
 .pmd-settings-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--pmd-c-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -952,7 +1031,7 @@ body.pmd-nav-resize-active {
 }
 
 .pmd-settings-dialog {
-  background: #fff;
+  background: var(--pmd-c-bg);
   border-radius: 8px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
   width: 90%;
@@ -968,7 +1047,7 @@ body.pmd-nav-resize-active {
   align-items: center;
   justify-content: space-between;
   padding: 1rem 1.25rem;
-  border-bottom: 1px solid #e0e0e0;
+  border-bottom: 1px solid var(--pmd-c-divider);
   flex: 0 0 auto;
 }
 
@@ -984,12 +1063,12 @@ body.pmd-nav-resize-active {
   font-size: 1.6rem;
   line-height: 1;
   cursor: pointer;
-  color: #666;
+  color: var(--pmd-c-text-muted);
   padding: 0 0.4rem;
 }
 
 .pmd-settings-close:hover {
-  color: #000;
+  color: var(--pmd-c-text-strong);
 }
 
 .pmd-settings-list {
@@ -1000,14 +1079,14 @@ body.pmd-nav-resize-active {
 
 .pmd-settings-empty {
   text-align: center;
-  color: #888;
+  color: var(--pmd-c-text-faint);
   font-style: italic;
   margin: 2rem 0;
 }
 
 .pmd-settings-row {
   padding: 0.75rem 0;
-  border-bottom: 1px solid #ececec;
+  border-bottom: 1px solid var(--pmd-c-divider-faint);
 }
 
 .pmd-settings-row:last-child {
@@ -1035,7 +1114,7 @@ body.pmd-nav-resize-active {
 
 .pmd-settings-row-desc {
   font-size: 0.85rem;
-  color: #666;
+  color: var(--pmd-c-text-muted);
   line-height: 1.4;
 }
 
@@ -1074,7 +1153,7 @@ body.pmd-nav-resize-active {
   flex: 0 0 4rem;
   font-family: inherit;
   font-size: 0.85rem;
-  border: 1px solid #c8c8c8;
+  border: 1px solid var(--pmd-c-border);
   border-radius: 3px;
   padding: 0.2rem 0.4rem;
   text-align: right;
@@ -1083,7 +1162,37 @@ body.pmd-nav-resize-active {
 .pmd-typography-unit {
   flex: 0 0 auto;
   font-size: 0.75rem;
-  color: #666;
+  color: var(--pmd-c-text-muted);
+}
+
+/* Colors editor (settings) — small color-picker rows. */
+.pmd-colors-editor {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.pmd-colors-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.pmd-colors-label {
+  flex: 1 1 auto;
+}
+
+.pmd-colors-input {
+  flex: 0 0 auto;
+  width: 2.2rem;
+  height: 1.4rem;
+  padding: 0;
+  border: 1px solid var(--pmd-c-border);
+  border-radius: 3px;
+  cursor: pointer;
+  background: var(--pmd-c-bg);
 }
 
 .pmd-body-font-editor,
@@ -1098,17 +1207,17 @@ body.pmd-nav-resize-active {
   flex: 1 1 auto;
   font-family: inherit;
   font-size: 0.85rem;
-  border: 1px solid #c8c8c8;
+  border: 1px solid var(--pmd-c-border);
   border-radius: 3px;
   padding: 0.2rem 0.4rem;
-  background: #fff;
+  background: var(--pmd-c-bg);
 }
 
 .pmd-line-height-input {
   flex: 0 0 5rem;
   font-family: inherit;
   font-size: 0.85rem;
-  border: 1px solid #c8c8c8;
+  border: 1px solid var(--pmd-c-border);
   border-radius: 3px;
   padding: 0.2rem 0.4rem;
   text-align: right;
@@ -1116,7 +1225,7 @@ body.pmd-nav-resize-active {
 
 .pmd-line-height-unit {
   font-size: 0.75rem;
-  color: #666;
+  color: var(--pmd-c-text-muted);
 }
 
 .pmd-display-sizes-editor {
@@ -1141,7 +1250,7 @@ body.pmd-nav-resize-active {
   flex: 0 0 4rem;
   font-family: inherit;
   font-size: 0.85rem;
-  border: 1px solid #c8c8c8;
+  border: 1px solid var(--pmd-c-border);
   border-radius: 3px;
   padding: 0.2rem 0.4rem;
   text-align: right;
@@ -1150,7 +1259,7 @@ body.pmd-nav-resize-active {
 .pmd-display-size-unit {
   flex: 0 0 auto;
   font-size: 0.75rem;
-  color: #666;
+  color: var(--pmd-c-text-muted);
 }
 
 .pmd-readers-editor {
@@ -1173,7 +1282,7 @@ body.pmd-nav-resize-active {
 .pmd-reader-rank {
   flex: 0 0 1.7rem;
   font-size: 0.7rem;
-  color: #888;
+  color: var(--pmd-c-text-faint);
   font-weight: 600;
 }
 
@@ -1181,7 +1290,7 @@ body.pmd-nav-resize-active {
   flex: 1 1 auto;
   font-family: inherit;
   font-size: 0.85rem;
-  border: 1px solid #c8c8c8;
+  border: 1px solid var(--pmd-c-border);
   border-radius: 3px;
   padding: 0.2rem 0.4rem;
   min-width: 0;
@@ -1191,7 +1300,7 @@ body.pmd-nav-resize-active {
   flex: 0 0 4.5rem;
   font-family: inherit;
   font-size: 0.85rem;
-  border: 1px solid #c8c8c8;
+  border: 1px solid var(--pmd-c-border);
   border-radius: 3px;
   padding: 0.2rem 0.4rem;
 }
@@ -1199,13 +1308,13 @@ body.pmd-nav-resize-active {
 .pmd-reader-wpm-label {
   flex: 0 0 auto;
   font-size: 0.75rem;
-  color: #666;
+  color: var(--pmd-c-text-muted);
 }
 
 .pmd-reader-row button {
   flex: 0 0 auto;
-  background: #fff;
-  border: 1px solid #c8c8c8;
+  background: var(--pmd-c-bg);
+  border: 1px solid var(--pmd-c-border);
   border-radius: 3px;
   width: 1.5rem;
   height: 1.5rem;
@@ -1215,7 +1324,7 @@ body.pmd-nav-resize-active {
 }
 
 .pmd-reader-row button:hover:not(:disabled) {
-  background: #ebebeb;
+  background: var(--pmd-c-hover);
 }
 
 .pmd-reader-row button:disabled {
@@ -1224,8 +1333,8 @@ body.pmd-nav-resize-active {
 }
 
 .pmd-readers-add {
-  background: #fff;
-  border: 1px solid #c8c8c8;
+  background: var(--pmd-c-bg);
+  border: 1px solid var(--pmd-c-border);
   border-radius: 3px;
   padding: 0.2rem 0.6rem;
   font-family: inherit;
@@ -1234,7 +1343,7 @@ body.pmd-nav-resize-active {
 }
 
 .pmd-readers-add:hover {
-  background: #ebebeb;
+  background: var(--pmd-c-hover);
 }
 
 /* Word Count modal */
@@ -1254,7 +1363,7 @@ body.pmd-nav-resize-active {
 .pmd-wc-table td {
   text-align: left;
   padding: 0.35rem 0.5rem;
-  border-bottom: 1px solid #ececec;
+  border-bottom: 1px solid var(--pmd-c-divider-faint);
 }
 
 .pmd-wc-table th {
@@ -1262,7 +1371,7 @@ body.pmd-nav-resize-active {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #666;
+  color: var(--pmd-c-text-muted);
 }
 
 .pmd-wc-numeric {

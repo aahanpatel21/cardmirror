@@ -74,6 +74,8 @@ export interface DisplayTypography {
   emphasisItalic: boolean;
   emphasisBox: boolean;
   emphasisBoxSize: number; // pt
+  undertagItalic: boolean;
+  undertagBold: boolean;
 }
 
 const DEFAULT_DISPLAY_TYPOGRAPHY: DisplayTypography = {
@@ -83,7 +85,29 @@ const DEFAULT_DISPLAY_TYPOGRAPHY: DisplayTypography = {
   emphasisItalic: false,
   emphasisBox: true,
   emphasisBoxSize: 1,
+  undertagItalic: true,
+  undertagBold: false,
 };
+
+/**
+ * Per-style display colors (hex strings, e.g. `"#1F3864"`). Per
+ * ARCHITECTURE.md §18 every user-visible color should be reachable
+ * through display config — analytic and undertag are the first two
+ * surfaced as direct controls. Each becomes a CSS custom property on
+ * `:root` (e.g. `--pmd-color-analytic`). Both the editor and the nav
+ * pane consume those variables.
+ */
+export interface DisplayColors {
+  analytic: string;
+  undertag: string;
+}
+
+const DEFAULT_DISPLAY_COLORS: DisplayColors = {
+  analytic: '#1F3864',
+  undertag: '#385623',
+};
+
+export const DISPLAY_COLOR_KEYS: (keyof DisplayColors)[] = ['analytic', 'undertag'];
 
 /** Schema for all editor settings. Add new fields here with sensible defaults. */
 export interface Settings {
@@ -120,6 +144,11 @@ export interface Settings {
    */
   displayTypography: DisplayTypography;
   /**
+   * Per-style display colors. See DisplayColors. Each becomes a CSS
+   * custom property on `:root`.
+   */
+  displayColors: DisplayColors;
+  /**
    * Body font family. Mirrors Verbatim's NormalFont. Applied as a CSS
    * custom property on `#editor`; rendered with sans-serif fallback.
    */
@@ -144,6 +173,7 @@ const DEFAULTS: Settings = {
   ],
   displaySizes: { ...DEFAULT_DISPLAY_SIZES },
   displayTypography: { ...DEFAULT_DISPLAY_TYPOGRAPHY },
+  displayColors: { ...DEFAULT_DISPLAY_COLORS },
   bodyFont: 'Calibri',
   lineHeight: 1.4,
 };
@@ -164,6 +194,7 @@ export interface SettingMeta {
     | 'readers'
     | 'displaySizes'
     | 'displayTypography'
+    | 'displayColors'
     | 'bodyFont'
     | 'lineHeight';
 }
@@ -203,6 +234,13 @@ export const SETTING_METADATA: SettingMeta[] = [
     description:
       'Bold / italic / underline / box decorations for the named styles, plus the box thickness for Emphasis. Mirrors Verbatim\'s Styles tab toggles.',
     kind: 'displayTypography',
+  },
+  {
+    key: 'displayColors',
+    label: 'Style colors',
+    description:
+      'Pick the color used for Analytic and Undertag text. Defaults match Verbatim\'s canonical hues. These propagate to both the editor and the navigation pane.',
+    kind: 'displayColors',
   },
   {
     key: 'bodyFont',
@@ -303,6 +341,7 @@ function sanitize(s: Settings): Settings {
     readers: sanitizeReaders(s.readers),
     displaySizes: sanitizeDisplaySizes(s.displaySizes),
     displayTypography: sanitizeDisplayTypography(s.displayTypography),
+    displayColors: sanitizeDisplayColors(s.displayColors),
     bodyFont: sanitizeBodyFont(s.bodyFont),
     lineHeight: clamp(
       Number.isFinite(s.lineHeight) ? Math.round(s.lineHeight * 20) / 20 : 1.4,
@@ -332,9 +371,39 @@ function sanitizeDisplayTypography(raw: unknown): DisplayTypography {
   out.emphasisItalic = !!r.emphasisItalic;
   out.emphasisBox = r.emphasisBox === undefined
     ? DEFAULT_DISPLAY_TYPOGRAPHY.emphasisBox : !!r.emphasisBox;
+  out.undertagItalic = r.undertagItalic === undefined
+    ? DEFAULT_DISPLAY_TYPOGRAPHY.undertagItalic : !!r.undertagItalic;
+  out.undertagBold = r.undertagBold === undefined
+    ? DEFAULT_DISPLAY_TYPOGRAPHY.undertagBold : !!r.undertagBold;
   const bs = Number(r.emphasisBoxSize);
   if (Number.isFinite(bs) && bs > 0 && bs <= 12) {
     out.emphasisBoxSize = Math.round(bs * 4) / 4; // quarter-pt precision
+  }
+  return out;
+}
+
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
+function sanitizeColor(raw: unknown, fallback: string): string {
+  if (typeof raw !== 'string') return fallback;
+  const trimmed = raw.trim();
+  // Accept #abc and #abcdef; normalize to 6-digit lowercase.
+  if (/^#[0-9a-fA-F]{3}$/.test(trimmed)) {
+    const r = trimmed[1]!;
+    const g = trimmed[2]!;
+    const b = trimmed[3]!;
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  if (HEX_COLOR_RE.test(trimmed)) return trimmed.toLowerCase();
+  return fallback;
+}
+
+function sanitizeDisplayColors(raw: unknown): DisplayColors {
+  const out = { ...DEFAULT_DISPLAY_COLORS };
+  if (!raw || typeof raw !== 'object') return out;
+  const r = raw as Partial<Record<keyof DisplayColors, unknown>>;
+  for (const key of DISPLAY_COLOR_KEYS) {
+    out[key] = sanitizeColor(r[key], DEFAULT_DISPLAY_COLORS[key]);
   }
   return out;
 }
