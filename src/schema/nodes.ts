@@ -237,16 +237,22 @@ export const nodes: { [name: string]: NodeSpec } = {
   },
 
   /**
-   * A card: required tag, optional undertag(s) attached to the tag,
-   * optional cite paragraph (or in-card analytic), zero or more body
-   * paragraphs.
+   * A card: required tag followed by any combination of supplementary
+   * paragraphs (undertags, cite, analytic, card body).
+   *
+   * The strict-order schema (`tag undertag* (cite|analytic)? card_body*`)
+   * was loosened so editing operations can insert a card_body in any
+   * position after the tag — e.g., Enter at end of tag drops a new
+   * body directly under the tag, above any pre-existing cite/body.
+   * Importer still produces the strict order for documents loaded
+   * from .docx; round-trip is a no-op (the strict ordering is just one
+   * legal ordering among many).
    *
    * Undertags belong to the tag they follow — they don't mark a card
-   * boundary. This is enforced by including `undertag*` in the content
-   * expression right after `tag`.
+   * boundary.
    */
   card: {
-    content: 'tag undertag* (cite_paragraph | analytic)? card_body*',
+    content: 'tag (undertag | cite_paragraph | analytic | card_body)*',
     defining: true,
     isolating: true,
     parseDOM: [{ tag: 'div.pmd-card' }],
@@ -308,7 +314,9 @@ export const nodes: { [name: string]: NodeSpec } = {
    * external evidence with a citation.
    */
   analytic_unit: {
-    content: 'analytic undertag* card_body*',
+    // Loosened the same way `card` was — see the card content
+    // expression's comment.
+    content: 'analytic (undertag | card_body)*',
     defining: true,
     isolating: true,
     parseDOM: [{ tag: 'div.pmd-analytic-unit' }],

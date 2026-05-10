@@ -242,8 +242,13 @@ function mergeAdjacentTagContainers(
   const mappedNextTo = tr.mapping.map(nextContainerTo);
   tr = tr.delete(mappedNextFrom, mappedNextTo);
 
-  // 4. Cursor at merge point (mapped through all the changes).
-  const mappedMergePoint = tr.mapping.map(mergePoint);
+  // 4. Cursor at merge point (mapped through all the changes). assoc=-1
+  // pins the cursor to the BEFORE side of step 1's insertion — i.e.,
+  // exactly between the prev head's original content and the appended
+  // next head content. Default assoc=1 would land us at the end of
+  // the merged text, which isn't where the user came from in either
+  // direction.
+  const mappedMergePoint = tr.mapping.map(mergePoint, -1);
   tr = tr.setSelection(TextSelection.create(tr.doc, mappedMergePoint));
 
   return tr;
@@ -389,28 +394,13 @@ export const enterMidTag: Command = (state, dispatch) => {
 };
 
 /**
- * Enter at the end of a tag/analytic. Creates a new card_body inside
- * the current container and moves the cursor into it.
- *
- * Insertion point: the earliest schema-valid position for a card_body
- * in the container — i.e., right after the head + any undertags +
- * the optional cite/analytic, but BEFORE any existing card_body. For
- * a fresh card with just a tag, the new body lands directly after
- * the tag. For a card with [tag, body], the new body lands between
- * tag and body so the cursor stays "right below the tag" rather than
- * jumping past the existing body.
- *
- * Schema content is `tag undertag* (cite_paragraph | analytic)?
- * card_body*` — card_body must come after any cite/undertag, so the
- * earliest legal position is past those.
+ * Enter at the end of a tag/analytic. Creates a new card_body
+ * directly under the head — above any existing cite, undertag, or
+ * card body — and moves the cursor into it. Per the §14.3 rule plus
+ * the user's clarification, the new paragraph should land "right
+ * below the tag." Loosened card / analytic_unit content schemas
+ * allow the body to appear in this position.
  */
-const PRE_CARD_BODY_TYPES = new Set([
-  'tag',
-  'analytic',
-  'undertag',
-  'cite_paragraph',
-]);
-
 export const enterAtTagEnd: Command = (state, dispatch) => {
   const ctx = getTagContext(state);
   if (!ctx) return false;
@@ -422,17 +412,10 @@ export const enterAtTagEnd: Command = (state, dispatch) => {
   const empty = cardBodyType.createAndFill();
   if (!empty) return false;
 
-  // Walk the container's children to find the first one that's NOT a
-  // pre-card-body sibling. Insert there.
-  let insertPos = ctx.containerFrom + 1; // start of container content
-  for (let i = 0; i < ctx.container.childCount; i++) {
-    const child = ctx.container.child(i);
-    if (PRE_CARD_BODY_TYPES.has(child.type.name)) {
-      insertPos += child.nodeSize;
-    } else {
-      break;
-    }
-  }
+  // Insert right after the head (which is the first child of the
+  // container) — i.e., at the position immediately after the head's
+  // close token.
+  const insertPos = ctx.containerFrom + 1 + ctx.head.nodeSize;
 
   let tr = state.tr;
   tr = tr.insert(insertPos, empty);

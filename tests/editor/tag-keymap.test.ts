@@ -221,6 +221,17 @@ describe('backspaceAtTagStart', () => {
     expect(next!.doc.child(0).firstChild!.textContent).toBe('Second');
   });
 
+  it('backspace merge places cursor at the merge point', () => {
+    const doc = makeDoc([cardTagOnly('First'), cardTagOnly('Second')]);
+    const state = stateWithCursor(doc, findTagStart(doc, 1));
+    const next = apply(state, backspaceAtTagStart);
+    expect(next).not.toBe(null);
+    const sel = next!.selection;
+    expect(sel.$from.parent.type.name).toBe('tag');
+    // Merged tag is "FirstSecond"; cursor at boundary = parentOffset 5.
+    expect(sel.$from.parentOffset).toBe(5);
+  });
+
   it('does not apply when the tag is at the very start of the doc', () => {
     const doc = makeDoc([cardTagOnly('First')]);
     const state = stateWithCursor(doc, findTagStart(doc));
@@ -264,6 +275,18 @@ describe('deleteAtTagEnd', () => {
     expect(card.firstChild!.textContent).toBe('FirstSecond');
     expect(card.lastChild!.type.name).toBe('card_body');
     expect(card.lastChild!.textContent).toBe('body text');
+  });
+
+  it('forward-delete merge places cursor at the merge point', () => {
+    const doc = makeDoc([cardTagOnly('First'), cardTagOnly('Second')]);
+    const state = stateWithCursor(doc, findTagEnd(doc));
+    const next = apply(state, deleteAtTagEnd);
+    expect(next).not.toBe(null);
+    // The merged tag is "FirstSecond"; cursor should sit between
+    // "First" and "Second" — parentOffset === 5.
+    const sel = next!.selection;
+    expect(sel.$from.parent.type.name).toBe('tag');
+    expect(sel.$from.parentOffset).toBe(5);
   });
 
   it('prohibits when next paragraph is a card_body (non-tag)', () => {
@@ -370,7 +393,7 @@ describe('enterAtTagEnd', () => {
     expect(sel.$from.parent.type.name).toBe('card_body');
   });
 
-  it('inserts new body BEFORE existing body, not after', () => {
+  it('inserts new body BEFORE existing body, directly below the tag', () => {
     const doc = makeDoc([cardTagBody('Tag', 'existing body')]);
     const state = stateWithCursor(doc, findTagEnd(doc));
     const next = apply(state, enterAtTagEnd);
@@ -379,12 +402,12 @@ describe('enterAtTagEnd', () => {
     expect(card.childCount).toBe(3); // tag + new (empty) body + existing body
     expect(card.child(0).type.name).toBe('tag');
     expect(card.child(1).type.name).toBe('card_body');
-    expect(card.child(1).textContent).toBe(''); // the new empty one
+    expect(card.child(1).textContent).toBe('');
     expect(card.child(2).type.name).toBe('card_body');
-    expect(card.child(2).textContent).toBe('existing body'); // pre-existing
+    expect(card.child(2).textContent).toBe('existing body');
   });
 
-  it('inserts new body after the cite when cite is present', () => {
+  it('inserts new body BEFORE the cite (above any pre-existing content)', () => {
     const doc = makeDoc([
       schema.nodes['card']!.createChecked(null, [
         tag('Tag'),
@@ -398,11 +421,31 @@ describe('enterAtTagEnd', () => {
     const card = next!.doc.child(0);
     expect(card.childCount).toBe(4);
     expect(card.child(0).type.name).toBe('tag');
-    expect(card.child(1).type.name).toBe('cite_paragraph');
-    expect(card.child(2).type.name).toBe('card_body');
-    expect(card.child(2).textContent).toBe(''); // new empty body, after cite
+    expect(card.child(1).type.name).toBe('card_body');
+    expect(card.child(1).textContent).toBe(''); // new empty body, ABOVE cite
+    expect(card.child(2).type.name).toBe('cite_paragraph');
     expect(card.child(3).type.name).toBe('card_body');
-    expect(card.child(3).textContent).toBe('body'); // pre-existing
+    expect(card.child(3).textContent).toBe('body');
+  });
+
+  it('inserts new body BEFORE undertags too', () => {
+    const doc = makeDoc([
+      schema.nodes['card']!.createChecked(null, [
+        tag('Tag'),
+        schema.nodes['undertag']!.create(null, schema.text('Sub-tag')),
+        schema.nodes['card_body']!.create(null, schema.text('body')),
+      ]),
+    ]);
+    const state = stateWithCursor(doc, findTagEnd(doc));
+    const next = apply(state, enterAtTagEnd);
+    expect(next).not.toBe(null);
+    const card = next!.doc.child(0);
+    expect(card.childCount).toBe(4);
+    expect(card.child(0).type.name).toBe('tag');
+    expect(card.child(1).type.name).toBe('card_body');
+    expect(card.child(1).textContent).toBe(''); // new empty body, ABOVE undertag
+    expect(card.child(2).type.name).toBe('undertag');
+    expect(card.child(3).type.name).toBe('card_body');
   });
 });
 
