@@ -849,14 +849,27 @@ export class NavigationPanel {
   }
 
   private maybeAutoScroll(clientY: number): void {
-    // Auto-scroll the inner list when the pointer is near top or
-    // bottom of the visible scroll area.
-    const rect = this.listEl.getBoundingClientRect();
+    // Auto-scroll the nav list when the pointer is near its top/
+    // bottom edges.
+    const navRect = this.listEl.getBoundingClientRect();
     const margin = 30;
-    if (clientY < rect.top + margin) {
+    if (clientY < navRect.top + margin) {
       this.listEl.scrollBy({ top: -10, behavior: 'auto' });
-    } else if (clientY > rect.bottom - margin) {
+    } else if (clientY > navRect.bottom - margin) {
       this.listEl.scrollBy({ top: 10, behavior: 'auto' });
+    }
+    // Also auto-scroll the editor pane when the pointer is near its
+    // edges — the user can drag from the nav into a portion of the
+    // doc that isn't visible yet.
+    const editorEl = document.getElementById('editor');
+    if (!editorEl) return;
+    const editorRect = editorEl.getBoundingClientRect();
+    const inEditorX = clientY >= editorRect.top && clientY <= editorRect.bottom;
+    if (!inEditorX) return;
+    if (clientY < editorRect.top + margin) {
+      editorEl.scrollBy({ top: -10, behavior: 'auto' });
+    } else if (clientY > editorRect.bottom - margin) {
+      editorEl.scrollBy({ top: 10, behavior: 'auto' });
     }
   }
 

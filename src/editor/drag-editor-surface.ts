@@ -35,8 +35,6 @@ export interface EditorDropHit {
 interface IndicatorRecord {
   el: HTMLElement;
   insertPos: number;
-  /** Center y in client coordinates, computed at render time. */
-  centerClientY: number;
 }
 
 class EditorDragSurface {
@@ -77,11 +75,14 @@ class EditorDragSurface {
       seenPositions.add(insertPos);
       const indicator = document.createElement('div');
       indicator.className = 'pmd-editor-drop-indicator';
-      // Top is computed in editor-relative space (host's
-      // padding/scroll account for via subtraction).
+      // Top is in editor-content space — host.scrollTop offsets the
+      // viewport-relative anchor into the scrollable content. The
+      // hit-test reads each indicator's getBoundingClientRect at
+      // pointer-move time, so scrolling after render works correctly
+      // (no cached client coords).
       indicator.style.top = `${anchorY - hostRect.top + host.scrollTop}px`;
       host.appendChild(indicator);
-      this.indicators.push({ el: indicator, insertPos, centerClientY: anchorY });
+      this.indicators.push({ el: indicator, insertPos });
     };
 
     for (const entry of headings) {
@@ -131,18 +132,23 @@ class EditorDragSurface {
       return null;
     }
 
+    const session = dragController.getSession();
     let best: IndicatorRecord | null = null;
     let bestDy = Infinity;
     for (const r of this.indicators) {
       // Skip drop-on-self (insertPos strictly inside a source range).
-      const session = dragController.getSession();
       if (session) {
         const onSelf = session.items.some(
           (it) => r.insertPos > it.from && r.insertPos < it.to,
         );
         if (onSelf) continue;
       }
-      const dy = Math.abs(clientY - r.centerClientY);
+      // Read the current screen position — re-derived from the DOM so
+      // we account for any scrolling that's happened since the
+      // indicator was placed.
+      const rect = r.el.getBoundingClientRect();
+      const centerY = rect.top + rect.height / 2;
+      const dy = Math.abs(clientY - centerY);
       if (dy < bestDy) {
         bestDy = dy;
         best = r;
