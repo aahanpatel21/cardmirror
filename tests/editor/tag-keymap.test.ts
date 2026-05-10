@@ -210,7 +210,13 @@ describe('backspaceAtTagStart', () => {
     expect(card.lastChild!.textContent).toBe('body text');
   });
 
-  it('merge of empty previous tag still works (degenerate of merge case)', () => {
+  it('deletes a preceding card whose only-tag is blank (no merge)', () => {
+    // Blank wins over merge: even though the preceding card has only a
+    // tag (which would normally trigger a tag-into-tag merge), the
+    // tag's content is empty, so we just delete the card. End result
+    // is the same as a merge would produce because the blank content
+    // contributes nothing, but the *operation* is simpler and matches
+    // the user's mental model of "remove the empty thing ahead of me."
     const doc = makeDoc([
       cardTagOnly(''),
       cardTagOnly('Second'),

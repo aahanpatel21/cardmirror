@@ -273,7 +273,31 @@ export const backspaceAtTagStart: Command = (state, dispatch) => {
   const prev = findPrevParagraph(state.doc, ctx.containerFrom);
   if (!prev) return false; // no previous paragraph — let default handle (no-op typically)
 
-  // Tag-into-tag merge case.
+  // Priority: BLANK wins. Backspace at start of tag deletes the
+  // immediately-preceding paragraph if it's blank, regardless of
+  // node type. Even if that preceding paragraph happens to be a tag
+  // of an only-tag-card, the user's expectation is "remove the
+  // whitespace ahead of me" rather than "merge two tags." Tag-into-
+  // tag merge applies only when the preceding tag has actual content.
+  if (isBlank(prev.node)) {
+    if (!dispatch) return true;
+    let tr = state.tr;
+    if (prev.isContainerHead) {
+      // The blank paragraph is the only tag of a preceding card —
+      // delete the whole card so we don't leave an orphan head.
+      const $beforeContainer = state.doc.resolve(ctx.containerFrom);
+      const prevContainer = $beforeContainer.nodeBefore!;
+      const prevContainerFrom = ctx.containerFrom - prevContainer.nodeSize;
+      tr = tr.delete(prevContainerFrom, ctx.containerFrom);
+    } else {
+      tr = tr.delete(prev.from, prev.to);
+    }
+    dispatch(tr.scrollIntoView());
+    return true;
+  }
+
+  // Non-blank previous paragraph that's a tag/analytic head of an
+  // only-head preceding card → merge the two tags.
   if (prev.isContainerHead && HEAD_NODE_TYPES.has(prev.node.type.name)) {
     if (!dispatch) return true;
     const $beforeContainer = state.doc.resolve(ctx.containerFrom);
@@ -285,27 +309,7 @@ export const backspaceAtTagStart: Command = (state, dispatch) => {
     return true;
   }
 
-  if (!isBlank(prev.node)) {
-    // Prohibit the merge. Swallow so default Backspace can't run.
-    return true;
-  }
-
-  if (!dispatch) return true;
-
-  let tr = state.tr;
-  if (prev.isContainerHead) {
-    // The blank paragraph is the only tag of a preceding card —
-    // delete the whole card so we don't leave an orphan.
-    const $beforeContainer = state.doc.resolve(ctx.containerFrom);
-    const prevContainer = $beforeContainer.nodeBefore!;
-    const prevContainerFrom = ctx.containerFrom - prevContainer.nodeSize;
-    tr = tr.delete(prevContainerFrom, ctx.containerFrom);
-  } else {
-    tr = tr.delete(prev.from, prev.to);
-  }
-  // Cursor stays in the original tag (which has shifted toward doc start).
-  // ProseMirror's default mapping handles this for selection.
-  dispatch(tr.scrollIntoView());
+  // Anything else (non-blank cite/body/heading) → prohibit.
   return true;
 };
 
