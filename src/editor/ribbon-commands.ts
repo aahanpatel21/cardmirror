@@ -35,6 +35,7 @@
 
 import { Fragment, type Node as PMNode } from 'prosemirror-model';
 import { Selection, TextSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state';
+import { toggleMark } from 'prosemirror-commands';
 import { schema } from '../schema/index.js';
 import { newHeadingId } from '../schema/ids.js';
 
@@ -531,23 +532,38 @@ function asTransformed(child: PMNode, opts: StructuralMode): PMNode {
 // ---- Keymap binding registry ----
 
 /**
- * Stable identifiers for ribbon commands. The settings UI will store
- * user overrides keyed by these IDs — not by the current key string —
- * so renaming a default key doesn't strand user customizations.
+ * Stable identifiers for editor command bindings. The settings UI
+ * will store user overrides keyed by these IDs — not by the current
+ * key string — so renaming a default key doesn't strand user
+ * customizations.
+ *
+ * `StructuralRibbonCommandId` is the subset rendered as buttons in
+ * the formatting panel; the remainder are keyboard-only.
  */
-export type RibbonCommandId =
+export type StructuralRibbonCommandId =
   | 'setPocket'
   | 'setHat'
   | 'setBlock'
   | 'setTag'
   | 'setAnalytic';
 
-export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
+export type RibbonCommandId =
+  | StructuralRibbonCommandId
+  | 'toggleBold'
+  | 'toggleItalic';
+
+export const STRUCTURAL_RIBBON_COMMAND_IDS: StructuralRibbonCommandId[] = [
   'setPocket',
   'setHat',
   'setBlock',
   'setTag',
   'setAnalytic',
+];
+
+export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
+  ...STRUCTURAL_RIBBON_COMMAND_IDS,
+  'toggleBold',
+  'toggleItalic',
 ];
 
 export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
@@ -556,11 +572,14 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   setBlock: 'Apply Block style',
   setTag: 'Apply Tag style',
   setAnalytic: 'Apply Analytic style',
+  toggleBold: 'Bold',
+  toggleItalic: 'Italic',
 };
 
 /**
- * Default key bindings — match Verbatim's F4–F7. prosemirror-keymap
- * 'Mod-' resolves to Cmd on Mac, Ctrl elsewhere.
+ * Default key bindings — match Verbatim's F4–F7 and Word's Mod-B /
+ * Mod-I for inline formatting. prosemirror-keymap 'Mod-' resolves to
+ * Cmd on Mac, Ctrl elsewhere.
  */
 export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string> = {
   setPocket: 'F4',
@@ -568,6 +587,8 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string> = {
   setBlock: 'F6',
   setTag: 'F7',
   setAnalytic: 'Mod-F7',
+  toggleBold: 'Mod-b',
+  toggleItalic: 'Mod-i',
 };
 
 const COMMAND_FACTORIES: Record<RibbonCommandId, () => Command> = {
@@ -576,6 +597,8 @@ const COMMAND_FACTORIES: Record<RibbonCommandId, () => Command> = {
   setBlock: () => setHeading('block'),
   setTag: () => setTag(),
   setAnalytic: () => setAnalytic(),
+  toggleBold: () => toggleMark(schema.marks['bold']!),
+  toggleItalic: () => toggleMark(schema.marks['italic']!),
 };
 
 /**

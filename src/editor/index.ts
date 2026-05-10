@@ -43,7 +43,7 @@ import {
   formatKeyForDisplay,
   DEFAULT_RIBBON_KEYS,
   RIBBON_COMMAND_LABELS,
-  type RibbonCommandId,
+  type StructuralRibbonCommandId,
 } from './ribbon-commands.js';
 import { openWordCount } from './word-count-ui.js';
 import { countReadAloudWords, formatReadTime, formatNumber } from './word-count.js';
@@ -82,14 +82,14 @@ zoomResetBtn.addEventListener('click', () => setZoom(100));
 // same commands as the F4–F7 / Mod-F7 keymap. Display mode and visual
 // preview are both driven by settings (formattingPanelMode and
 // formattingPanelPreview).
-const FORMATTING_PANEL_BUTTONS: Record<RibbonCommandId, string> = {
+const FORMATTING_PANEL_BUTTONS: Record<StructuralRibbonCommandId, string> = {
   setPocket: 'style-pocket-btn',
   setHat: 'style-hat-btn',
   setBlock: 'style-block-btn',
   setTag: 'style-tag-btn',
   setAnalytic: 'style-analytic-btn',
 };
-const FORMATTING_PANEL_SHORT_LABEL: Record<RibbonCommandId, string> = {
+const FORMATTING_PANEL_SHORT_LABEL: Record<StructuralRibbonCommandId, string> = {
   setPocket: 'Pocket',
   setHat: 'Hat',
   setBlock: 'Block',
@@ -97,8 +97,8 @@ const FORMATTING_PANEL_SHORT_LABEL: Record<RibbonCommandId, string> = {
   setAnalytic: 'Analytic',
 };
 const formattingPanelEl = document.getElementById('formatting-panel') as HTMLElement | null;
-const formattingPanelBtnRefs: { id: RibbonCommandId; btn: HTMLButtonElement }[] = [];
-for (const [id, btnId] of Object.entries(FORMATTING_PANEL_BUTTONS) as [RibbonCommandId, string][]) {
+const formattingPanelBtnRefs: { id: StructuralRibbonCommandId; btn: HTMLButtonElement }[] = [];
+for (const [id, btnId] of Object.entries(FORMATTING_PANEL_BUTTONS) as [StructuralRibbonCommandId, string][]) {
   const btn = document.getElementById(btnId) as HTMLButtonElement | null;
   if (!btn) continue;
   const label = RIBBON_COMMAND_LABELS[id];
@@ -337,8 +337,8 @@ function mountView(doc: PMNode): void {
           enterMidTag(state, dispatch, view) ||
           enterInHeading(state, dispatch, view),
       }),
-      // Verbatim ribbon — structural style hotkeys. Defaults match
-      // Verbatim's F4–F7 (Mod-F7 for Analytic). buildRibbonKeymap()
+      // Ribbon commands — structural style hotkeys (F4–F7 / Mod-F7)
+      // plus inline mark toggles (Mod-B / Mod-I). buildRibbonKeymap()
       // accepts user overrides keyed by RibbonCommandId; wire those
       // through once a "Keyboard shortcuts" settings panel exists.
       keymap(buildRibbonKeymap()),
