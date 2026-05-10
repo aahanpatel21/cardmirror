@@ -125,16 +125,41 @@ export function computeHeadingRange(
   return { from, to, useNodeSelection: false };
 }
 
-/** Concatenate the text of all runs in a node that carry the cite_mark. */
+/**
+ * Concatenate the text of all runs carrying cite_mark. Whitespace-only
+ * unmarked runs sitting between two cite-marked runs are kept too, so
+ * "Stein 23" (where the user cited "Stein" and "23" but not the space
+ * between them) renders as "Stein 23" in the preview, not "Stein23".
+ * Non-whitespace unmarked text breaks the bridge.
+ */
 function collectCiteText(node: PMNode): string {
-  const parts: string[] = [];
+  type Run = { text: string; isCite: boolean };
+  const runs: Run[] = [];
   node.descendants((descendant) => {
     if (!descendant.isText) return;
-    if (descendant.marks.some((m) => m.type.name === 'cite_mark')) {
-      parts.push(descendant.text ?? '');
-    }
+    runs.push({
+      text: descendant.text ?? '',
+      isCite: descendant.marks.some((m) => m.type.name === 'cite_mark'),
+    });
   });
-  return fixAmpersandSpacing(parts.join(''));
+
+  const out: string[] = [];
+  for (let i = 0; i < runs.length; i++) {
+    const r = runs[i]!;
+    if (r.isCite) {
+      out.push(r.text);
+      continue;
+    }
+    if (out.length === 0) continue;
+    if (!/^\s+$/.test(r.text)) continue;
+    // Bridge only if a cite run comes later — avoids trailing whitespace.
+    let hasLaterCite = false;
+    for (let j = i + 1; j < runs.length; j++) {
+      if (runs[j]!.isCite) { hasLaterCite = true; break; }
+    }
+    if (hasLaterCite) out.push(r.text);
+  }
+  return fixAmpersandSpacing(out.join(''));
 }
 
 function fixAmpersandSpacing(s: string): string {
