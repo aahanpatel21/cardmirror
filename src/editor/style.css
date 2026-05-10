@@ -96,7 +96,10 @@ body {
   display: flex;
   align-items: center;
   padding: 0 0.5rem;
-  z-index: 20;
+  /* Above editor-surface decorations (.pmd-editor-pickup-highlight z=90
+     and .pmd-editor-drop-indicator z=100) so they don't bleed over the
+     ribbon when scrolled into the chrome's bounds. */
+  z-index: 200;
   font-size: 0.85rem;
 }
 
@@ -229,7 +232,8 @@ body {
   display: flex;
   align-items: center;
   padding: 0 0.75rem;
-  z-index: 15;
+  /* Above editor decorations — see #ribbon comment. */
+  z-index: 200;
   font-size: 0.8rem;
   gap: 1rem;
   color: var(--pmd-c-text-secondary);
@@ -1080,7 +1084,8 @@ body.pmd-nav-resize-active {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  /* Above the ribbon / status bar (z=200) so the modal covers the chrome. */
+  z-index: 1000;
 }
 
 .pmd-settings-dialog {
