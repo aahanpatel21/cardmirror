@@ -314,12 +314,22 @@ export class NavigationPanel {
    */
   private setMaxLevel(level: number): void {
     if (level < 1 || level > 4) return;
+    const isAlreadyAtLevel = level === this.maxLevel;
     // Order matters: update the collapsed state for the NEW level before
     // writing to the settings store. The settings subscriber fires
     // synchronously and triggers render — so collapsed needs to be
     // up-to-date before that render happens.
     this.applyMaxLevelToCollapseState(level);
-    settings.set('navMaxLevel', level);
+    if (isAlreadyAtLevel) {
+      // Settings.set short-circuits when the value is unchanged, so no
+      // subscriber would fire and the freshly-reset collapse state
+      // wouldn't reach the UI. Render directly. This is also the path
+      // that lets clicking the active level button "reset" any manual
+      // chevron expansions/collapses.
+      if (this.currentDoc) this.render(this.currentDoc);
+    } else {
+      settings.set('navMaxLevel', level);
+    }
   }
 
   private updateLevelButtonsActive(): void {
