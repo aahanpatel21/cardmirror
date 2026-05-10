@@ -44,9 +44,17 @@ export function ensureId(attrs: Record<string, unknown> | null): { id: string } 
  * are *not* in this list — tags only appear as the required first child
  * of a `card`, analytics only appear inside an `analytic_unit` (or as a
  * cite-position alternative inside a card).
+ *
+ * Order matters: ProseMirror's `splitBlock` calls `defaultBlockAt` to
+ * pick the type for a freshly-created paragraph at the doc level (e.g.
+ * Enter at the end of an existing paragraph), and `defaultBlockAt`
+ * returns the FIRST textblock in the alternation. Putting `paragraph`
+ * first ensures Enter on a normal paragraph creates another normal
+ * paragraph rather than a Pocket. The same trick is used inside `card`
+ * (see its content expression).
  */
 const BLOCK_CONTENT =
-  '(pocket | hat | block | card | analytic_unit | paragraph | undertag | cite_paragraph | card_body)*';
+  '(paragraph | pocket | hat | block | card | analytic_unit | undertag | cite_paragraph | card_body)*';
 
 export const nodes: { [name: string]: NodeSpec } = {
   /** Top-level container. Sequence of block-level content. */
