@@ -175,6 +175,24 @@ body {
   border-left: 1px solid var(--pmd-c-border-soft);
 }
 
+/* Cite panel — sits to the right of the formatting panel, separated
+   by the same divider. Set up as a 2-row grid (column-flow) so it
+   matches the formatting panel's height and so the Cite button aligns
+   with the panel's top row; future buttons will fill the rest. */
+.ribbon-cite-panel {
+  display: grid;
+  grid-template-columns: auto;
+  grid-template-rows: 1.45rem 1.45rem;
+  grid-auto-flow: column;
+  gap: 2px 3px;
+  align-content: center;
+  padding-left: 0.5rem;
+  margin-left: 0.25rem;
+  border-left: 1px solid var(--pmd-c-border-soft);
+}
+
+.ribbon-cite-panel.hidden { display: none; }
+
 .ribbon-formatting-panel.hidden { display: none; }
 
 #ribbon .formatting-panel-btn {
@@ -230,6 +248,17 @@ body {
 
 .pmd-undertag-bold #ribbon .ribbon-formatting-panel.style-preview .formatting-panel-undertag {
   font-weight: bold;
+}
+
+/* Cite — lives in its own .ribbon-cite-panel section. Bold mirrors
+   Verbatim's Cite character style; the citeUnderlined display flag
+   adds an underline when enabled. */
+#ribbon .ribbon-cite-panel.style-preview .formatting-panel-cite {
+  font-weight: bold;
+}
+
+.pmd-cite-underlined #ribbon .ribbon-cite-panel.style-preview .formatting-panel-cite {
+  text-decoration: underline;
 }
 
 #app {

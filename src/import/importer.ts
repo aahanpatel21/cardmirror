@@ -443,11 +443,12 @@ function assembleDoc(paragraphs: ParaInfo[]): PMNode {
         j++;
       }
 
-      // Body paragraphs: any Normal paragraphs that follow.
+      // Body paragraphs: classify by cite_mark presence (same rule as
+      // in cards), since analytic_unit now allows cite_paragraph too.
       while (j < paragraphs.length && paragraphs[j]!.nodeType === 'paragraph') {
-        unitChildren.push(
-          schema.nodes['card_body']!.create(null, paragraphs[j]!.inlines),
-        );
+        const p = paragraphs[j]!;
+        const slot = hasCiteMark(p.inlines) ? 'cite_paragraph' : 'card_body';
+        unitChildren.push(schema.nodes[slot]!.create(null, p.inlines));
         j++;
       }
 
@@ -483,33 +484,25 @@ function assembleDoc(paragraphs: ParaInfo[]): PMNode {
         j++;
       }
 
-      // Optional cite_paragraph: first Normal-shaped paragraph (after any
-      // undertags) is classified as cite for v0. Skip if it's a heading-
-      // level node, undertag, or end of doc.
-      if (j < paragraphs.length) {
-        const next = paragraphs[j]!;
-        if (next.nodeType === 'paragraph') {
-          cardChildren.push(
-            schema.nodes['cite_paragraph']!.create(null, next.inlines),
-          );
-          j++;
-        } else if (next.nodeType === 'analytic') {
-          // In-card analytic immediately after tag (or undertags).
-          cardChildren.push(
-            schema.nodes['analytic']!.create(
-              attrsForHeading(next.headingId),
-              next.inlines,
-            ),
-          );
-          j++;
-        }
+      // Optional in-card analytic (cite-slot alternative): immediately
+      // after the tag/undertags.
+      if (j < paragraphs.length && paragraphs[j]!.nodeType === 'analytic') {
+        const a = paragraphs[j]!;
+        cardChildren.push(
+          schema.nodes['analytic']!.create(attrsForHeading(a.headingId), a.inlines),
+        );
+        j++;
       }
 
-      // Body paragraphs: continue while we see Normal paragraphs.
+      // Body paragraphs: any Normal paragraph until we hit a heading-
+      // level boundary. Classify each as cite_paragraph if its inline
+      // content carries any cite_mark, otherwise as card_body. This is
+      // content-based (matches what the user sees) rather than position-
+      // based, so cards with multiple cite paragraphs round-trip cleanly.
       while (j < paragraphs.length && paragraphs[j]!.nodeType === 'paragraph') {
-        cardChildren.push(
-          schema.nodes['card_body']!.create(null, paragraphs[j]!.inlines),
-        );
+        const p = paragraphs[j]!;
+        const slot = hasCiteMark(p.inlines) ? 'cite_paragraph' : 'card_body';
+        cardChildren.push(schema.nodes[slot]!.create(null, p.inlines));
         j++;
       }
 
@@ -547,15 +540,31 @@ function assembleDoc(paragraphs: ParaInfo[]): PMNode {
   }
 }
 
+/** True if any inline node in the array carries the cite_mark mark. */
+function hasCiteMark(inlines: readonly PMNode[]): boolean {
+  for (const n of inlines) {
+    if (n.marks.some((m) => m.type.name === 'cite_mark')) return true;
+  }
+  return false;
+}
+
 function attrsForHeading(id: string | null): { id: string } {
   return { id: id ?? newHeadingId() };
 }
 
 function paragraphToNode(para: ParaInfo): PMNode | null {
-  const t = para.nodeType;
-  const nodeType = schema.nodes[t] as NodeType | undefined;
+  // A "Normal" paragraph at doc level (not under a Tag/Analytic) that
+  // contains any cite_mark inline is promoted to cite_paragraph — same
+  // content-based classification we use inside cards. Schema allows
+  // cite_paragraph at doc level, and this preserves round-trip fidelity
+  // for stray F8'd paragraphs not yet wrapped in a card.
+  const effectiveType =
+    para.nodeType === 'paragraph' && hasCiteMark(para.inlines)
+      ? 'cite_paragraph'
+      : para.nodeType;
+  const nodeType = schema.nodes[effectiveType] as NodeType | undefined;
   if (!nodeType) return null;
-  const isHeading = ['pocket', 'hat', 'block', 'analytic'].includes(t);
+  const isHeading = ['pocket', 'hat', 'block', 'analytic'].includes(effectiveType);
   const attrs = isHeading ? attrsForHeading(para.headingId) : null;
   try {
     return nodeType.createChecked(attrs, para.inlines);

@@ -11,6 +11,8 @@ import {
   setTag,
   setAnalytic,
   setUndertag,
+  applyCite,
+  copyPreviousCite,
   buildRibbonKeymap,
   DEFAULT_RIBBON_KEYS,
   RIBBON_COMMAND_IDS,
@@ -45,7 +47,9 @@ function cardWith(...children: ReturnType<typeof tag>[]) {
 }
 
 function cardBody(text: string) {
-  return schema.nodes['card_body']!.create(null, schema.text(text));
+  return text
+    ? schema.nodes['card_body']!.create(null, schema.text(text))
+    : schema.nodes['card_body']!.create(null, []);
 }
 
 function citePara(text: string) {
@@ -509,7 +513,7 @@ describe('setAnalytic (Mod-F7)', () => {
     expect(types).toEqual(['analytic', 'card_body', 'undertag']);
   });
 
-  it('folds cite_paragraph into card_body when converting card → analytic_unit', () => {
+  it('preserves cite_paragraph type when converting card → analytic_unit', () => {
     const doc = makeDoc([
       schema.nodes['card']!.createChecked(null, [
         tag('claim'),
@@ -523,7 +527,7 @@ describe('setAnalytic (Mod-F7)', () => {
     const types: string[] = [];
     const texts: string[] = [];
     unit.forEach((c) => { types.push(c.type.name); texts.push(c.textContent); });
-    expect(types).toEqual(['analytic', 'card_body', 'card_body']);
+    expect(types).toEqual(['analytic', 'cite_paragraph', 'card_body']);
     expect(texts).toEqual(['claim', 'Source', 'body']);
   });
 
@@ -793,5 +797,437 @@ describe('setTag/setAnalytic on a multi-paragraph selection', () => {
     expect(types).toEqual(['analytic_unit', 'analytic_unit']);
     expect(next!.doc.content.content[0]!.firstChild!.type.name).toBe('analytic');
     expect(next!.doc.content.content[0]!.firstChild!.textContent).toBe('a');
+  });
+});
+
+// ---- copyPreviousCite ----
+
+function cardWithChildren(...children: import('prosemirror-model').Node[]) {
+  return schema.nodes['card']!.createChecked(null, children);
+}
+
+function setCursorIn(doc: ReturnType<typeof makeDoc>, find: (n: import('prosemirror-model').Node) => boolean, offset = 0): EditorState {
+  let pos = -1;
+  doc.descendants((n, p) => {
+    if (pos === -1 && find(n)) pos = p + 1 + offset;
+    return true;
+  });
+  if (pos < 0) throw new Error('cursor target not found');
+  const base = EditorState.create({ doc });
+  return base.apply(base.tr.setSelection(TextSelection.create(base.doc, pos)));
+}
+
+describe('copyPreviousCite', () => {
+  it('no-op when there is no previous cite anywhere', () => {
+    const doc = makeDoc([cardWithChildren(tag('T'), cardBody('b'))]);
+    const state = setCursorIn(doc, (n) => n.type.name === 'tag');
+    expect(apply(state, copyPreviousCite())).toBeNull();
+  });
+
+  it('cursor in tag with no cite above: pulls from previous card', () => {
+    const doc = makeDoc([
+      cardWithChildren(tag('T1'), citePara('Source 2024')),
+      cardWithChildren(tag('T2')),
+    ]);
+    const state = setCursorIn(doc, (n) => n.type.name === 'tag' && n.textContent === 'T2');
+    const next = apply(state, copyPreviousCite());
+    expect(next).not.toBeNull();
+    const card2 = next!.doc.lastChild!;
+    const types: string[] = [];
+    card2.forEach((c) => types.push(c.type.name));
+    expect(types).toEqual(['tag', 'cite_paragraph']);
+    expect(card2.child(1).textContent).toBe('Source 2024');
+  });
+
+  it('cursor in empty card_body with cite above (same card): empty body replaced by copied cite', () => {
+    const doc = makeDoc([
+      cardWithChildren(tag('T'), citePara('Source 2024'), cardBody('')),
+    ]);
+    const state = setCursorIn(doc, (n) => n.type.name === 'card_body');
+    const next = apply(state, copyPreviousCite());
+    expect(next!.doc.childCount).toBe(1);
+    const card = next!.doc.firstChild!;
+    const types: string[] = [];
+    card.forEach((c) => types.push(c.type.name));
+    expect(types).toEqual(['tag', 'cite_paragraph', 'cite_paragraph']);
+    expect(card.child(1).textContent).toBe('Source 2024');
+    expect(card.child(2).textContent).toBe('Source 2024');
+  });
+
+  it('whitespace-only body in a card with no cite: empty body replaced by cite IN PLACE (no new card)', () => {
+    const doc = makeDoc([
+      cardWithChildren(tag('T1'), citePara('Source 2024')),
+      cardWithChildren(tag('T2'), cardBody('   ')),
+    ]);
+    const state = setCursorIn(doc, (n) => n.type.name === 'card_body');
+    const next = apply(state, copyPreviousCite());
+    // card2 has no cite yet → no split; the empty body is replaced by
+    // the cite inside card2.
+    expect(next!.doc.childCount).toBe(2);
+    const card2 = next!.doc.lastChild!;
+    const card2Types: string[] = [];
+    card2.forEach((c) => card2Types.push(c.type.name));
+    expect(card2Types).toEqual(['tag', 'cite_paragraph']);
+  });
+
+  it('non-empty body in a card with no cite: cite inserted in the same card (no new tag)', () => {
+    const doc = makeDoc([
+      cardWithChildren(tag('T1'), citePara('Source 2024')),
+      cardWithChildren(tag('T2'), cardBody('Body text')),
+    ]);
+    const state = setCursorIn(doc, (n) => n.type.name === 'card_body');
+    const next = apply(state, copyPreviousCite());
+    expect(next!.doc.childCount).toBe(2);
+    const card2 = next!.doc.lastChild!;
+    const types: string[] = [];
+    card2.forEach((c) => types.push(c.type.name));
+    expect(types).toEqual(['tag', 'card_body', 'cite_paragraph']);
+  });
+
+  it('non-empty body in a card with an existing cite: cite inserted as sibling after the body', () => {
+    const doc = makeDoc([
+      cardWithChildren(tag('T1'), citePara('FromPrev')),
+      cardWithChildren(tag('T2'), citePara('AlreadyHere'), cardBody('Body text')),
+    ]);
+    const state = setCursorIn(doc, (n) => n.type.name === 'card_body');
+    const next = apply(state, copyPreviousCite());
+    expect(next!.doc.childCount).toBe(2);
+    const card2 = next!.doc.lastChild!;
+    const types: string[] = [];
+    card2.forEach((c) => types.push(c.type.name));
+    expect(types).toEqual(['tag', 'cite_paragraph', 'card_body', 'cite_paragraph']);
+  });
+
+  it('cite in current card above cursor wins over previous-card cite', () => {
+    const doc = makeDoc([
+      cardWithChildren(tag('T1'), citePara('FromPrevious')),
+      cardWithChildren(tag('T2'), citePara('FromCurrent'), cardBody('')),
+    ]);
+    const state = setCursorIn(doc, (n) => n.type.name === 'card_body');
+    const next = apply(state, copyPreviousCite());
+    // Empty body replaced by the FromCurrent copy (in-card insert).
+    const card2 = next!.doc.lastChild!;
+    const types: string[] = [];
+    card2.forEach((c) => types.push(c.type.name));
+    expect(types).toEqual(['tag', 'cite_paragraph', 'cite_paragraph']);
+    expect(card2.child(2).textContent).toBe('FromCurrent');
+  });
+
+  it('cursor inside a cite_paragraph excludes that cite, falls back to previous if it was the only one', () => {
+    const doc = makeDoc([
+      cardWithChildren(tag('T1'), citePara('FromPrevious')),
+      cardWithChildren(tag('T2'), citePara('CurrentCite')),
+    ]);
+    const state = setCursorIn(doc, (n) => n.type.name === 'cite_paragraph' && n.textContent === 'CurrentCite', 4);
+    const next = apply(state, copyPreviousCite());
+    // FromPrevious copy inserted as sibling after the current cite.
+    const card2 = next!.doc.lastChild!;
+    const types: string[] = [];
+    card2.forEach((c) => types.push(c.type.name));
+    expect(types).toEqual(['tag', 'cite_paragraph', 'cite_paragraph']);
+    expect(card2.child(1).textContent).toBe('CurrentCite');
+    expect(card2.child(2).textContent).toBe('FromPrevious');
+  });
+
+  it('grabs free-floating cite paragraphs at doc level instead of walking past them', () => {
+    const doc = makeDoc([
+      cardWithChildren(tag('T1'), citePara('InCard')),
+      citePara('Floater1'),
+      citePara('Floater2'),
+      cardWithChildren(tag('T2')),
+    ]);
+    const state = setCursorIn(doc, (n) => n.type.name === 'tag' && n.textContent === 'T2');
+    const next = apply(state, copyPreviousCite());
+    expect(next).not.toBeNull();
+    const card2 = next!.doc.lastChild!;
+    const types: string[] = [];
+    card2.forEach((c) => types.push(c.type.name));
+    // T2 + two cite_paragraphs grabbed from the floaters (not "InCard").
+    expect(types).toEqual(['tag', 'cite_paragraph', 'cite_paragraph']);
+    expect(card2.child(1).textContent).toBe('Floater1');
+    expect(card2.child(2).textContent).toBe('Floater2');
+  });
+
+  it('a non-cite node between floaters breaks the run; most recent group wins', () => {
+    const doc = makeDoc([
+      citePara('OldFloater'),
+      paragraph('a regular paragraph'),
+      citePara('NewFloater'),
+      cardWithChildren(tag('T')),
+    ]);
+    const state = setCursorIn(doc, (n) => n.type.name === 'tag' && n.textContent === 'T');
+    const next = apply(state, copyPreviousCite());
+    const card = next!.doc.lastChild!;
+    expect(card.child(1).textContent).toBe('NewFloater');
+  });
+
+  it('walks farther back when the immediate previous card has no cites', () => {
+    const doc = makeDoc([
+      cardWithChildren(tag('T1'), citePara('FromWayBack')),
+      cardWithChildren(tag('T2')),
+      cardWithChildren(tag('T3')),
+    ]);
+    const state = setCursorIn(doc, (n) => n.type.name === 'tag' && n.textContent === 'T3');
+    const next = apply(state, copyPreviousCite());
+    const card3 = next!.doc.lastChild!;
+    expect(card3.child(1).textContent).toBe('FromWayBack');
+  });
+
+  it('cursor in an EMPTY doc-level paragraph: paragraph is replaced by the cite at doc level', () => {
+    const doc = makeDoc([
+      cardWithChildren(tag('T1'), citePara('Source 2024')),
+      paragraph(''),
+    ]);
+    const state = setCursorIn(doc, (n) => n.type.name === 'paragraph');
+    const next = apply(state, copyPreviousCite());
+    const types = next!.doc.content.content.map((c) => c.type.name);
+    expect(types).toEqual(['card', 'cite_paragraph']);
+    expect(next!.doc.lastChild!.textContent).toBe('Source 2024');
+  });
+
+  it('cursor in a doc-level paragraph (non-empty): cite inserted as a sibling at doc level', () => {
+    const doc = makeDoc([
+      cardWithChildren(tag('T1'), citePara('Source 2024')),
+      paragraph('a doc-level note'),
+    ]);
+    const state = setCursorIn(doc, (n) => n.type.name === 'paragraph');
+    const next = apply(state, copyPreviousCite());
+    const types = next!.doc.content.content.map((c) => c.type.name);
+    expect(types).toEqual(['card', 'paragraph', 'cite_paragraph']);
+    expect(next!.doc.lastChild!.textContent).toBe('Source 2024');
+  });
+
+  it('cursor in analytic head: cite inserted as sibling inside the same analytic_unit', () => {
+    const doc = makeDoc([
+      cardWithChildren(tag('T1'), citePara('Source')),
+      schema.nodes['analytic_unit']!.createChecked(null, [
+        analytic('Alpha'),
+        cardBody('body1'),
+      ]),
+    ]);
+    const state = setCursorIn(doc, (n) => n.type.name === 'analytic');
+    const next = apply(state, copyPreviousCite());
+    expect(next!.doc.childCount).toBe(2);
+    const unit = next!.doc.lastChild!;
+    const types: string[] = [];
+    unit.forEach((c) => types.push(c.type.name));
+    expect(types).toEqual(['analytic', 'cite_paragraph', 'card_body']);
+  });
+
+  it('cursor in analytic body: cite inserted as sibling after the body, same unit', () => {
+    const doc = makeDoc([
+      cardWithChildren(tag('T1'), citePara('Source')),
+      schema.nodes['analytic_unit']!.createChecked(null, [
+        analytic('A'),
+        cardBody('body1'),
+        cardBody('body2'),
+      ]),
+    ]);
+    const state = setCursorIn(doc, (n) => n.type.name === 'card_body' && n.textContent === 'body1');
+    const next = apply(state, copyPreviousCite());
+    expect(next!.doc.childCount).toBe(2);
+    const unit = next!.doc.lastChild!;
+    const types: string[] = [];
+    unit.forEach((c) => types.push(c.type.name));
+    expect(types).toEqual(['analytic', 'card_body', 'cite_paragraph', 'card_body']);
+    expect(unit.child(1).textContent).toBe('body1');
+    expect(unit.child(2).textContent).toBe('Source');
+    expect(unit.child(3).textContent).toBe('body2');
+  });
+
+  it('cursor in last child of analytic_unit: cite inserted at the end of the unit', () => {
+    const doc = makeDoc([
+      cardWithChildren(tag('T1'), citePara('Source')),
+      schema.nodes['analytic_unit']!.createChecked(null, [
+        analytic('A'),
+        cardBody('only body'),
+      ]),
+    ]);
+    const state = setCursorIn(doc, (n) => n.type.name === 'card_body');
+    const next = apply(state, copyPreviousCite());
+    expect(next!.doc.childCount).toBe(2);
+    const unit = next!.doc.lastChild!;
+    const types: string[] = [];
+    unit.forEach((c) => types.push(c.type.name));
+    expect(types).toEqual(['analytic', 'card_body', 'cite_paragraph']);
+  });
+
+  it('cursor lands inside the inserted cite_paragraph', () => {
+    const doc = makeDoc([
+      cardWithChildren(tag('T1'), citePara('Source')),
+      paragraph('here'),
+    ]);
+    const state = setCursorIn(doc, (n) => n.type.name === 'paragraph');
+    const next = apply(state, copyPreviousCite());
+    const sel = next!.selection;
+    expect(sel.$from.parent.type.name).toBe('cite_paragraph');
+  });
+
+  it('collapses non-empty selection to selection.from', () => {
+    const doc = makeDoc([
+      cardWithChildren(tag('T1'), citePara('Source')),
+      cardWithChildren(tag('T2'), cardBody('hello world')),
+    ]);
+    // Selection spans inside the second card's body.
+    let bodyStart = -1;
+    doc.descendants((n, p) => {
+      if (bodyStart === -1 && n.type.name === 'card_body' && n.textContent === 'hello world') {
+        bodyStart = p + 1;
+      }
+      return true;
+    });
+    const base = EditorState.create({ doc });
+    const state = base.apply(
+      base.tr.setSelection(TextSelection.create(base.doc, bodyStart, bodyStart + 5)),
+    );
+    const next = apply(state, copyPreviousCite());
+    // card2 has no cite yet → cite inserts as sibling in the same card.
+    expect(next!.doc.childCount).toBe(2);
+    const card2 = next!.doc.lastChild!;
+    const types: string[] = [];
+    card2.forEach((c) => types.push(c.type.name));
+    expect(types).toEqual(['tag', 'card_body', 'cite_paragraph']);
+  });
+});
+
+// ---- applyCite (F8) ----
+
+function citeMarkIdsForText(doc: import('prosemirror-model').Node, search: string): boolean {
+  // True iff every text run that matches `search` carries cite_mark.
+  let allCited = true;
+  let found = false;
+  doc.descendants((n) => {
+    if (!n.isText) return;
+    if ((n.text ?? '').includes(search)) {
+      found = true;
+      if (!n.marks.some((m) => m.type.name === 'cite_mark')) allCited = false;
+    }
+  });
+  return found && allCited;
+}
+
+describe('applyCite (F8)', () => {
+  it('no-op when the selection is collapsed', () => {
+    const doc = makeDoc([paragraph('hello world')]);
+    const state = setCursorIn(doc, (n) => n.type.name === 'paragraph');
+    expect(apply(state, applyCite())).toBeNull();
+  });
+
+  it('applies cite_mark to text in a body paragraph', () => {
+    const doc = makeDoc([
+      cardWithChildren(tag('T'), cardBody('hello world')),
+    ]);
+    // Select the whole body content ("hello world" → 11 chars).
+    let bodyStart = -1;
+    doc.descendants((n, p) => {
+      if (bodyStart === -1 && n.type.name === 'card_body') bodyStart = p + 1;
+      return true;
+    });
+    const base = EditorState.create({ doc });
+    const state = base.apply(
+      base.tr.setSelection(TextSelection.create(base.doc, bodyStart, bodyStart + 11)),
+    );
+    const next = apply(state, applyCite());
+    expect(next).not.toBeNull();
+    expect(citeMarkIdsForText(next!.doc, 'hello world')).toBe(true);
+  });
+
+  it('spanning a tag in the middle: marks the bodies, skips the tag', () => {
+    const doc = makeDoc([
+      cardWithChildren(tag('T1'), cardBody('first body')),
+      cardWithChildren(tag('T2'), cardBody('second body')),
+    ]);
+    // Select from start of "first body" through end of "second body".
+    let firstStart = -1;
+    let secondEnd = -1;
+    doc.descendants((n, p) => {
+      if (n.isText) {
+        if (firstStart === -1 && n.text === 'first body') firstStart = p;
+        if (n.text === 'second body') secondEnd = p + n.nodeSize;
+      }
+      return true;
+    });
+    const base = EditorState.create({ doc });
+    const state = base.apply(
+      base.tr.setSelection(TextSelection.create(base.doc, firstStart, secondEnd)),
+    );
+    const next = apply(state, applyCite());
+    expect(next).not.toBeNull();
+    // Both bodies are cited; tags are NOT (they were skipped).
+    expect(citeMarkIdsForText(next!.doc, 'first body')).toBe(true);
+    expect(citeMarkIdsForText(next!.doc, 'second body')).toBe(true);
+    expect(citeMarkIdsForText(next!.doc, 'T1')).toBe(false);
+    expect(citeMarkIdsForText(next!.doc, 'T2')).toBe(false);
+  });
+
+  it('skips undertags', () => {
+    const doc = makeDoc([
+      cardWithChildren(
+        tag('T'),
+        cardBody('body 1'),
+        undertag('an undertag'),
+        cardBody('body 2'),
+      ),
+    ]);
+    let from = -1;
+    let to = -1;
+    doc.descendants((n, p) => {
+      if (n.isText) {
+        if (from === -1 && n.text === 'body 1') from = p;
+        if (n.text === 'body 2') to = p + n.nodeSize;
+      }
+      return true;
+    });
+    const base = EditorState.create({ doc });
+    const state = base.apply(
+      base.tr.setSelection(TextSelection.create(base.doc, from, to)),
+    );
+    const next = apply(state, applyCite());
+    expect(citeMarkIdsForText(next!.doc, 'body 1')).toBe(true);
+    expect(citeMarkIdsForText(next!.doc, 'body 2')).toBe(true);
+    expect(citeMarkIdsForText(next!.doc, 'an undertag')).toBe(false);
+  });
+
+  it('skips pocket / hat / block headings in the span', () => {
+    const doc = makeDoc([
+      paragraph('intro text'),
+      schema.nodes['hat']!.create({ id: newHeadingId() }, schema.text('Hat heading')),
+      paragraph('outro text'),
+    ]);
+    let from = -1;
+    let to = -1;
+    doc.descendants((n, p) => {
+      if (n.isText) {
+        if (from === -1 && n.text === 'intro text') from = p;
+        if (n.text === 'outro text') to = p + n.nodeSize;
+      }
+      return true;
+    });
+    const base = EditorState.create({ doc });
+    const state = base.apply(
+      base.tr.setSelection(TextSelection.create(base.doc, from, to)),
+    );
+    const next = apply(state, applyCite());
+    expect(citeMarkIdsForText(next!.doc, 'intro text')).toBe(true);
+    expect(citeMarkIdsForText(next!.doc, 'outro text')).toBe(true);
+    expect(citeMarkIdsForText(next!.doc, 'Hat heading')).toBe(false);
+  });
+
+  it('selection entirely inside a tag is a no-op (nothing marked)', () => {
+    const doc = makeDoc([cardWithChildren(tag('a tag'))]);
+    let from = -1;
+    let to = -1;
+    doc.descendants((n, p) => {
+      if (n.isText && n.text === 'a tag') {
+        from = p;
+        to = p + n.nodeSize;
+      }
+      return true;
+    });
+    const base = EditorState.create({ doc });
+    const state = base.apply(
+      base.tr.setSelection(TextSelection.create(base.doc, from, to)),
+    );
+    expect(apply(state, applyCite())).toBeNull();
   });
 });

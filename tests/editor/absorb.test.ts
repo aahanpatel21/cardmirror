@@ -132,4 +132,50 @@ describe('paragraph absorption (ARCHITECTURE.md §14.3)', () => {
     ]);
     expect(absorbedDocChildren(doc)).toBeNull();
   });
+
+  it('absorbs a free-floating cite_paragraph after a card as a cite_paragraph', () => {
+    const cite = schema.nodes['cite_paragraph']!.create(
+      null,
+      schema.text('Stein 24', [schema.marks['cite_mark']!.create()]),
+    );
+    const doc = schema.nodes['doc']!.createChecked(null, [makeCard(), cite]);
+    const result = absorbedDocChildren(doc);
+    expect(result).not.toBeNull();
+    expect(result!.childCount).toBe(1);
+    const card = result!.child(0);
+    expect(card.lastChild!.type.name).toBe('cite_paragraph');
+    expect(card.lastChild!.textContent).toBe('Stein 24');
+  });
+
+  it('absorbs a mix of cite_paragraph and paragraph after a card, preserving types', () => {
+    const cite = schema.nodes['cite_paragraph']!.create(
+      null,
+      schema.text('Author 24', [schema.marks['cite_mark']!.create()]),
+    );
+    const doc = schema.nodes['doc']!.createChecked(null, [
+      makeCard(),
+      cite,
+      para('body text'),
+    ]);
+    const result = absorbedDocChildren(doc);
+    expect(result).not.toBeNull();
+    const card = result!.child(0);
+    const types: string[] = [];
+    card.forEach((c) => types.push(c.type.name));
+    expect(types).toEqual(['tag', 'cite_paragraph', 'card_body']);
+  });
+
+  it('absorbs a free-floating cite_paragraph after an analytic_unit as a cite_paragraph', () => {
+    const cite = schema.nodes['cite_paragraph']!.create(
+      null,
+      schema.text('Stein 24', [schema.marks['cite_mark']!.create()]),
+    );
+    const doc = schema.nodes['doc']!.createChecked(null, [makeAnalyticUnit(), cite]);
+    const result = absorbedDocChildren(doc);
+    expect(result).not.toBeNull();
+    expect(result!.childCount).toBe(1);
+    const unit = result!.child(0);
+    expect(unit.type.name).toBe('analytic_unit');
+    expect(unit.lastChild!.type.name).toBe('cite_paragraph');
+  });
 });

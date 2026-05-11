@@ -28,6 +28,7 @@ import {
 } from './settings.js';
 import { readModePlugin, PMD_READ_MODE_TOGGLE } from './read-mode-plugin.js';
 import { absorbPlugin } from './absorb-plugin.js';
+import { citeClassifierPlugin } from './cite-classifier-plugin.js';
 import { fontSizeClassPlugin } from './font-size-class-plugin.js';
 import { editorDragSurface } from './drag-editor-surface.js';
 import {
@@ -82,25 +83,29 @@ zoomResetBtn.addEventListener('click', () => setZoom(100));
 // same commands as the F4–F7 / Mod-F7 keymap. Display mode and visual
 // preview are both driven by settings (formattingPanelMode and
 // formattingPanelPreview).
-const FORMATTING_PANEL_BUTTONS: Record<StructuralRibbonCommandId, string> = {
+type FormattingPanelId = StructuralRibbonCommandId | 'applyCite';
+const FORMATTING_PANEL_BUTTONS: Record<FormattingPanelId, string> = {
   setPocket: 'style-pocket-btn',
   setHat: 'style-hat-btn',
   setBlock: 'style-block-btn',
   setTag: 'style-tag-btn',
   setAnalytic: 'style-analytic-btn',
   setUndertag: 'style-undertag-btn',
+  applyCite: 'cite-btn',
 };
-const FORMATTING_PANEL_SHORT_LABEL: Record<StructuralRibbonCommandId, string> = {
+const FORMATTING_PANEL_SHORT_LABEL: Record<FormattingPanelId, string> = {
   setPocket: 'Pocket',
   setHat: 'Hat',
   setBlock: 'Block',
   setTag: 'Tag',
   setAnalytic: 'Analytic',
   setUndertag: 'Undertag',
+  applyCite: 'Cite',
 };
 const formattingPanelEl = document.getElementById('formatting-panel') as HTMLElement | null;
-const formattingPanelBtnRefs: { id: StructuralRibbonCommandId; btn: HTMLButtonElement }[] = [];
-for (const [id, btnId] of Object.entries(FORMATTING_PANEL_BUTTONS) as [StructuralRibbonCommandId, string][]) {
+const citePanelEl = document.getElementById('cite-panel') as HTMLElement | null;
+const formattingPanelBtnRefs: { id: FormattingPanelId; btn: HTMLButtonElement }[] = [];
+for (const [id, btnId] of Object.entries(FORMATTING_PANEL_BUTTONS) as [FormattingPanelId, string][]) {
   const btn = document.getElementById(btnId) as HTMLButtonElement | null;
   if (!btn) continue;
   const label = RIBBON_COMMAND_LABELS[id];
@@ -123,6 +128,10 @@ function applyFormattingPanel(mode: FormattingPanelMode, preview: boolean): void
   if (!formattingPanelEl) return;
   formattingPanelEl.classList.toggle('hidden', mode === 'hidden');
   formattingPanelEl.classList.toggle('style-preview', preview);
+  if (citePanelEl) {
+    citePanelEl.classList.toggle('hidden', mode === 'hidden');
+    citePanelEl.classList.toggle('style-preview', preview);
+  }
   for (const { id, btn } of formattingPanelBtnRefs) {
     const keyDisplay = formatKeyForDisplay(DEFAULT_RIBBON_KEYS[id]);
     const shortLabel = FORMATTING_PANEL_SHORT_LABEL[id];
@@ -176,11 +185,12 @@ function applyDisplayTypography(t: DisplayTypography): void {
   editorEl.classList.toggle('pmd-undertag-italic', t.undertagItalic);
   editorEl.classList.toggle('pmd-undertag-bold', t.undertagBold);
   editorEl.style.setProperty('--pmd-emphasis-box-size', `${t.emphasisBoxSize}pt`);
-  // Mirror the undertag flags to documentElement so the ribbon's
+  // Mirror the undertag/cite flags to documentElement so the ribbon's
   // formatting-panel preview (which lives outside #editor) can react
   // to the same settings.
   document.documentElement.classList.toggle('pmd-undertag-italic', t.undertagItalic);
   document.documentElement.classList.toggle('pmd-undertag-bold', t.undertagBold);
+  document.documentElement.classList.toggle('pmd-cite-underlined', t.citeUnderlined);
 }
 
 /**
@@ -352,6 +362,7 @@ function mountView(doc: PMNode): void {
       keymap(baseKeymap),
       readModePlugin,
       absorbPlugin,
+      citeClassifierPlugin,
       fontSizeClassPlugin,
     ],
   });

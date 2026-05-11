@@ -324,18 +324,19 @@ export const nodes: { [name: string]: NodeSpec } = {
 
   /**
    * An analytic-rooted unit, peer to `card`. Required analytic, optional
-   * undertag(s), zero+ body paragraphs. Drags as a unit. Real usage is
-   * typically just the analytic with no body, but the schema allows
-   * multi-paragraph analytics for parity with cards.
-   *
-   * Note: no cite_paragraph slot — analytics are commentary, not
-   * external evidence with a citation.
+   * undertag(s), zero+ body paragraphs, and (since the cite-paste
+   * simplification) cite_paragraph too. Cite paragraphs aren't a
+   * conventional part of an analytic — analytics are commentary, not
+   * external evidence — but allowing them here keeps cite-paste
+   * uniform across card and analytic_unit destinations and avoids
+   * forced new-card creation when the user just wants a cite below
+   * an analytic's body. Drags as a unit.
    */
   analytic_unit: {
     // Loosened the same way `card` was — see the card content
     // expression's comment, including the rationale for putting
     // `card_body` first in the alternation.
-    content: 'analytic (card_body | undertag)*',
+    content: 'analytic (card_body | undertag | cite_paragraph)*',
     defining: true,
     isolating: true,
     parseDOM: [{ tag: 'div.pmd-analytic-unit' }],

@@ -71,10 +71,10 @@ describe('importer — paragraph kinds', () => {
 });
 
 describe('importer — card grouping', () => {
-  it('groups Tag + Normal into a card with cite_paragraph', () => {
+  it('classifies Normals after a Tag by cite_mark presence: cite-styled → cite_paragraph, plain → card_body', () => {
     const xml = bodyXml(`
       <w:p><w:pPr><w:pStyle w:val="Heading4"/></w:pPr><w:r><w:t>Tag text</w:t></w:r></w:p>
-      <w:p><w:r><w:t>Author 2024, Source</w:t></w:r></w:p>
+      <w:p><w:r><w:rPr><w:rStyle w:val="Style13ptBold"/></w:rPr><w:t>Author 2024, Source</w:t></w:r></w:p>
       <w:p><w:r><w:t>Body text.</w:t></w:r></w:p>
     `);
     const doc = importDoc(xml);
@@ -86,6 +86,20 @@ describe('importer — card grouping', () => {
     expect(card.child(1).textContent).toBe('Author 2024, Source');
     expect(card.child(2).type.name).toBe('card_body');
     expect(card.child(2).textContent).toBe('Body text.');
+  });
+
+  it('classifies multiple cite-styled Normals as multiple cite_paragraphs', () => {
+    const xml = bodyXml(`
+      <w:p><w:pPr><w:pStyle w:val="Heading4"/></w:pPr><w:r><w:t>Tag</w:t></w:r></w:p>
+      <w:p><w:r><w:rPr><w:rStyle w:val="Style13ptBold"/></w:rPr><w:t>Cite 1</w:t></w:r></w:p>
+      <w:p><w:r><w:rPr><w:rStyle w:val="Style13ptBold"/></w:rPr><w:t>Cite 2</w:t></w:r></w:p>
+      <w:p><w:r><w:t>Body</w:t></w:r></w:p>
+    `);
+    const doc = importDoc(xml);
+    const card = doc.firstChild!;
+    const types: string[] = [];
+    card.forEach((c) => types.push(c.type.name));
+    expect(types).toEqual(['tag', 'cite_paragraph', 'cite_paragraph', 'card_body']);
   });
 
   it('handles a card with just a tag (no body)', () => {
@@ -114,7 +128,7 @@ describe('importer — card grouping', () => {
     const xml = bodyXml(`
       <w:p><w:pPr><w:pStyle w:val="Heading4"/></w:pPr><w:r><w:t>Tag text</w:t></w:r></w:p>
       <w:p><w:pPr><w:pStyle w:val="Undertag"/></w:pPr><w:r><w:t>Sub-tag note</w:t></w:r></w:p>
-      <w:p><w:r><w:t>Author 2024</w:t></w:r></w:p>
+      <w:p><w:r><w:rPr><w:rStyle w:val="Style13ptBold"/></w:rPr><w:t>Author 2024</w:t></w:r></w:p>
       <w:p><w:r><w:t>Body</w:t></w:r></w:p>
     `);
     const doc = importDoc(xml);
@@ -139,7 +153,8 @@ describe('importer — card grouping', () => {
     expect(card.child(0).type.name).toBe('tag');
     expect(card.child(1).type.name).toBe('undertag');
     expect(card.child(2).type.name).toBe('undertag');
-    expect(card.child(3).type.name).toBe('cite_paragraph');
+    // Body has no cite_mark, so it's card_body (not cite_paragraph).
+    expect(card.child(3).type.name).toBe('card_body');
   });
 
   it('handles in-card analytic between tag and body', () => {
@@ -357,7 +372,10 @@ describe('round-trip: import → export → import', () => {
       schema.nodes['block']!.create({ id: '33333333-3333-3333-3333-333333333333' }, schema.text('Block')),
       schema.nodes['card']!.create(null, [
         schema.nodes['tag']!.create({ id: '44444444-4444-4444-4444-444444444444' }, schema.text('Tag')),
-        schema.nodes['cite_paragraph']!.create(null, schema.text('Author 2024')),
+        schema.nodes['cite_paragraph']!.create(
+          null,
+          schema.text('Author 2024', [schema.marks['cite_mark']!.create()]),
+        ),
         schema.nodes['card_body']!.create(null, schema.text('Body')),
       ]),
     ]);

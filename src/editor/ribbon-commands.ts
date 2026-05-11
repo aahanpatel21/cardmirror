@@ -33,7 +33,7 @@
  * cite-slot of a card rather than the anchor of an analytic_unit.
  */
 
-import { Fragment, type Node as PMNode } from 'prosemirror-model';
+import { Fragment, type Node as PMNode, type ResolvedPos } from 'prosemirror-model';
 import { Selection, TextSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state';
 import { toggleMark } from 'prosemirror-commands';
 import { schema } from '../schema/index.js';
@@ -316,10 +316,10 @@ function convertCardToAnalyticUnit(
 
 function toAnalyticUnitChild(child: PMNode): PMNode {
   const t = child.type.name;
-  if (t === 'card_body' || t === 'undertag') return child;
-  // analytic_unit content = analytic (card_body | undertag)*; fold any
-  // cite_paragraph or analytic (cite-slot) child into card_body so the
-  // text comes along even though the styling can't.
+  if (t === 'card_body' || t === 'undertag' || t === 'cite_paragraph') return child;
+  // analytic_unit content = analytic (card_body | undertag | cite_paragraph)*;
+  // a stray analytic (from a card's cite-slot) folds into card_body so
+  // the text comes along.
   return schema.nodes['card_body']!.create(null, child.content);
 }
 
@@ -423,6 +423,197 @@ function dissolveContainerToHeading(
   tr = tr.setSelection(TextSelection.create(tr.doc, cursorPos));
   dispatch(tr.scrollIntoView());
   return true;
+}
+
+/**
+ * Verbatim's CopyPreviousCite, reframed for our schema.
+ *
+ * Source: cite_paragraph nodes whose end position is strictly before
+ * the cursor, scoped first to the cursor's enclosing card. If that
+ * yields nothing, walk doc-level siblings backward until we find a
+ * card whose children include at least one cite_paragraph; take all
+ * of that card's cite_paragraphs. Whitespace-only cites still count.
+ *
+ * Destination:
+ *   - If the cursor is inside a card and its current paragraph is an
+ *     EMPTY (or whitespace-only) card_body / cite_paragraph / undertag,
+ *     REPLACE that paragraph with the cites.
+ *   - If the cursor is inside a card otherwise (tag / non-empty body /
+ *     empty heading-like child), INSERT the cites as siblings right
+ *     after the cursor's paragraph.
+ *   - If the cursor is NOT inside a card (doc-level paragraph, heading,
+ *     analytic_unit), wrap the cites in a new card `[empty tag, cites]`
+ *     and insert that card at doc level immediately after the cursor's
+ *     doc-level ancestor. Cursor lands in the empty tag so the user
+ *     can immediately type the new tag.
+ *
+ * The "in card" cases place the cursor at the end of the last inserted
+ * cite_paragraph so the user can continue from there.
+ */
+/**
+ * F8 — apply the `cite_mark` mark to text in the selection, but only
+ * to characters that live inside body-like textblocks. Structural
+ * textblocks (tag / analytic / pocket / hat / block) and undertags
+ * are skipped so a selection that spans them only marks the body
+ * portions; the structural slots are left untouched.
+ *
+ * No-op when the selection is collapsed.
+ *
+ * Apply-only (not toggle): re-running on the same range is idempotent.
+ */
+const CITE_SKIP_BLOCKS = new Set(['tag', 'analytic', 'pocket', 'hat', 'block', 'undertag']);
+
+export function applyCite(): Command {
+  return (state, dispatch) => {
+    const sel = state.selection;
+    if (sel.empty) return false;
+    const citeType = schema.marks['cite_mark'];
+    if (!citeType) return false;
+
+    // Collect ranges first; only dispatch if we'd actually mark anything.
+    const ranges: { from: number; to: number }[] = [];
+    state.doc.nodesBetween(sel.from, sel.to, (node, pos) => {
+      if (!node.isTextblock) return true;
+      if (CITE_SKIP_BLOCKS.has(node.type.name)) return false;
+      const tbStart = pos + 1;
+      const tbEnd = pos + node.nodeSize - 1;
+      const applyFrom = Math.max(tbStart, sel.from);
+      const applyTo = Math.min(tbEnd, sel.to);
+      if (applyFrom < applyTo) ranges.push({ from: applyFrom, to: applyTo });
+      return false;
+    });
+    if (ranges.length === 0) return false;
+    if (!dispatch) return true;
+
+    const tr = state.tr;
+    const mark = citeType.create();
+    for (const r of ranges) tr.addMark(r.from, r.to, mark);
+    dispatch(tr);
+    return true;
+  };
+}
+
+export function copyPreviousCite(): Command {
+  return (state, dispatch) => {
+    // Collapse a non-empty selection to its start position.
+    const $from = state.doc.resolve(state.selection.from);
+
+    const cites = findPreviousCites(state.doc, $from);
+    if (cites.length === 0) return false;
+    if (!dispatch) return true;
+
+    const dest = computeCitePasteLocation($from);
+    const insertedCites = cites.map((c) => c.copy(c.content));
+    const content = Fragment.fromArray(insertedCites);
+    // Cursor at end of last cite's content (one position before the
+    // last cite's closing token).
+    const cursorPos = dest.from + content.size - 1;
+
+    let tr = state.tr.replaceWith(dest.from, dest.to, content);
+    try {
+      tr = tr.setSelection(TextSelection.create(tr.doc, cursorPos));
+    } catch {
+      tr = tr.setSelection(Selection.near(tr.doc.resolve(cursorPos)));
+    }
+    dispatch(tr.scrollIntoView());
+    return true;
+  };
+}
+
+function findPreviousCites(doc: PMNode, $from: ResolvedPos): PMNode[] {
+  // Phase 1: look in the cursor's enclosing card for cites whose end
+  // is before the cursor.
+  let cardDepth = -1;
+  for (let d = $from.depth; d >= 0; d--) {
+    if ($from.node(d).type.name === 'card') {
+      cardDepth = d;
+      break;
+    }
+  }
+  if (cardDepth >= 0) {
+    const card = $from.node(cardDepth);
+    const cardStart = $from.before(cardDepth);
+    const cursorPos = $from.pos;
+    const here: PMNode[] = [];
+    let childStart = cardStart + 1;
+    card.forEach((child) => {
+      const childEnd = childStart + child.nodeSize;
+      if (child.type.name === 'cite_paragraph' && childEnd <= cursorPos) {
+        here.push(child);
+      }
+      childStart = childEnd;
+    });
+    if (here.length > 0) return here;
+  }
+
+  // Phase 2: walk doc-level children backward (from the cursor's
+  // enclosing card if any, else from the cursor itself). A "source"
+  // is either a card whose children include at least one
+  // cite_paragraph OR a run of consecutive free-floating
+  // cite_paragraphs at doc level. The most recent source (in
+  // document order) wins.
+  const limitPos = cardDepth >= 0 ? $from.before(cardDepth) : $from.pos;
+  let bestCites: PMNode[] = [];
+  let currentGroup: PMNode[] = [];
+  let pos = 0;
+  doc.forEach((child) => {
+    const childEnd = pos + child.nodeSize;
+    pos = childEnd;
+    if (childEnd > limitPos) return;
+    const t = child.type.name;
+    if (t === 'cite_paragraph') {
+      currentGroup.push(child);
+      return;
+    }
+    // Any non-cite_paragraph node breaks a free-floating cite run.
+    if (currentGroup.length > 0) {
+      bestCites = currentGroup;
+      currentGroup = [];
+    }
+    if (t === 'card') {
+      const found: PMNode[] = [];
+      child.forEach((g) => {
+        if (g.type.name === 'cite_paragraph') found.push(g);
+      });
+      if (found.length > 0) bestCites = found;
+    }
+  });
+  if (currentGroup.length > 0) bestCites = currentGroup;
+  return bestCites;
+}
+
+/** Body-like textblock types whose empty (or whitespace-only) instances
+ *  are replaced by the cite rather than left behind. Headings
+ *  (pocket/hat/block/tag/analytic) are not in this set — their empty
+ *  form is a meaningful slot the user explicitly created. */
+const REPLACE_IF_EMPTY = new Set(['paragraph', 'card_body', 'cite_paragraph', 'undertag']);
+
+function isBlankParagraph(node: PMNode): boolean {
+  return /^\s*$/.test(node.textContent);
+}
+
+interface CitePasteLocation {
+  from: number;
+  to: number;
+}
+
+/**
+ * Where to drop the cite content. With cite_paragraph now legal in
+ * every textblock-holding parent we care about (doc / card /
+ * analytic_unit), the rule is uniform:
+ *   - If the cursor's paragraph is an empty body-like slot, replace it.
+ *   - Otherwise, insert as a sibling immediately after the cursor's
+ *     paragraph in whatever container that paragraph lives in.
+ */
+function computeCitePasteLocation($from: ResolvedPos): CitePasteLocation {
+  if ($from.depth < 1) return { from: 0, to: 0 };
+  const para = $from.parent;
+  const paraDepth = $from.depth;
+  if (REPLACE_IF_EMPTY.has(para.type.name) && isBlankParagraph(para)) {
+    return { from: $from.before(paraDepth), to: $from.after(paraDepth) };
+  }
+  const insertPos = $from.after(paraDepth);
+  return { from: insertPos, to: insertPos };
 }
 
 function liftCardChild(child: PMNode): PMNode {
@@ -640,7 +831,9 @@ export type StructuralRibbonCommandId =
 export type RibbonCommandId =
   | StructuralRibbonCommandId
   | 'toggleBold'
-  | 'toggleItalic';
+  | 'toggleItalic'
+  | 'applyCite'
+  | 'copyPreviousCite';
 
 export const STRUCTURAL_RIBBON_COMMAND_IDS: StructuralRibbonCommandId[] = [
   'setPocket',
@@ -655,6 +848,8 @@ export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
   ...STRUCTURAL_RIBBON_COMMAND_IDS,
   'toggleBold',
   'toggleItalic',
+  'applyCite',
+  'copyPreviousCite',
 ];
 
 export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
@@ -666,6 +861,8 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   setUndertag: 'Apply Undertag style',
   toggleBold: 'Bold',
   toggleItalic: 'Italic',
+  applyCite: 'Apply Cite style',
+  copyPreviousCite: 'Copy previous cite',
 };
 
 /**
@@ -682,6 +879,8 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string> = {
   setUndertag: 'Mod-F8',
   toggleBold: 'Mod-b',
   toggleItalic: 'Mod-i',
+  applyCite: 'F8',
+  copyPreviousCite: 'Alt-F8',
 };
 
 const COMMAND_FACTORIES: Record<RibbonCommandId, () => Command> = {
@@ -693,6 +892,8 @@ const COMMAND_FACTORIES: Record<RibbonCommandId, () => Command> = {
   setUndertag: () => setUndertag(),
   toggleBold: () => toggleMark(schema.marks['bold']!),
   toggleItalic: () => toggleMark(schema.marks['italic']!),
+  applyCite: () => applyCite(),
+  copyPreviousCite: () => copyPreviousCite(),
 };
 
 /**

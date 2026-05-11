@@ -2,11 +2,16 @@
  * Card-body absorption plugin.
  *
  * Enforces the editing-semantics rule (ARCHITECTURE.md §14.3): a
- * `paragraph` at doc level whose previous sibling is a `card` or
- * `analytic_unit` is auto-absorbed as a `card_body` appended to that
- * container's content. To bound a region of loose paragraphs after a
- * card, the user inserts a heading (Pocket / Hat / Block) — anything
- * non-paragraph, non-card breaks the absorption zone.
+ * `paragraph` (or `cite_paragraph`) at doc level whose previous
+ * sibling is a `card` or `analytic_unit` is auto-absorbed into that
+ * container. To bound a region of loose paragraphs after a card,
+ * the user inserts a heading (Pocket / Hat / Block) — anything
+ * non-absorbable breaks the absorption zone.
+ *
+ * Absorption type mapping:
+ *   - paragraph → card_body
+ *   - cite_paragraph → cite_paragraph (valid as a child of both
+ *     `card` and `analytic_unit`).
  *
  * Cases preserved (no absorption):
  *   - Block / Hat / Pocket → paragraph → tag        (legitimate bridge text)
@@ -40,32 +45,29 @@ export const absorbPlugin: Plugin = new Plugin({
 
 /**
  * Walk the doc's top-level children and produce a new Fragment with
- * loose paragraphs absorbed into preceding card / analytic_unit
- * siblings. Returns `null` if no changes were necessary, so callers can
- * skip dispatching a no-op transaction.
+ * loose paragraphs / cite_paragraphs absorbed into preceding card /
+ * analytic_unit siblings. Returns `null` if no changes were necessary,
+ * so callers can skip dispatching a no-op transaction.
  */
 export function absorbedDocChildren(doc: PMNode): Fragment | null {
   const out: PMNode[] = [];
   let absorbing: PMNode | null = null;
-  let absorbedParagraphs: PMNode[] = [];
+  let absorbed: PMNode[] = [];
   let modified = false;
 
   function flush(): void {
     if (absorbing === null) return;
-    if (absorbedParagraphs.length === 0) {
+    if (absorbed.length === 0) {
       out.push(absorbing);
     } else {
-      const cardBodies = absorbedParagraphs.map((p) =>
-        schema.nodes['card_body']!.create(null, p.content),
-      );
       const merged = absorbing.copy(
-        absorbing.content.append(Fragment.fromArray(cardBodies)),
+        absorbing.content.append(Fragment.fromArray(absorbed)),
       );
       out.push(merged);
       modified = true;
     }
     absorbing = null;
-    absorbedParagraphs = [];
+    absorbed = [];
   }
 
   doc.forEach((child) => {
@@ -73,12 +75,25 @@ export function absorbedDocChildren(doc: PMNode): Fragment | null {
     if (ABSORBING_TYPES.has(t)) {
       flush();
       absorbing = child;
-    } else if (t === 'paragraph' && absorbing !== null) {
-      absorbedParagraphs.push(child);
-    } else {
-      flush();
-      out.push(child);
+      return;
     }
+    if (absorbing === null) {
+      out.push(child);
+      return;
+    }
+    if (t === 'paragraph') {
+      absorbed.push(schema.nodes['card_body']!.create(null, child.content));
+      return;
+    }
+    if (t === 'cite_paragraph') {
+      // cite_paragraph is valid in both card and analytic_unit
+      // content expressions, so absorb regardless of container type.
+      absorbed.push(child);
+      return;
+    }
+    // Anything else breaks the absorption zone.
+    flush();
+    out.push(child);
   });
   flush();
 
