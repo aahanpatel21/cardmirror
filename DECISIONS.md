@@ -552,3 +552,54 @@ broken in that one case than corrupt structure.
 Symmetric with backspace-into-body-of-prev: both refuse to cross a
 non-blank head boundary destructively, and both *do* cross a blank-
 head boundary by collapsing it.
+
+## 2026-05-10: Backspace at start of the first body slot
+
+Cursor at offset 0 of a card / analytic_unit's first body slot
+(typically a cite_paragraph right after the tag, but the rule covers
+any body type there — card_body, undertag, in-card analytic):
+
+- Head is blank → drop the head, merge the container's surviving
+  children into the previous doc-level entity (same as the empty-head
+  merge initiated from the head side).
+- Head is non-empty → no-op, swallow the event.
+
+The non-empty case explicitly refuses ProseMirror's default
+`joinBackward`, which would merge the body's content into the tag
+and silently mix cite-styled / body text into the heading. The
+classifier already handles cite-paragraph identity (any paragraph
+with `cite_mark` is a `cite_paragraph`), so the only thing missing
+was preventing this destructive default at the boundary.
+
+Bodies that aren't the first slot (cursor at start of body2 in
+`[tag, body1, body2]`) fall through to default `joinBackward`, which
+correctly merges them with their previous sibling in the same
+container — that's the same-container case that doesn't cross any
+tag/heading boundary.
+
+Note on the "cite paragraph — enter inside / enter at end" subset of
+the same backlog question: those follow from the classifier rule
+without new keymap work. Enter splits a paragraph; both halves keep
+their inline content, and the classifier re-types each based on
+cite_mark presence on the next dispatch cycle. A split where the
+post-cursor half has no cite_mark demotes that half to card_body;
+where it does, both halves are cite_paragraph. No special-casing
+needed.
+
+The undertag analog of the same question is also resolved without
+new code:
+
+- Enter at end of an undertag → ProseMirror's `splitBlock` creates a
+  new node of the parent's `defaultBlockAt` type. The `card` content
+  expression `tag (card_body | undertag | cite_paragraph | analytic)*`
+  picks `card_body` first, so the new sibling is a `card_body` —
+  the "escape into body" option. The classifier doesn't interfere
+  (new body is empty, no cite_mark).
+- Backspace at start of an undertag in the first body slot →
+  `backspaceAtFirstBodyStart` (above) applies the same tag-boundary
+  protection as it does for cite_paragraph / card_body.
+- Backspace at start of an undertag in any other position → default
+  `joinBackward` folds the undertag's content into the previous body
+  in the same container, losing the undertag wrapper. That's the
+  natural "I'm done with this annotation, merge it into the body
+  above" gesture; we leave the default in place.

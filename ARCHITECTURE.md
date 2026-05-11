@@ -683,12 +683,14 @@ proposal) when its area becomes the focus of editor work.
 
 **Same matrix for other node types:**
 
-- Cite paragraph — backspace at start (merge into tag?), enter inside
-  cite (split into two cites? break to body?), enter at end (new body?
-  new cite?).
-- Undertag — backspace at start (merge into tag? into previous
-  undertag?), enter at end (new undertag? escape into body? break out
-  of card?).
+(Undertag is fully covered: Backspace at start of an undertag in the
+first body slot is handled by the §14.3 "first body slot" rule;
+Backspace at start of an undertag elsewhere falls through to
+within-container `joinBackward`, which folds the undertag into the
+previous body — the user's "escape this annotation" gesture. Enter
+at end creates a new `card_body` via ProseMirror's `defaultBlockAt`
+on the card's content expression. Cite_paragraph mirror cases follow
+from the cite-classifier — see the rule below.)
 
 **Selection-spanning operations:**
 
@@ -836,6 +838,28 @@ tag. Merges the two tags into one; the resulting card retains the
 later card's content (cite/body/etc.). When the next paragraph is
 anything else (cite, body, undertag, heading), the operation is
 prohibited.
+
+##### Backspace at the start of the first body slot `[decided]`
+
+Cursor at offset 0 of the FIRST body slot in a card or analytic_unit
+(the body whose previous sibling is the container's anchor — typically
+a `cite_paragraph` immediately after the tag, but the rule applies to
+any body type):
+
+- If the head is blank: drop the head and merge the container's
+  surviving children into whatever doc-level node sits before it.
+  Same cross-type folding as the empty-head merge initiated from the
+  head side.
+- If the head is non-empty: no-op, swallow the event.
+
+The non-empty case explicitly refuses ProseMirror's default
+`joinBackward`, which would merge the body's inline content into the
+tag — silently mixing cite-styled or body text into the heading.
+
+Bodies that aren't the first slot (cursor at start of `body2` in
+`[tag, body1, body2]`) fall through to the default — `joinBackward`
+correctly joins them with their previous sibling in the same
+container.
 
 ##### Forward Delete at the end of the last body in a container `[decided]`
 

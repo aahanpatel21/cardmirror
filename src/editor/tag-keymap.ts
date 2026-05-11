@@ -320,38 +320,58 @@ function tryMergeEmptyHeadIntoPrev(
   dispatch: ((tr: Transaction) => void) | undefined,
   bias: 1 | -1,
 ): boolean {
-  if (!isBlank(ctx.head)) return false;
-  if (ctx.container.childCount <= 1) return false;
+  return performEmptyHeadMerge(
+    state, dispatch, ctx.container, ctx.containerFrom, ctx.containerTo, bias,
+  );
+}
+
+/**
+ * The actual merge: drop the (blank) head, migrate the container's
+ * surviving children either into the previous doc-level card /
+ * analytic_unit (appended) or to doc level (lifted). Returns true on
+ * success / dry-run, false if there's nothing to merge.
+ *
+ * Callers ensure the head is blank and there's at least one
+ * surviving child before invoking — those preconditions guard the
+ * rule, not the mechanic.
+ */
+function performEmptyHeadMerge(
+  state: EditorState,
+  dispatch: ((tr: Transaction) => void) | undefined,
+  container: PMNode,
+  containerFrom: number,
+  containerTo: number,
+  bias: 1 | -1,
+): boolean {
+  const head = container.firstChild;
+  if (!head || !isBlank(head)) return false;
+  if (container.childCount <= 1) return false;
 
   if (!dispatch) return true;
 
   const survivors: PMNode[] = [];
-  ctx.container.forEach((child, _o, idx) => {
+  container.forEach((child, _o, idx) => {
     if (idx > 0) survivors.push(child);
   });
 
-  const $beforeContainer = state.doc.resolve(ctx.containerFrom);
+  const $beforeContainer = state.doc.resolve(containerFrom);
   const prev = $beforeContainer.nodeBefore;
 
   let tr = state.tr;
   let mergePoint: number;
 
   if (prev && CARD_NODE_TYPES.has(prev.type.name)) {
-    const prevContainerFrom = ctx.containerFrom - prev.nodeSize;
+    const prevContainerFrom = containerFrom - prev.nodeSize;
     const adjusted = prev.type.name === 'analytic_unit'
       ? survivors.map(toAnalyticUnitChild)
       : survivors;
     const newPrev = prev.copy(prev.content.append(Fragment.fromArray(adjusted)));
-    tr = tr.replaceWith(prevContainerFrom, ctx.containerTo, newPrev);
-    // Merge boundary: inside the merged prev, right between its
-    // original content and the appended survivors.
+    tr = tr.replaceWith(prevContainerFrom, containerTo, newPrev);
     mergePoint = prevContainerFrom + 1 + prev.content.size;
   } else {
-    // No mergeable container before — lift survivors to doc level,
-    // replacing the empty-headed container.
     const lifted = survivors.map(liftSurvivorToDocLevel);
-    tr = tr.replaceWith(ctx.containerFrom, ctx.containerTo, Fragment.fromArray(lifted));
-    mergePoint = ctx.containerFrom;
+    tr = tr.replaceWith(containerFrom, containerTo, Fragment.fromArray(lifted));
+    mergePoint = containerFrom;
   }
 
   tr = tr.setSelection(Selection.near(tr.doc.resolve(mergePoint), bias));
@@ -477,6 +497,66 @@ export const deleteAtTagEnd: Command = (state, dispatch) => {
   const tr = mergeAdjacentTagContainers(state, ctx.containerFrom, ctx.containerTo);
   if (!tr) return true;
   dispatch(tr.scrollIntoView());
+  return true;
+};
+
+/**
+ * Backspace at the start of the FIRST body slot of a card or
+ * analytic_unit (the body whose previous sibling is the container's
+ * anchor — typically a `cite_paragraph` right after the tag, but the
+ * rule applies to any body type there).
+ *
+ * Word's default `joinBackward` would merge the body's inline
+ * content into the tag — silently mixing cite-styled text or body
+ * text into the heading. We refuse that:
+ *
+ *   - If the head is blank (whitespace-only): drop the head and
+ *     merge the container's surviving children into the previous
+ *     doc-level entity. Mirror of the empty-tag merge initiated
+ *     from the body side. Same cross-type folding (analytic in a
+ *     card's cite-slot → card_body when merging into an
+ *     analytic_unit).
+ *   - If the head is non-empty: no-op, swallow the event.
+ *
+ * Bodies that aren't the first (cursor at start of body2 in
+ * `[tag, body1, body2]`) fall through — default `joinBackward`
+ * correctly joins them with their previous sibling in the same
+ * container.
+ */
+export const backspaceAtFirstBodyStart: Command = (state, dispatch) => {
+  if (!state.selection.empty) return false;
+  const $from = state.selection.$from;
+  if ($from.parentOffset !== 0) return false;
+
+  let containerDepth = -1;
+  for (let d = $from.depth; d >= 0; d--) {
+    if (CARD_NODE_TYPES.has($from.node(d).type.name)) {
+      containerDepth = d;
+      break;
+    }
+  }
+  if (containerDepth < 0) return false;
+  const childDepth = containerDepth + 1;
+  if ($from.depth < childDepth) return false;
+
+  const container = $from.node(containerDepth);
+  const cursorChild = $from.node(childDepth);
+  // Anchor handler covers cursor-in-head; bail.
+  if (HEAD_NODE_TYPES.has(cursorChild.type.name)) return false;
+  // Only the first body slot — i.e., previous sibling is the anchor.
+  let cursorIdx = -1;
+  container.forEach((c, _o, i) => {
+    if (cursorIdx === -1 && c === cursorChild) cursorIdx = i;
+  });
+  if (cursorIdx !== 1) return false;
+
+  const containerFrom = $from.before(containerDepth);
+  const containerTo = $from.after(containerDepth);
+
+  if (performEmptyHeadMerge(state, dispatch, container, containerFrom, containerTo, -1)) {
+    return true;
+  }
+  // Non-empty head — refuse default joinBackward.
   return true;
 };
 

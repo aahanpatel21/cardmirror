@@ -9,6 +9,7 @@ import type { Command } from 'prosemirror-state';
 import { schema, newHeadingId } from '../../src/schema/index.js';
 import {
   backspaceAtTagStart,
+  backspaceAtFirstBodyStart,
   deleteAtTagEnd,
   deleteAtContainerEnd,
   enterMidTag,
@@ -866,5 +867,130 @@ describe('deleteAtContainerEnd', () => {
     // Not applicable (not last child) → returns false → apply gets null.
     expect(next).toBe(null);
     expect(state.doc.childCount).toBe(2);
+  });
+});
+
+// ----- Backspace at start of first body slot -----
+
+describe('backspaceAtFirstBodyStart', () => {
+  function citeText(text: string): import('prosemirror-model').Node {
+    return schema.text(text, [schema.marks['cite_mark']!.create()]);
+  }
+  function citeOf(text: string): import('prosemirror-model').Node {
+    return schema.nodes['cite_paragraph']!.create(null, citeText(text));
+  }
+  function startOfFirstBody(
+    doc: ReturnType<typeof makeDoc>,
+    containerIdx = 0,
+  ): number {
+    let count = 0;
+    let pos = -1;
+    doc.descendants((n, p) => {
+      if (n.type.name === 'card' || n.type.name === 'analytic_unit') {
+        if (count === containerIdx) {
+          // First body slot starts at: container start + 1 (open) + head.nodeSize
+          const head = n.firstChild!;
+          pos = p + 1 + head.nodeSize + 1; // inside body
+        }
+        count++;
+        return false;
+      }
+      return true;
+    });
+    if (pos < 0) throw new Error(`container #${containerIdx} not found`);
+    return pos;
+  }
+
+  it('no-op when cursor is at start of cite_paragraph and tag is non-empty', () => {
+    const doc = makeDoc([
+      schema.nodes['card']!.createChecked(null, [tag('TheTag'), citeOf('Author 24')]),
+    ]);
+    const state = stateWithCursor(doc, startOfFirstBody(doc));
+    const next = apply(state, backspaceAtFirstBodyStart);
+    // Returned true (handled / swallowed) without dispatching.
+    expect(next).toBe(null);
+    expect(state.doc.child(0).childCount).toBe(2);
+  });
+
+  it('empty tag + cursor at start of cite_paragraph: card merges into doc level', () => {
+    const doc = makeDoc([
+      schema.nodes['card']!.createChecked(null, [tag(''), citeOf('Author 24')]),
+    ]);
+    const state = stateWithCursor(doc, startOfFirstBody(doc));
+    const next = apply(state, backspaceAtFirstBodyStart);
+    expect(next).not.toBe(null);
+    // Empty tag + its card wrapper gone; the cite_paragraph lifted to doc level.
+    expect(next!.doc.childCount).toBe(1);
+    expect(next!.doc.firstChild!.type.name).toBe('cite_paragraph');
+    expect(next!.doc.firstChild!.textContent).toBe('Author 24');
+  });
+
+  it('empty tag + cursor at start of cite_paragraph, prev is a card: cite merges into prev card', () => {
+    const doc = makeDoc([
+      cardTagBody('PrevTag', 'PrevBody'),
+      schema.nodes['card']!.createChecked(null, [tag(''), citeOf('Author 24')]),
+    ]);
+    const state = stateWithCursor(doc, startOfFirstBody(doc, 1));
+    const next = apply(state, backspaceAtFirstBodyStart);
+    expect(next).not.toBe(null);
+    expect(next!.doc.childCount).toBe(1);
+    const card = next!.doc.firstChild!;
+    const types: string[] = [];
+    card.forEach((c) => types.push(c.type.name));
+    expect(types).toEqual(['tag', 'card_body', 'cite_paragraph']);
+    expect(card.child(0).textContent).toBe('PrevTag');
+    expect(card.child(1).textContent).toBe('PrevBody');
+    expect(card.child(2).textContent).toBe('Author 24');
+  });
+
+  it('cursor at start of body that is NOT the first body slot: returns false (default joinBackward applies)', () => {
+    const doc = makeDoc([
+      schema.nodes['card']!.createChecked(null, [
+        tag('TheTag'),
+        schema.nodes['card_body']!.create(null, schema.text('body1')),
+        schema.nodes['card_body']!.create(null, schema.text('body2')),
+      ]),
+    ]);
+    // Cursor at start of body2.
+    let pos = -1;
+    doc.descendants((n, p) => {
+      if (n.isText && n.text === 'body2') pos = p;
+      return true;
+    });
+    const state = stateWithCursor(doc, pos);
+    const next = apply(state, backspaceAtFirstBodyStart);
+    // Not applicable → returns false → apply gets null and doc is unchanged.
+    expect(next).toBe(null);
+    expect(state.doc.child(0).childCount).toBe(3);
+  });
+
+  it('also fires for an undertag in the first body slot (non-empty tag → block)', () => {
+    const doc = makeDoc([
+      schema.nodes['card']!.createChecked(null, [
+        tag('TheTag'),
+        schema.nodes['undertag']!.create(null, schema.text('a note')),
+      ]),
+    ]);
+    const state = stateWithCursor(doc, startOfFirstBody(doc));
+    const next = apply(state, backspaceAtFirstBodyStart);
+    expect(next).toBe(null); // block
+  });
+
+  it('analytic_unit: empty analytic + cursor at start of body merges into prev', () => {
+    const doc = makeDoc([
+      cardTagBody('PrevTag', 'PrevBody'),
+      schema.nodes['analytic_unit']!.createChecked(null, [
+        schema.nodes['analytic']!.create({ id: newHeadingId() }, []),
+        schema.nodes['card_body']!.create(null, schema.text('content')),
+      ]),
+    ]);
+    const state = stateWithCursor(doc, startOfFirstBody(doc, 1));
+    const next = apply(state, backspaceAtFirstBodyStart);
+    expect(next).not.toBe(null);
+    expect(next!.doc.childCount).toBe(1);
+    const card = next!.doc.firstChild!;
+    const types: string[] = [];
+    card.forEach((c) => types.push(c.type.name));
+    expect(types).toEqual(['tag', 'card_body', 'card_body']);
   });
 });

@@ -33,6 +33,7 @@ import { fontSizeClassPlugin } from './font-size-class-plugin.js';
 import { editorDragSurface } from './drag-editor-surface.js';
 import {
   backspaceAtTagStart,
+  backspaceAtFirstBodyStart,
   deleteAtTagEnd,
   deleteAtContainerEnd,
   enterMidTag,
@@ -348,7 +349,9 @@ function mountView(doc: PMNode): void {
       // These run before baseKeymap so they get first crack at
       // Backspace / Delete / Enter when the cursor is in a tag.
       keymap({
-        Backspace: backspaceAtTagStart,
+        Backspace: (state, dispatch, view) =>
+          backspaceAtTagStart(state, dispatch, view) ||
+          backspaceAtFirstBodyStart(state, dispatch, view),
         Delete: (state, dispatch, view) =>
           deleteAtTagEnd(state, dispatch, view) ||
           deleteAtContainerEnd(state, dispatch, view),
