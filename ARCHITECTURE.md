@@ -98,14 +98,28 @@ doc:           sequence of block-level kinds (flat)
 pocket:        Heading 1 paragraph (inline content, stable id)
 hat:           Heading 2 paragraph (inline content, stable id)
 block:         Heading 3 paragraph (inline content, stable id)
-card:          tag undertag* (cite_paragraph | analytic)? card_body*
-analytic_unit: analytic undertag* card_body*
-tag:           inline+      (only inside card)
-analytic:      inline+      (inside analytic_unit, or in-card cite slot)
-undertag:      inline+
-cite_paragraph, card_body: inline body paragraphs inside cards
+card:          tag (card_body | undertag | cite_paragraph | analytic)*
+analytic_unit: analytic (card_body | undertag | cite_paragraph)*
+tag:           inline*      (only inside card)
+analytic:      inline*      (inside analytic_unit, or in-card cite slot)
+undertag:      inline*
+cite_paragraph, card_body: inline body paragraphs (inside cards or
+                           analytic_units, or loose at doc level)
 paragraph:     inline*      (unstyled body text — implicit Normal)
 ```
+
+`card` and `analytic_unit` content expressions are deliberately loose
+(any body-slot type, in any order, repeated) so editing operations can
+insert / drop / re-classify children without bumping into schema
+constraints mid-edit. The importer still produces conventional shapes
+(tag, then any cite_paragraphs, then bodies, optionally with undertags
+or an analytic in a card's cite-slot); the looseness is the runtime
+contract. Round-trip is a no-op since the strict ordering is just one
+legal arrangement.
+
+`cite_paragraph` is admitted as an analytic_unit child even though
+analytics aren't conventionally citations — see the cite-handling
+section in §15 for the rationale.
 
 Notes:
 
@@ -665,48 +679,65 @@ resolved.
 
 Surfaced during the design conversation but not yet posed to
 collaborators. Each will become a `[open]` entry above (or a `[draft]`
-proposal) before the F-key style commands ship.
+proposal) when its area becomes the focus of editor work.
 
-**Mirror cases for the same actions:**
+**Mirror cases for tag-boundary actions:**
 
-- Card body — last paragraph, cursor at end, Delete forward: does it pull the next card's tag into the body (destroying the next card)?
+- Card body — last paragraph, cursor at end, Delete forward: does it
+  pull the next card's tag into the body (destroying the next card)?
 
 **Same matrix for other node types:**
 
-- Cite paragraph — backspace at start (merge into tag?), enter inside cite (split into two cites? break to body?), enter at end (new body? new cite?).
-- Undertag — backspace at start (merge into tag? into previous undertag?), enter at end (new undertag? escape into body? break out of card?).
+- Cite paragraph — backspace at start (merge into tag?), enter inside
+  cite (split into two cites? break to body?), enter at end (new body?
+  new cite?).
+- Undertag — backspace at start (merge into tag? into previous
+  undertag?), enter at end (new undertag? escape into body? break out
+  of card?).
 
 **Selection-spanning operations:**
 
-- Selection across a card boundary, then Delete: does the partially-cut card survive (schema-invalid)? Merge into the surviving card? Refuse / clamp to card boundary?
-- Paste of content containing its own headings: structure preserved? Flattened? Refused if it would break invariants?
+- Selection across a card boundary, then Delete: does the partially-
+  cut card survive (schema-invalid)? Merge into the surviving card?
+  Refuse / clamp to card boundary?
+- Paste of content containing its own headings: structure preserved?
+  Flattened? Refused if it would break invariants?
 
-**Style-apply edge cases (relevant to F-key Phase 1):**
+**Style-apply edge cases not yet covered by the shipped commands:**
 
-- F7 Tag with cursor in a card body — split the card so the body becomes a new card's tag? Refuse? Wrap the paragraph in a new card?
-- F4 Pocket with cursor inside a card's tag — lift the tag out and decompose the card? Refuse?
-- F4–F7 with multi-paragraph selection — apply to every paragraph (Word's behavior)? Just the first? Refuse?
-- F12 Clear with cursor in a tag — strip the card wrap and downgrade to body? Just downgrade the tag (leaving the card invalid)? Refuse?
-- F8 Cite / F9 Underline / F10 Emphasis / F11 Highlight inside a heading — should heading paragraphs allow inline emphasis marks at all, or only body content?
+- F12 Clear with cursor in a tag — strip the card wrap and downgrade
+  to body? Just downgrade the tag (leaving the card invalid)? Refuse?
+- F9 Underline / F10 Emphasis / F11 Highlight inside a heading —
+  should heading paragraphs allow inline emphasis marks at all, or
+  only body content?
 
 **Outline navigation:**
 
-- Tab / Shift-Tab on a heading — promote/demote (Pocket↔Hat↔Block↔Tag)? Demoting Block→Tag would need to wrap in a card.
+- Tab / Shift-Tab on a heading — promote/demote (Pocket↔Hat↔Block↔Tag)?
+  Demoting Block→Tag would need to wrap in a card.
 
 **Empty/degenerate states:**
 
-- User deletes all text inside a tag — does the empty tag persist (with the card)? Auto-collapse the card? Convert to body paragraph?
-- User deletes all text inside a Pocket/Hat/Block — does an empty heading persist?
+- User deletes all text inside a Pocket/Hat/Block — does an empty
+  heading persist? (The tag case is already covered: an empty tag is
+  treated as a merge boundary — see "Empty tag with surviving siblings"
+  in §14.3.)
 
 ### 14.3 Decided rules
 
-#### Paragraph absorption after card / analytic_unit `[decided]`
+#### Paragraph and cite_paragraph absorption after card / analytic_unit `[decided]`
 
-A `paragraph` at doc level whose immediate previous sibling is a `card`
-or `analytic_unit` is auto-absorbed as a `card_body` appended to that
-container's content. To bound a region of loose paragraphs after a
-card, insert a heading (Pocket / Hat / Block) — anything non-paragraph
-breaks the absorption zone.
+A `paragraph` or `cite_paragraph` at doc level whose immediate previous
+sibling is a `card` or `analytic_unit` is auto-absorbed into that
+container. Type mapping:
+
+- `paragraph` → `card_body`.
+- `cite_paragraph` → `cite_paragraph` (preserved as-is — valid in
+  both `card` and `analytic_unit` content expressions).
+
+To bound a region of loose paragraphs after a card, insert a heading
+(Pocket / Hat / Block) — anything non-absorbable breaks the
+absorption zone.
 
 Cases preserved (no absorption):
 
@@ -716,12 +747,37 @@ Cases preserved (no absorption):
 - Heading → paragraph → heading (loose paragraph between sections).
 
 Implemented as `src/editor/absorb-plugin.ts`, an `appendTransaction`
-plugin that runs after every doc-changing transaction. Matches the
-behavior the importer already produces (every Normal paragraph after a
-tag is grouped into the card as `card_body` until the next heading).
+plugin that runs after every doc-changing transaction.
 
 Rationale: see `DECISIONS.md` 2026-05-09 "Paragraph absorption rule for
-loose paragraphs after a card."
+loose paragraphs after a card" and 2026-05-10 "Cite handling
+unification."
+
+#### Cite paragraph classification (runtime invariant) `[decided]`
+
+A paragraph-like textblock's *type* tracks its inline content's cite
+state. On every dispatched transaction, `src/editor/cite-classifier-plugin.ts`
+walks the doc and:
+
+- Promotes a `card_body` (in a card or analytic_unit) or a doc-level
+  `paragraph` to `cite_paragraph` if any of its inline runs carries
+  the `cite_mark` mark.
+- Demotes a `cite_paragraph` back to `card_body` (inside a container)
+  or `paragraph` (at doc level) if no inline run carries `cite_mark`.
+
+This single bidirectional rule makes pastes, splits, F8 / inline-mark
+toggles, and other content edits keep the paragraph type consistent
+with the user's visible cite content without per-operation logic. The
+importer uses the same rule on load.
+
+`cite_paragraph` is admitted inside `analytic_unit` (alongside
+`card_body` and `undertag`) so the classifier doesn't have to special-
+case that container. Conventionally analytics don't carry citations,
+but the looser schema collapses what had become a forest of edge
+cases in the cite-paste logic and makes "any body slot can hold a
+cite" the universal rule.
+
+Rationale: see `DECISIONS.md` 2026-05-10 "Cite handling unification."
 
 #### Tag boundary editing `[decided]`
 
@@ -736,7 +792,33 @@ containing card in document order — this includes the last `card_body`
 of a preceding card, since that's the candidate for being a blank
 trailing line that the user might want to delete.
 
-##### Backspace at the start of a tag `[decided]`
+##### Empty tag-only container `[decided]`
+
+If the tag (or analytic) is empty AND it is the only child of its
+container (no body, no cite, no undertag), Backspace at the start
+*or* Delete at the end of the head deletes the whole container. If
+that would leave the doc with no children at all, the container is
+replaced by an empty paragraph so the editor still has a textblock
+for the cursor. Whitespace-only heads count as empty for this rule.
+
+##### Empty tag with surviving siblings — merge into previous `[decided]`
+
+If the tag (or analytic) is empty (or whitespace-only) AND the
+container has other children (card_body, cite_paragraph, undertag,
+or an in-card analytic), Backspace at the head's start *or* Delete
+at its end drops the empty head and migrates the container's
+remaining children into whatever doc-level node sits before it:
+
+- Previous is a card / analytic_unit → append. An analytic in a
+  card's cite-slot folds to card_body when merging into an
+  analytic_unit (no cite-slot there).
+- Previous is anything else (paragraph, heading, …) or there is no
+  previous node → lift the survivors to doc level.
+
+Cursor lands at the merge boundary: end of the preceding content
+on Backspace, start of the merged content on Delete.
+
+##### Backspace at the start of a tag (non-empty tag) `[decided]`
 
 Permitted only when the preceding paragraph is blank — delete the
 blank paragraph; the tag stays intact and the cursor remains at the
@@ -752,7 +834,7 @@ post-cursor text remains in the original card with all its existing
 content (cite, body, etc.). Both halves keep tag styling. Cursor lands
 at the start of the post-cursor (continuation) tag.
 
-##### Forward Delete at the end of a tag `[decided]`
+##### Forward Delete at the end of a tag (non-empty tag) `[decided]`
 
 Permitted only when the next paragraph in document order is also a
 tag. Merges the two tags into one; the resulting card retains the
@@ -812,21 +894,47 @@ already have (e.g., `MoveUp`/`MoveDown` are subsumed by drag-and-drop;
 `SelectHeadingAndContent` is subsumed by the navigation panel). The
 remaining commands map directly to schema transforms.
 
-Status — what's wired:
+Status — what's wired (all in `src/editor/ribbon-commands.ts`
+unless noted, all routed through a single `RibbonCommandId` registry
+so a future "Keyboard shortcuts" settings panel can rebind anything
+through one overrides surface):
 
-- **Structural-style hotkeys (F4 / F5 / F6 / F7).** Set the current
-  paragraph or heading to Pocket / Hat / Block / Tag respectively.
-  Implementation in `src/editor/ribbon-commands.ts`. Conversion rules:
-  doc-level paragraph ↔ heading is in-place; tag (inside card) and
-  analytic (inside analytic_unit) dissolve their wrapper so the
-  conversion goes through. F7 wraps in a card; on an analytic_unit
-  anchor it converts the unit to a card. Heading IDs are preserved
-  across heading↔heading conversions, minted fresh for paragraph→
-  heading.
-- Cursor in `card_body` / `cite_paragraph` / `undertag` is intentionally
-  a no-op for these hotkeys — a meaningful conversion there would have
-  to split the containing card, which we'll layer in if real usage
-  demands it.
+- **Structural-style hotkeys (F4 / F5 / F6 / F7 / Mod-F7 / Mod-F8).**
+  Set the current paragraph or heading to Pocket / Hat / Block / Tag /
+  Analytic / Undertag respectively. Conversion rules handle every
+  cursor position: doc-level paragraph ↔ heading is in-place; tag
+  (inside card) and analytic (inside analytic_unit) dissolve their
+  wrapper; card_body splits the card. Multi-paragraph selections
+  apply the target style to every touched paragraph in a single
+  rebuild. Heading IDs preserved across heading↔heading conversions.
+- **Mod-B / Mod-I.** Toggle the `bold` / `italic` direct-formatting
+  marks via `toggleMark`. Standard Word semantics.
+- **F8 — apply Cite character style.** Applies `cite_mark` to text in
+  the selection but skips structural blocks (tag, analytic, pocket,
+  hat, block, undertag); a span across a tag-bracketed body region
+  only marks the body portions. No-op on collapsed selections.
+- **Alt-F8 — Copy previous cite.** Reframed from Verbatim's
+  `CopyPreviousCite`. Source: cite_paragraphs whose end is before the
+  cursor in the cursor's enclosing card; falls back to the most
+  recent earlier source (a card with cites, or a run of free-
+  floating cite_paragraphs at doc level — whichever is most recent).
+  Destination: insert as a sibling at the cursor's paragraph level,
+  replacing the paragraph if it's an empty/whitespace-only body slot.
+  Uniform across card / analytic_unit / doc level — no new-card
+  spawning, no splitting.
+
+**Ribbon UI:** the formatting panel (3×2 grid of structural-style
+buttons) and the cite panel (single Cite button) are settings-driven:
+a `formattingPanelMode` dropdown chooses *labels / shortcuts / both /
+hidden*, and a `formattingPanelPreview` toggle controls whether the
+buttons preview the styles they apply (bold / underline / color / box,
+following per-style typography flags). Tooltips display the active
+keyboard binding using the platform's modifier glyphs.
+
+**Empty Verbatim ribbon slots:** Verbatim's F9 (Underline), F10
+(Emphasis), F11 (Highlight Yellow), F12 (Clear Formatting) and the
+Shrink / Condense / Cleanup families aren't shipped yet. The same
+registry surface will hold them when they land.
 
 ## 16. Stylepox handling
 

@@ -95,10 +95,8 @@ referenced files.
 
 ## Open questions deliberately deferred
 
-- Choice of editor framework wrapper (raw ProseMirror vs TipTap vs
-  others). Decide when we start writing code.
-- Choice of desktop framework (Tauri vs Electron). Decide when we start
-  writing code.
+- Choice of desktop framework (Tauri vs Electron). Decide when desktop
+  edition design firms up.
 - File storage model for the web edition (File System Access API vs
   cloud-backed). Decide when web edition design firms up.
 - Pilcrow round-trip strategy. Slot exists; can stub until a real doc

@@ -317,3 +317,217 @@ boundary to enforce, so the loose semantics are fine.
 
 Implementation will land separately as keymap commands; this entry
 records only the policy.
+
+## 2026-05-09: Accessibility and customization groundwork upfront
+
+Per the project owner: bake accessibility-readiness into the schema +
+CSS + settings layer now, even though no end-user accessibility UI
+ships in v0. The cost of retrofitting later is high; the cost of
+doing it on the way in is roughly zero.
+
+Concrete steps taken:
+
+- Every UI color routes through a CSS variable defined at `:root`
+  (chrome) or driven by settings (per-style document colors). Hex
+  literals in CSS files are a smell — there should be a variable for
+  it or a setting that drives one.
+- Per-style display config covers what users have most asked to
+  control (color of analytic and undertag, italic/bold flags for
+  undertag and emphasis, box thickness for emphasis). New flags are
+  one line in `DisplayTypography` + one CSS rule predicated on a
+  class on `#editor`.
+- Image `alt` is in the schema (`image.attrs.alt`) and round-trips
+  through OOXML `<wp:docPr descr="…">`. Alt-text editing UI is
+  deferred; the schema slot is already there.
+
+What's deferred but anticipated by the wiring: dark mode, high-
+contrast / colorblind palettes, dyslexia-friendly font preset,
+reduced-motion respect, screen-reader semantics polish. All of these
+are alternate values for the existing variable / setting surfaces or
+small additions to already-typed nodes.
+
+See `ARCHITECTURE.md §18` for the full inventory.
+
+## 2026-05-10: Drag-and-drop infrastructure
+
+Cross-surface drag-and-drop ships in two directions:
+
+- **Nav → editor.** Drop indicators in the editor surface render as
+  horizontal blue lines at each viable target (heading top edges +
+  end-of-doc). The drag controller hit-tests on pointermove; the
+  closest indicator within a band wins, with a fall-through to the
+  topmost/bottommost extreme so dragging into empty space below a
+  short doc snaps to the bottom.
+- **Editor → nav.** Triggered by holding the pickup modifier
+  (Ctrl+Alt+Shift on Linux/Win, Cmd+Option+Shift on Mac) — a non-
+  obvious choice because there are no free single-modifier
+  combinations Word doesn't already claim, and we need a modifier
+  the user holds while clicking to pick up a card-like unit. On
+  modifier press the cursor changes to grab, hovered containers
+  (smallest enclosing card / analytic_unit / pocket / hat / block)
+  show a dashed outline; pointerdown starts the drag.
+
+Nav-pane multi-select is level-locked: a `[tag + analytic]` selection
+is permitted because both are outline level 4, but `[tag + block]` is
+not. Lock by outline level rather than exact node type so peers can
+travel together even when they differ structurally.
+
+Auto-expand / auto-collapse: hovering a collapsed entry for 400 ms
+expands it; pointing away from an auto-expanded entry's subtree for
+400 ms re-collapses. Symmetric timers so the feel matches.
+
+CSS `zoom` on `#editor` complicates indicator positioning: child
+elements positioned in the host's local coordinate system render at
+`top * zoom` viewport pixels, so `coordsAtPos` viewport-distance has
+to be divided by the zoom factor before assignment.
+
+## 2026-05-10: Empty-tag-only container deletes; whitespace counts as empty
+
+Refines the tag-boundary rules above. If the tag (or analytic) is
+empty AND it's the only child of its container, Backspace at the
+start *or* Delete at the end of the head deletes the whole container.
+Whitespace-only heads are treated the same as truly empty ones — the
+user thinks of "blank" as the unit they're trying to remove, not the
+literal `content.size === 0` distinction.
+
+If deleting would leave the doc with no children at all, the
+container is replaced by an empty paragraph so the editor always has
+a textblock for the cursor to land in.
+
+## 2026-05-10: Verbatim ribbon — structural-style commands and registry
+
+Implements the F4–F7 / Mod-F7 / Mod-F8 / Mod-B / Mod-I / F8 / Alt-F8
+ribbon commands per Verbatim parity. All commands route through a
+single registry (`src/editor/ribbon-commands.ts`):
+
+- `StructuralRibbonCommandId` (`setPocket`, `setHat`, `setBlock`,
+  `setTag`, `setAnalytic`, `setUndertag`) — the subset rendered as
+  buttons in the formatting panel.
+- `RibbonCommandId` — a superset adding `toggleBold`, `toggleItalic`,
+  `applyCite`, `copyPreviousCite`. These are keyboard-only for now;
+  the registry shape doesn't preclude buttons later.
+- `DEFAULT_RIBBON_KEYS` — the canonical key for each ID. Verbatim's
+  hotkeys win where they exist (`F4`–`F7`, `Alt-F8`); Word's wins for
+  inline marks (`Mod-B`, `Mod-I`); we picked the rest by analogy.
+- `buildRibbonKeymap(overrides)` — produces a keymap object given
+  optional per-ID overrides. Settings UI for rebinding isn't built
+  yet, but the surface is.
+
+**Conversion rules** are intentionally context-aware:
+
+- Doc-level paragraph ↔ heading: in-place setNodeMarkup.
+- Tag (in card) / analytic (in analytic_unit): dissolve the wrapper,
+  lift body children to doc level (card_body / cite_paragraph →
+  paragraph, undertag stays, analytic → analytic_unit wrap).
+- Card_body: split the card. Cursor's body stays in the original; new
+  heading + lifted bodies become doc-level siblings.
+- Multi-paragraph selection: apply the target style to every touched
+  paragraph in a single replaceWith over the affected doc-level
+  range; cards split / dissolve as needed.
+
+`applyCite` (F8) is the exception that doesn't change paragraph
+shape — it just adds `cite_mark` to inline content in the selection,
+skipping structural blocks (tag, analytic, pocket, hat, block,
+undertag). No-op on collapsed selections. The cite-classifier plugin
+(below) then promotes the destination paragraph to `cite_paragraph`
+automatically.
+
+## 2026-05-10: Formatting panel UI
+
+A grid of structural-style buttons in the ribbon, to the right of
+Open/Save, separated by a divider. Pocket / Hat / Block / Tag /
+Analytic / Undertag in a 3×2 column-major grid. The Cite button
+sits in its own panel to the right of the formatting panel with the
+same divider treatment, set up as a 2×N grid so it aligns with the
+formatting panel's top row and so more inline-mark buttons can be
+added beside it.
+
+Two settings drive presentation:
+
+- `formattingPanelMode`: `'labels' | 'shortcuts' | 'both' | 'hidden'`.
+  Buttons show the style name, the active keyboard binding, "name ·
+  shortcut" (using the same middle-dot separator as the status-bar
+  read-time line), or are hidden entirely.
+- `formattingPanelPreview`: when on, each button previews the visual
+  treatment of the style it applies (Pocket boxed, Hat double-
+  underlined, Block underlined, Tag bold, Analytic colored, Undertag
+  italic+colored, Cite bold/underlined per settings).
+
+The undertag and cite preview rules mirror the editor's per-style
+typography flags (italic / bold / underlined) — toggling those flags
+in settings updates both the editor's rendering and the ribbon
+button's preview.
+
+mousedown handlers `preventDefault` so a button click doesn't steal
+focus from the editor — commands need to act on the live cursor's
+paragraph.
+
+## 2026-05-10: Cite handling unification
+
+Reconciles a forest of edge cases in cite-paste / cite-paragraph
+classification under a single rule. Three coordinated changes:
+
+**1. Schema:** `analytic_unit` content is loosened to
+`analytic (card_body | undertag | cite_paragraph)*`. Conventionally
+an analytic doesn't carry a citation, but the looser schema makes
+"any body slot can hold a cite" the universal rule and avoids the
+forced new-card-spawn that was the only previous fallback when the
+user wanted a cite below an analytic body.
+
+**2. Cite-classifier plugin (`src/editor/cite-classifier-plugin.ts`):**
+an `appendTransaction` that keeps each paragraph's *type* in sync
+with its content's cite state. The rule is bidirectional:
+
+- A `card_body` (in a card or analytic_unit) or doc-level `paragraph`
+  with any `cite_mark`-bearing inline run → promote to `cite_paragraph`.
+- A `cite_paragraph` whose content has no `cite_mark` → demote back
+  to `card_body` (inside a container) or `paragraph` (at doc level).
+
+This fixes the manual-paste case (where pasted cite content kept the
+destination's `card_body` type), the Enter-split case (where the
+post-split half stayed a `cite_paragraph` despite being plain), and
+makes runtime classification match what the importer does on load.
+
+**3. Importer:** the in-card cite vs body classifier is now content-
+based ("any cite_mark in inlines → cite_paragraph"), not position-
+based ("first Normal after the tag is the cite"). Cards / analytic_
+units with multiple cite paragraphs round-trip cleanly. Free-floating
+doc-level paragraphs with cite content are promoted to doc-level
+`cite_paragraph` on import too — so F8'd standalone paragraphs that
+were exported survive re-import.
+
+Downstream effects:
+
+- `copyPreviousCite` (Alt-F8) collapses to one rule: find the cite,
+  insert it as a sibling at the cursor's paragraph level, replacing
+  the paragraph if it's an empty/whitespace-only body slot. No more
+  splitting, no more new-card wrapping. Free-floating cite_paragraphs
+  at doc level count as a "source" alongside cards with cites; the
+  most recent source (in doc order) wins.
+- `absorb-plugin` also absorbs `cite_paragraph` siblings into a
+  preceding card / analytic_unit, type preserved.
+- `applyCite` (F8): applies `cite_mark` to text in the selection
+  except in structural blocks (tag, analytic, pocket, hat, block,
+  undertag) — the destination paragraph's type updates via the
+  classifier on the same dispatch cycle.
+
+## 2026-05-10: Empty tag with surviving body merges into previous
+
+Extends the tag-boundary rules. If the tag (or analytic) is empty
+AND its container has other children (body, cite, undertag, in-card
+analytic), Backspace at the head's start *or* Delete at its end
+drops the empty head and migrates the surviving children:
+
+- Previous doc-level node is a `card` / `analytic_unit` → append the
+  survivors. Analytic in a card's cite-slot folds to card_body when
+  the prev is an analytic_unit.
+- Anything else (paragraph, heading, …) or no previous node → lift
+  the survivors to doc level.
+
+Cursor lands at the merge boundary — end of preceding content on
+Backspace, start of merged content on Delete.
+
+Rationale: the empty tag is a meaningless boundary the user wants
+gone; the card's content should flow into the natural container
+above it. Eliminates the "stuck — backspace does nothing because the
+preceding content isn't blank" trap.

@@ -15,7 +15,6 @@ workspace, send-to-speech, search, and other features per
 - [`ARCHITECTURE.md`](./ARCHITECTURE.md) — full design: schema, multi-doc workspace, read mode, send-to-speech, search, transclusion, integration boundaries.
 - [`NOTES-verbatim.md`](./NOTES-verbatim.md) — Verbatim's docx data model + real-world observations from the example docs.
 - [`NOTES-custom-macros.md`](./NOTES-custom-macros.md) — Advanced Verbatim's custom macros, effect-level inventory.
-- [`IMPLEMENTATION-PLAN.md`](./IMPLEMENTATION-PLAN.md) — phased build plan.
 - [`DECISIONS.md`](./DECISIONS.md) — append-only implementation decision log.
 
 ## Setup
@@ -24,7 +23,7 @@ Requires Node.js 22+ (we test on 24 LTS).
 
 ```sh
 npm install
-npm test          # run all tests (currently ~126 tests)
+npm test          # run all tests
 npm run test:bench # performance benchmarks
 npm run typecheck # strict TypeScript check
 ```
@@ -78,7 +77,7 @@ doc:        sequence of block-level kinds
 pocket:     Heading 1 paragraph (with stable id)
 hat:        Heading 2 paragraph (with stable id)
 block:      Heading 3 paragraph (with stable id)
-card:       structured: tag + (cite_paragraph | analytic)? + card_body*
+card:       structured: tag (card_body | undertag | cite_paragraph | analytic)*
 tag:        Heading 4 (only inside card)
 cite_paragraph, card_body: body paragraphs inside cards
 analytic:   outline-4 paragraph (Analytic style; can be standalone or in-card)
