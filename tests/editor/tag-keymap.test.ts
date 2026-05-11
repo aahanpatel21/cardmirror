@@ -260,7 +260,7 @@ describe('backspaceAtTagStart', () => {
     expect(next!.doc.child(0).type.name).toBe('paragraph');
   });
 
-  it('does NOT delete an empty tag when its card has a body', () => {
+  it('empty tag with a body, no prev container: body lifts to doc level', () => {
     const doc = makeDoc([
       cardWith(
         tag(''),
@@ -269,11 +269,32 @@ describe('backspaceAtTagStart', () => {
     ]);
     const state = stateWithCursor(doc, findTagStart(doc));
     const next = apply(state, backspaceAtTagStart);
-    // No prev paragraph, doesn't auto-delete (childCount === 2). Falls
-    // through; returns false to let default backspace handle.
-    expect(next).toBe(null);
-    // Card is unchanged.
-    expect(state.doc.child(0).childCount).toBe(2);
+    expect(next).not.toBe(null);
+    // Empty tag and its card wrapper are gone; body lifts to doc level.
+    expect(next!.doc.childCount).toBe(1);
+    expect(next!.doc.child(0).type.name).toBe('card_body');
+    expect(next!.doc.child(0).textContent).toBe('body');
+  });
+
+  it('empty tag with a body, prev is a card: body merges into the prev card', () => {
+    const doc = makeDoc([
+      cardTagBody('PrevTag', 'PrevBody'),
+      cardWith(
+        tag(''),
+        schema.nodes['card_body']!.create(null, schema.text('newBody')),
+      ),
+    ]);
+    const state = stateWithCursor(doc, findTagStart(doc, 1));
+    const next = apply(state, backspaceAtTagStart);
+    expect(next).not.toBe(null);
+    expect(next!.doc.childCount).toBe(1);
+    const card = next!.doc.firstChild!;
+    const types: string[] = [];
+    card.forEach((c) => types.push(c.type.name));
+    expect(types).toEqual(['tag', 'card_body', 'card_body']);
+    expect(card.child(0).textContent).toBe('PrevTag');
+    expect(card.child(1).textContent).toBe('PrevBody');
+    expect(card.child(2).textContent).toBe('newBody');
   });
 
   it('replaces empty tag-only card with paragraph when it is the only doc child', () => {
@@ -367,7 +388,7 @@ describe('deleteAtTagEnd', () => {
     expect(next!.doc.child(0).type.name).toBe('paragraph');
   });
 
-  it('does NOT delete an empty tag when its card has a body (Delete)', () => {
+  it('Delete on empty tag with a body, no prev container: body lifts to doc level', () => {
     const doc = makeDoc([
       cardWith(
         tag(''),
@@ -375,14 +396,30 @@ describe('deleteAtTagEnd', () => {
       ),
     ]);
     const state = stateWithCursor(doc, findTagEnd(doc));
-    // Container has 2 children, so the empty-head shortcut doesn't
-    // fire. The head is also not the last child (body is), so the
-    // forward-delete merge prohibition kicks in.
     const next = apply(state, deleteAtTagEnd);
-    // Returned true (handled / prohibited) but no dispatch — so apply
-    // returns null. State.doc unchanged.
-    expect(next).toBe(null);
-    expect(state.doc.child(0).childCount).toBe(2);
+    expect(next).not.toBe(null);
+    expect(next!.doc.childCount).toBe(1);
+    expect(next!.doc.child(0).type.name).toBe('card_body');
+    expect(next!.doc.child(0).textContent).toBe('body');
+  });
+
+  it('Delete on empty tag with a body, prev is a card: body merges into the prev card', () => {
+    const doc = makeDoc([
+      cardTagBody('PrevTag', 'PrevBody'),
+      cardWith(
+        tag(''),
+        schema.nodes['card_body']!.create(null, schema.text('newBody')),
+      ),
+    ]);
+    const state = stateWithCursor(doc, findTagEnd(doc, 1));
+    const next = apply(state, deleteAtTagEnd);
+    expect(next).not.toBe(null);
+    expect(next!.doc.childCount).toBe(1);
+    const card = next!.doc.firstChild!;
+    const types: string[] = [];
+    card.forEach((c) => types.push(c.type.name));
+    expect(types).toEqual(['tag', 'card_body', 'card_body']);
+    expect(card.child(2).textContent).toBe('newBody');
   });
 });
 

@@ -271,7 +271,8 @@ function tryDeleteEmptyHeadContainer(
   ctx: TagContext,
   dispatch: ((tr: Transaction) => void) | undefined,
 ): boolean {
-  if (ctx.head.content.size !== 0) return false;
+  // Treat whitespace-only heads the same as truly empty ones.
+  if (!isBlank(ctx.head)) return false;
   if (ctx.container.childCount !== 1) return false;
 
   if (!dispatch) return true;
@@ -298,8 +299,87 @@ function tryDeleteEmptyHeadContainer(
 }
 
 /**
+ * Empty head + surviving body content: delete the head and merge the
+ * container's other children into whatever doc-level node sits before
+ * it.
+ *
+ *   - Previous is a card / analytic_unit → append the survivors into
+ *     it. analytic in a card's cite-slot folds to card_body when
+ *     merging into an analytic_unit (cite-slot isn't a thing there).
+ *   - Previous is anything else (paragraph, heading, …) or there is
+ *     no previous node → lift the survivors to doc level. The empty-
+ *     headed container is dropped.
+ *
+ * Cursor lands at the merge boundary:
+ *   - Backspace: end of the preceding content (assoc -1).
+ *   - Delete: start of the merged survivors (assoc +1).
+ */
+function tryMergeEmptyHeadIntoPrev(
+  state: EditorState,
+  ctx: TagContext,
+  dispatch: ((tr: Transaction) => void) | undefined,
+  bias: 1 | -1,
+): boolean {
+  if (!isBlank(ctx.head)) return false;
+  if (ctx.container.childCount <= 1) return false;
+
+  if (!dispatch) return true;
+
+  const survivors: PMNode[] = [];
+  ctx.container.forEach((child, _o, idx) => {
+    if (idx > 0) survivors.push(child);
+  });
+
+  const $beforeContainer = state.doc.resolve(ctx.containerFrom);
+  const prev = $beforeContainer.nodeBefore;
+
+  let tr = state.tr;
+  let mergePoint: number;
+
+  if (prev && CARD_NODE_TYPES.has(prev.type.name)) {
+    const prevContainerFrom = ctx.containerFrom - prev.nodeSize;
+    const adjusted = prev.type.name === 'analytic_unit'
+      ? survivors.map(toAnalyticUnitChild)
+      : survivors;
+    const newPrev = prev.copy(prev.content.append(Fragment.fromArray(adjusted)));
+    tr = tr.replaceWith(prevContainerFrom, ctx.containerTo, newPrev);
+    // Merge boundary: inside the merged prev, right between its
+    // original content and the appended survivors.
+    mergePoint = prevContainerFrom + 1 + prev.content.size;
+  } else {
+    // No mergeable container before — lift survivors to doc level,
+    // replacing the empty-headed container.
+    const lifted = survivors.map(liftSurvivorToDocLevel);
+    tr = tr.replaceWith(ctx.containerFrom, ctx.containerTo, Fragment.fromArray(lifted));
+    mergePoint = ctx.containerFrom;
+  }
+
+  tr = tr.setSelection(Selection.near(tr.doc.resolve(mergePoint), bias));
+  dispatch(tr.scrollIntoView());
+  return true;
+}
+
+/** Coerce a card child to a node valid as an analytic_unit child. */
+function toAnalyticUnitChild(child: PMNode): PMNode {
+  const t = child.type.name;
+  if (t === 'card_body' || t === 'undertag' || t === 'cite_paragraph') return child;
+  // analytic in a card's cite-slot → card_body (preserves text only).
+  return schema.nodes['card_body']!.create(null, child.content);
+}
+
+/** Coerce a card child to a node valid at doc level. */
+function liftSurvivorToDocLevel(child: PMNode): PMNode {
+  if (child.type.name === 'analytic') {
+    return schema.nodes['analytic_unit']!.create(null, [child]);
+  }
+  return child;
+}
+
+/**
  * Backspace at the start of a tag/analytic. Cases:
  *   - Empty head in a head-only container — delete the whole container.
+ *   - Empty head with surviving siblings — delete the head and merge
+ *     the rest into whatever doc-level node sits before it.
  *   - Previous paragraph is blank (whitespace-only) — delete it.
  *     If it's the lone head of a previous container, drop the whole
  *     container so we don't leave an orphan.
@@ -315,6 +395,7 @@ export const backspaceAtTagStart: Command = (state, dispatch) => {
   if (ctx.cursorOffset !== 0) return false;
 
   if (tryDeleteEmptyHeadContainer(state, ctx, dispatch)) return true;
+  if (tryMergeEmptyHeadIntoPrev(state, ctx, dispatch, -1)) return true;
 
   const prev = findPrevParagraph(state.doc, ctx.containerFrom);
   if (!prev) return false; // no previous paragraph — let default handle (no-op typically)
@@ -373,6 +454,7 @@ export const deleteAtTagEnd: Command = (state, dispatch) => {
   if (ctx.cursorOffset !== ctx.head.content.size) return false;
 
   if (tryDeleteEmptyHeadContainer(state, ctx, dispatch)) return true;
+  if (tryMergeEmptyHeadIntoPrev(state, ctx, dispatch, 1)) return true;
 
   // The head must be the LAST child of its container; if there's a
   // sibling after it (undertag / cite / body), forward-delete would
