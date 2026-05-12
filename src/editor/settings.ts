@@ -274,7 +274,7 @@ const DEFAULTS: Settings = {
   lastShadingColor: 'C0C0C0',
   lastFontColor: null,
   paragraphIntegrity: true,
-  usePilcrows: false,
+  usePilcrows: true,
   headingMode: 'respect',
   condenseOnPaste: false,
 };
@@ -307,49 +307,40 @@ export const SETTING_METADATA: SettingMeta[] = [
     key: 'showCitePreview',
     label: 'Cite preview on hover',
     description:
-      'Show the cite-formatted text from a card on the right side of its nav-pane entry when you hover. Some users find this useful; others find it busy.',
-    kind: 'toggle',
-  },
-  {
-    key: 'hideEmphasisBordersInReadMode',
-    label: 'Hide all emphasis borders in read mode',
-    description:
-      'By default, emphasis borders are removed only when the emphasized text is hidden (so empty boxes don’t appear next to highlighted content). Turn this on to strip every emphasis border in read mode, including around highlighted text.',
+      'Show the cite-formatted text from a card on the right side of its nav-pane entry when you hover.',
     kind: 'toggle',
   },
   {
     key: 'readers',
     label: 'Readers for read-time estimates',
     description:
-      'Each reader has a name and a words-per-minute rate. The first two are displayed live in the bottom bar; all show up in the Word Count Selection dialog. Add as many as you need.',
+      'Each reader has a name and a words-per-minute rate. The first two are displayed live in the bottom bar; all show up in the Word Count Selection dialog.',
     kind: 'readers',
   },
   {
     key: 'displaySizes',
     label: 'Style font sizes (pt)',
     description:
-      "Render size for each named style. Doesn't change the underlying doc — only how it looks here. Verbatim's defaults: Pocket 26, Hat 22, Block 16, Tag 13, Cite 13, Underline 11, Emphasis 11.",
+      "Render size for each named style. Doesn't change the underlying doc — only how it looks here.",
     kind: 'displaySizes',
   },
   {
     key: 'displayTypography',
     label: 'Style typography',
-    description:
-      'Bold / italic / underline / box decorations for the named styles, plus the box thickness for Emphasis. Mirrors Verbatim\'s Styles tab toggles.',
     kind: 'displayTypography',
   },
   {
     key: 'displayColors',
     label: 'Style colors',
     description:
-      'Pick the color used for Analytic and Undertag text. Defaults match Verbatim\'s canonical hues. These propagate to both the editor and the navigation pane.',
+      'Pick the color used for Analytic and Undertag text.',
     kind: 'displayColors',
   },
   {
     key: 'bodyFont',
     label: 'Body font',
     description:
-      "Font family for body text. Pick the font your team's docs use — Calibri matches Verbatim's default.",
+      'Font family for body text.',
     kind: 'bodyFont',
   },
   {
@@ -363,35 +354,35 @@ export const SETTING_METADATA: SettingMeta[] = [
     key: 'formattingPanelPreview',
     label: 'Preview styles in formatting panel',
     description:
-      'When on, formatting-panel buttons preview the visual treatment of the style they apply (Pocket boxed, Hat double-underlined, Tag bold, Analytic colored). Applies to both Labels and Shortcuts modes.',
+      'When on, formatting-panel buttons preview the visual treatment of the style they apply.',
     kind: 'toggle',
   },
   {
     key: 'paragraphIntegrity',
     label: 'F3 condense: preserve paragraph integrity',
     description:
-      'When on (default), F3 only cleans intra-paragraph whitespace — paragraphs stay separate. When off, F3 merges consecutive collapsible paragraphs (card_body and doc-level paragraphs) into one. Also toggleable from the ribbon\'s ¶ button.',
+      'When on, F3 only removes intra-paragraph whitespace — paragraphs stay separate. When off, F3 merges consecutive collapsible paragraphs.',
     kind: 'toggle',
   },
   {
     key: 'usePilcrows',
     label: 'F3 condense: use pilcrow markers',
     description:
-      'Only consulted when paragraph integrity is off. When on, F3 inserts a 6-pt ¶ at each original paragraph boundary in the merged result, so the split can be reversed via Ctrl+Alt+Shift+F3 (Uncondense). Off by default.',
+      'When paragraph integrity is off and this is on, F3 inserts a 6-pt ¶ at each original paragraph boundary in the merged result, so that the split can be reversed via Ctrl/Cmd+Alt+Shift+F3 (Uncondense).',
     kind: 'toggle',
   },
   {
     key: 'condenseOnPaste',
     label: 'Condense after Paste Text (F2)',
     description:
-      'When on, F2 (Paste Text) runs the default condense pass immediately after pasting. Useful if you almost always paste long blobs that need to be tightened. Off by default — matches Verbatim. The condense it runs is the same one F3 invokes (respects Paragraph Integrity, Use Pilcrows, and the heading-handling setting).',
+      'When on, text that you paste will be condensed using your default "condense" settings.',
     kind: 'toggle',
   },
   {
     key: 'headingMode',
     label: 'Condense: heading handling',
     description:
-      'How selection-based condense (Alt-F3 / Mod-Alt-F3 / F3 when integrity is off) treats structural elements (headings, cite paragraphs, undertags) inside the selection. "Strict" no-ops when the selection touches structural elements — safest. "Respect" (default) keeps structural elements as their own paragraphs and merges only the body runs between them. "Demolish" treats the selection as sovereign — everything merges into one textblock; cards / analytic_units whose head was touched dissolve and their body slots absorb into the receiving container.',
+      'How selection-based condense without paragraph integrity treats structural elements (headings, cites, undertags) inside the selection. "Strict" blocks attempts to condense that include structural elements. "Respect" (default) keeps structural paragraphs unmerged and merges everything else in the selection. "Demolish" merges everything in the selection.',
     kind: 'headingMode',
   },
   // Note: `lineHeight` is wired through (defaults to 1.2, applied to

@@ -1520,6 +1520,22 @@ body.pmd-nav-resize-active {
   font-size: 0.85rem;
 }
 
+.pmd-typography-flag-row-with-desc {
+  align-items: flex-start;
+  margin-top: 0.35rem;
+}
+
+.pmd-typography-flag-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.pmd-typography-flag-desc {
+  font-size: 0.75rem;
+  color: var(--pmd-c-text-muted);
+}
+
 .pmd-typography-size-row {
   display: flex;
   align-items: center;

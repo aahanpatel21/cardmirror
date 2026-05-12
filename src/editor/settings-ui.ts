@@ -265,11 +265,36 @@ function buildTypographyEditor(): HTMLElement {
   sizeRow.appendChild(unit);
   wrap.appendChild(sizeRow);
 
+  // Lives in this sub-editor (not as a top-level row) because it's a
+  // sub-option of emphasis-box rendering — sits below the box thickness.
+  const hideBordersRow = document.createElement('label');
+  hideBordersRow.className = 'pmd-typography-flag-row pmd-typography-flag-row-with-desc';
+  const hideBordersCb = document.createElement('input');
+  hideBordersCb.type = 'checkbox';
+  hideBordersCb.checked = !!settings.get('hideEmphasisBordersInReadMode');
+  hideBordersCb.addEventListener('change', () => {
+    settings.set('hideEmphasisBordersInReadMode', hideBordersCb.checked);
+  });
+  hideBordersRow.appendChild(hideBordersCb);
+  const hideBordersText = document.createElement('div');
+  hideBordersText.className = 'pmd-typography-flag-text';
+  const hideBordersLbl = document.createElement('span');
+  hideBordersLbl.textContent = 'Hide all emphasis borders in read mode';
+  hideBordersText.appendChild(hideBordersLbl);
+  const hideBordersDesc = document.createElement('span');
+  hideBordersDesc.className = 'pmd-typography-flag-desc';
+  hideBordersDesc.textContent =
+    'Turn this on to strip every emphasis border in read mode, including around highlighted text.';
+  hideBordersText.appendChild(hideBordersDesc);
+  hideBordersRow.appendChild(hideBordersText);
+  wrap.appendChild(hideBordersRow);
+
   // Re-render input values if settings change elsewhere.
   const unsubscribe = settings.subscribe(() => {
     const t = settings.get('displayTypography');
     sizeInput.value = String(t.emphasisBoxSize);
-    // Sync checkboxes
+    // Sync checkboxes — the first N are typography flags (column order
+    // matches flagKeys), the last is the hide-emphasis-borders toggle.
     const checkboxes = wrap.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
     const flagKeys: (keyof DisplayTypography)[] = [
       'citeUnderlined', 'underlineBold',
@@ -280,6 +305,8 @@ function buildTypographyEditor(): HTMLElement {
       const cb = checkboxes[i];
       if (cb) cb.checked = !!t[k];
     });
+    const hideCb = checkboxes[flagKeys.length];
+    if (hideCb) hideCb.checked = !!settings.get('hideEmphasisBordersInReadMode');
   });
   wrap.addEventListener('DOMNodeRemoved', () => unsubscribe());
 
