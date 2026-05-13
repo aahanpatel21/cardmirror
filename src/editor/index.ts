@@ -118,26 +118,31 @@ const ribbonContext: RibbonContext = {
   shrinkProtectionPatterns: () =>
     compileShrinkProtections(
       settings.get('shrinkCustomProtections'),
-      // When the delimiter is the user-typed `'custom'` shape, feed
-      // those strings into the protection list so the markers we
-      // emit are also auto-protected from shrink. Built-in
-      // delimiters are already covered by the static base.
+      // When the user has picked Custom, feed the literal pause /
+      // resume marker strings into the protection list so the
+      // markers we emit are also auto-protected from shrink. The
+      // six built-in delimiter shapes are already covered by the
+      // static base.
       settings.get('condenseWarningDelimiter') === 'custom'
-        ? settings.get('condenseWarningCustomOpen')
+        ? settings.get('condenseWarningCustomPauseMarker')
         : '',
       settings.get('condenseWarningDelimiter') === 'custom'
-        ? settings.get('condenseWarningCustomClose')
+        ? settings.get('condenseWarningCustomResumeMarker')
         : '',
     ),
-  condenseWarningDelimiter: () => {
+  condenseWarningMarkers: () => {
     const d = settings.get('condenseWarningDelimiter');
     if (d === 'custom') {
       return {
-        open: settings.get('condenseWarningCustomOpen'),
-        close: settings.get('condenseWarningCustomClose'),
+        pause: settings.get('condenseWarningCustomPauseMarker'),
+        resume: settings.get('condenseWarningCustomResumeMarker'),
       };
     }
-    return { open: d, close: condenseWarningCloseFor(d) };
+    const close = condenseWarningCloseFor(d);
+    return {
+      pause: `${d}PARAGRAPH INTEGRITY PAUSES${close}`,
+      resume: `${d}PARAGRAPH INTEGRITY RESUMES${close}`,
+    };
   },
   runCreateReference: () => {
     if (!view) return;

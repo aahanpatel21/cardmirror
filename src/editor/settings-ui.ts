@@ -811,52 +811,38 @@ function buildCondenseWarningDelimiterEditor(): HTMLElement {
   });
   customRow.appendChild(customRadio);
 
-  const openInput = document.createElement('input');
-  openInput.type = 'text';
-  openInput.className = 'pmd-condense-warning-delimiter-input';
-  openInput.placeholder = 'opening delimiter';
-  openInput.value = settings.get('condenseWarningCustomOpen');
-  openInput.addEventListener('input', () => {
-    settings.set('condenseWarningCustomOpen', openInput.value);
+  const pauseInput = document.createElement('input');
+  pauseInput.type = 'text';
+  pauseInput.className = 'pmd-condense-warning-delimiter-input';
+  pauseInput.placeholder = 'replaces [PARAGRAPH INTEGRITY PAUSES]';
+  pauseInput.value = settings.get('condenseWarningCustomPauseMarker');
+  pauseInput.addEventListener('input', () => {
+    settings.set('condenseWarningCustomPauseMarker', pauseInput.value);
   });
 
-  const closeInput = document.createElement('input');
-  closeInput.type = 'text';
-  closeInput.className = 'pmd-condense-warning-delimiter-input';
-  closeInput.placeholder = 'closing delimiter';
-  closeInput.value = settings.get('condenseWarningCustomClose');
-  closeInput.addEventListener('input', () => {
-    settings.set('condenseWarningCustomClose', closeInput.value);
+  const resumeInput = document.createElement('input');
+  resumeInput.type = 'text';
+  resumeInput.className = 'pmd-condense-warning-delimiter-input';
+  resumeInput.placeholder = 'replaces [PARAGRAPH INTEGRITY RESUMES]';
+  resumeInput.value = settings.get('condenseWarningCustomResumeMarker');
+  resumeInput.addEventListener('input', () => {
+    settings.set('condenseWarningCustomResumeMarker', resumeInput.value);
   });
 
-  const customSample = document.createElement('span');
-  customSample.className = 'pmd-condense-warning-delimiter-sample';
-
-  const refreshCustomSample = (): void => {
-    const o = openInput.value;
-    const c = closeInput.value;
-    customSample.textContent =
-      o && c ? `${o}PARAGRAPH INTEGRITY PAUSES${c}` : '';
-  };
-  refreshCustomSample();
-  openInput.addEventListener('input', refreshCustomSample);
-  closeInput.addEventListener('input', refreshCustomSample);
-
-  // The label-text portion: a column with "Custom:" header, the two
-  // inputs stacked, then the sample. Using a column instead of an
-  // inline row lets the inputs take a generous width without
-  // forcing the dialog wide; the outer row's `align-items: flex-
-  // start` keeps the radio aligned with the "Custom:" header at
-  // the top of the column instead of its visual center.
+  // The label-text portion: a column with the "Custom" header and
+  // the two full-marker inputs stacked. Each input is the WHOLE
+  // text that goes into the marker paragraph (not just a bracket),
+  // so there's no sample preview — the input value IS the preview.
+  // The outer row's `align-items: flex-start` keeps the radio
+  // aligned with the header at the top of the column.
   const customInner = document.createElement('div');
   customInner.className = 'pmd-condense-warning-delimiter-custom-inner';
   const customLabel = document.createElement('div');
   customLabel.textContent = 'Custom (must set both):';
   customLabel.className = 'pmd-condense-warning-delimiter-custom-label';
   customInner.appendChild(customLabel);
-  customInner.appendChild(openInput);
-  customInner.appendChild(closeInput);
-  customInner.appendChild(customSample);
+  customInner.appendChild(pauseInput);
+  customInner.appendChild(resumeInput);
   customRow.appendChild(customInner);
   wrap.appendChild(customRow);
 

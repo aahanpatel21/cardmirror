@@ -75,29 +75,38 @@ describe('compileShrinkProtections', () => {
     expect(list.length).toBe(before);
   });
 
-  it('adds a warning-marker regex when custom delimiters are configured', () => {
+  it('adds literal-string regexes for the custom pause / resume markers when configured', () => {
     const before = sources(compileShrinkProtections([], '', ''));
-    const list = compileShrinkProtections([], '#@', '@#');
+    const list = compileShrinkProtections(
+      [],
+      '<<-- pause -->>',
+      '<<-- resume -->>',
+    );
     const added = sources(list).filter((s) => !before.includes(s));
-    expect(added.length).toBe(1);
-    expect(added[0]).toBe('#@PARAGRAPH INTEGRITY (?:PAUSES|RESUMES)@#');
+    expect(added.length).toBe(2);
+    expect(added[0]).toBe('<<-- pause -->>');
+    expect(added[1]).toBe('<<-- resume -->>');
   });
 
-  it('escapes regex metacharacters in custom delimiters', () => {
-    const list = compileShrinkProtections([], '|+|', '|+|');
+  it('escapes regex metacharacters in custom marker strings', () => {
+    const list = compileShrinkProtections([], '|+pause+|', '|+resume+|');
     const before = compileShrinkProtections([], '', '');
-    const added = list.length === before.length + 1 ? list[list.length - 1]! : null;
-    expect(added).not.toBeNull();
-    expect(added!.source).toBe('\\|\\+\\|PARAGRAPH INTEGRITY (?:PAUSES|RESUMES)\\|\\+\\|');
-    // The compiled regex matches literal `|+|PARAGRAPH INTEGRITY PAUSES|+|`,
-    // case-insensitive.
-    expect('|+|PARAGRAPH INTEGRITY PAUSES|+|'.match(added!)).toBeTruthy();
-    expect('|+|paragraph integrity resumes|+|'.match(added!)).toBeTruthy();
+    expect(list.length).toBe(before.length + 2);
+    const added = list.slice(before.length);
+    expect(added[0]!.source).toBe('\\|\\+pause\\+\\|');
+    expect(added[1]!.source).toBe('\\|\\+resume\\+\\|');
+    // Compiled regex matches literal text, case-insensitive.
+    expect('|+pause+|'.match(added[0]!)).toBeTruthy();
+    expect('|+PAUSE+|'.match(added[0]!)).toBeTruthy();
   });
 
-  it('skips the custom-delim auto-pattern when either half is empty', () => {
+  it('protects only the markers that are non-empty when one half is unset', () => {
     const baseline = compileShrinkProtections([], '', '').length;
-    expect(compileShrinkProtections([], 'only-open', '').length).toBe(baseline);
-    expect(compileShrinkProtections([], '', 'only-close').length).toBe(baseline);
+    expect(compileShrinkProtections([], 'pause-only', '').length).toBe(
+      baseline + 1,
+    );
+    expect(compileShrinkProtections([], '', 'resume-only').length).toBe(
+      baseline + 1,
+    );
   });
 });

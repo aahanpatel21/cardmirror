@@ -1622,32 +1622,28 @@ function escapeRegexLiteral(s: string): string {
 
 /**
  * Combine the built-in protected patterns with user-supplied custom
- * protections and (if "Condense with warning" is using custom
- * delimiters) the two auto-generated warning-marker patterns for
- * those delimiters. Each custom entry is either a literal string —
- * regex-escaped and compiled with `gi` — or a raw regex source
- * compiled verbatim with `gi`. Invalid regex sources are skipped.
+ * protections and (if "Condense with warning" is using custom marker
+ * strings) one auto-generated literal pattern per non-empty custom
+ * marker. The custom markers are the WHOLE pause / resume paragraph
+ * text — not delimiters around `PARAGRAPH INTEGRITY PAUSES/RESUMES`
+ * — so they're escaped and protected as literal strings.
  *
- * Empty pattern strings and empty custom-delim halves are skipped so
- * a half-filled "custom" setting doesn't produce a runaway empty
- * regex.
+ * Each user-custom entry is either a literal string (regex-escaped
+ * and compiled with `gi`) or a raw regex source (compiled verbatim
+ * with `gi`). Invalid regex sources and empty patterns are skipped.
  */
 export function compileShrinkProtections(
   custom: readonly { pattern: string; isRegex: boolean }[],
-  customDelimOpen: string,
-  customDelimClose: string,
+  customPauseMarker: string,
+  customResumeMarker: string,
 ): RegExp[] {
   const out: RegExp[] = [...BUILTIN_PROTECTED_REGEXES];
-  if (customDelimOpen && customDelimClose) {
-    const open = escapeRegexLiteral(customDelimOpen);
-    const close = escapeRegexLiteral(customDelimClose);
+  for (const marker of [customPauseMarker, customResumeMarker]) {
+    if (!marker) continue;
     try {
-      out.push(
-        new RegExp(`${open}PARAGRAPH INTEGRITY (?:PAUSES|RESUMES)${close}`, 'gi'),
-      );
+      out.push(new RegExp(escapeRegexLiteral(marker), 'gi'));
     } catch {
-      // Defensive: escape should always produce valid regex, but if
-      // someone smuggled in something exotic, skip rather than throw.
+      // Defensive — escape should always produce valid regex.
     }
   }
   for (const rule of custom) {
@@ -2462,12 +2458,14 @@ export interface RibbonContext {
    *  built-in patterns, the user's custom protections, and the
    *  custom condense-with-warning delimiter (if configured). */
   shrinkProtectionPatterns: () => readonly RegExp[];
-  /** Open + close delimiter pair for "Condense with warning" markers.
-   *  For the six built-in enum values these are deterministic mirror
-   *  pairs; for `'custom'` they come from the user-typed setting
-   *  strings. The resolver lets the command consume one shape
+  /** Full pause / resume marker text "Condense with warning" should
+   *  emit. For the six built-in delimiter enum values this is the
+   *  classic `<open>PARAGRAPH INTEGRITY PAUSES<close>` pairing; for
+   *  the `'custom'` enum value it's the user-typed setting strings
+   *  verbatim (which replace the entire marker, not just the
+   *  brackets). The resolver lets the command consume one shape
    *  regardless of which the user picked. */
-  condenseWarningDelimiter: () => { open: string; close: string };
+  condenseWarningMarkers: () => { pause: string; resume: string };
   /** Side-effecting actions for the menu-only / button-only commands.
    *  All four are no-ops by default so tests / standalone uses of
    *  `getRibbonCommand` don't need to wire them. The real editor
@@ -2492,7 +2490,10 @@ const DEFAULT_RIBBON_CONTEXT: RibbonContext = {
   normalPt: () => 11,
   shrinkRestoresOmissionsToNormal: () => false,
   shrinkProtectionPatterns: () => BUILTIN_PROTECTED_REGEXES,
-  condenseWarningDelimiter: () => ({ open: '[', close: ']' }),
+  condenseWarningMarkers: () => ({
+    pause: '[PARAGRAPH INTEGRITY PAUSES]',
+    resume: '[PARAGRAPH INTEGRITY RESUMES]',
+  }),
   runCreateReference: () => {},
   openWordCountDialog: () => {},
   toggleReadMode: () => {},
@@ -2534,7 +2535,7 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
       return (state, dispatch) =>
         condenseMerge({ withPilcrows: true, headingMode: ctx.headingMode() })(state, dispatch);
     case 'condenseWithWarning':
-      return condenseWithWarning(ctx.condenseWarningDelimiter);
+      return condenseWithWarning(ctx.condenseWarningMarkers);
     case 'uncondense': return uncondense();
     case 'toggleCase': return toggleCase();
     case 'copyPreviousCite': return copyPreviousCite();

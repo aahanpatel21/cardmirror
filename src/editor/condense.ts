@@ -990,11 +990,6 @@ export function toggleCase(): Command {
 
 // ---------- Condense with warning ----------
 
-/** Label text inside the warning markers — kept here so Shrink's
- *  protection regex can reuse the exact phrasing. */
-export const CONDENSE_WARNING_PAUSE_LABEL = 'PARAGRAPH INTEGRITY PAUSES';
-export const CONDENSE_WARNING_RESUME_LABEL = 'PARAGRAPH INTEGRITY RESUMES';
-
 /**
  * "Condense with warning" — selection-only condense limited to a
  * single card. Parallels Create Reference in scope validation:
@@ -1005,20 +1000,20 @@ export const CONDENSE_WARNING_RESUME_LABEL = 'PARAGRAPH INTEGRITY RESUMES';
  *
  * Behavior: merges the touched paragraphs into a single `card_body`
  * (Branch A — no paragraph integrity, no pilcrows) and wraps the
- * merged paragraph with two new `card_body` markers:
- *
- *   `<open>PARAGRAPH INTEGRITY PAUSES<close>`
- *       <merged paragraph>
- *   `<open>PARAGRAPH INTEGRITY RESUMES<close>`
- *
- * The open/close come from the `condenseWarningDelimiter` setting
- * (one of `[`, `[[`, `<`, `<<`, `{`, `{{` with the mirrored close).
+ * merged paragraph with two new `card_body` markers — the full
+ * pause and resume text supplied by the caller. For the built-in
+ * delimiter options this is the classic
+ * `<open>PARAGRAPH INTEGRITY PAUSES<close>` pairing; for the
+ * `'custom'` option the caller supplies whatever literal strings
+ * the user typed.
  *
  * No-op on empty selection, non-card-body content, multiple cards,
- * or when no card_body is actually touched.
+ * or when no card_body is actually touched. Also no-ops with a
+ * console warn when either marker is empty (a half-filled custom
+ * setting).
  */
 export function condenseWithWarning(
-  getDelimiter: () => { open: string; close: string },
+  getMarkers: () => { pause: string; resume: string },
 ): Command {
   return (state, dispatch) => {
     const { from, to, empty } = state.selection;
@@ -1056,12 +1051,12 @@ export function condenseWithWarning(
       return false;
     });
     if (invalid || paragraphs.length === 0) return false;
-    // Don't emit broken markers if the user picked Custom but left a
-    // half-filled delim setting. No-op + console warn.
-    const { open, close } = getDelimiter();
-    if (!open || !close) {
+    // Don't emit broken markers if the user picked Custom but left
+    // a half-filled setting. No-op + console warn.
+    const { pause, resume } = getMarkers();
+    if (!pause || !resume) {
       console.warn(
-        'condenseWithWarning: custom delimiter has empty open or close — skipping',
+        'condenseWithWarning: pause / resume marker is empty — skipping',
       );
       return false;
     }
@@ -1069,14 +1064,8 @@ export function condenseWithWarning(
 
     const cardBodyType = schema.nodes['card_body']!;
 
-    const pausePara = cardBodyType.create(
-      null,
-      schema.text(`${open}${CONDENSE_WARNING_PAUSE_LABEL}${close}`),
-    );
-    const resumePara = cardBodyType.create(
-      null,
-      schema.text(`${open}${CONDENSE_WARNING_RESUME_LABEL}${close}`),
-    );
+    const pausePara = cardBodyType.create(null, schema.text(pause));
+    const resumePara = cardBodyType.create(null, schema.text(resume));
     const mergedPara =
       paragraphs.length === 1
         ? cleanedTextblock(paragraphs[0]!.node)

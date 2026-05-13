@@ -287,20 +287,22 @@ export interface Settings {
    *  When off, both are shrunk along with the surrounding text. */
   shrinkRestoresOmissionsToNormal: boolean;
   /**
-   * Open delimiter used by "Condense with warning" to bracket the
-   * `PARAGRAPH INTEGRITY PAUSES/RESUMES` markers. One of `[`, `[[`,
-   * `<`, `<<`, `{`, `{{`, or `custom` (which reads
-   * `condenseWarningCustomOpen` / `Close` instead). Default `[`
-   * matches the most common convention in user docs.
+   * Delimiter family for "Condense with warning". One of the six
+   * bracket pairs (which produce `<open>PARAGRAPH INTEGRITY
+   * PAUSES<close>` / `…RESUMES<close>`) or `'custom'` (which uses
+   * the user-typed marker strings below in place of the entire
+   * marker text). Default `[` matches the most common convention in
+   * user docs.
    */
   condenseWarningDelimiter: CondenseWarningDelimiter;
-  /** Custom open delimiter, used when `condenseWarningDelimiter` is
-   *  `'custom'`. Empty string disables auto-protection of the
-   *  custom-delim warning markers in shrink. */
-  condenseWarningCustomOpen: string;
-  /** Custom close delimiter, used when `condenseWarningDelimiter` is
-   *  `'custom'`. */
-  condenseWarningCustomClose: string;
+  /** When `condenseWarningDelimiter` is `'custom'`, this string is
+   *  inserted verbatim as the pause-marker paragraph (replacing the
+   *  entire `[PARAGRAPH INTEGRITY PAUSES]` text). Empty string
+   *  disables the command (it no-ops with a console warn). */
+  condenseWarningCustomPauseMarker: string;
+  /** Companion to `condenseWarningCustomPauseMarker` — inserted as
+   *  the resume-marker paragraph. */
+  condenseWarningCustomResumeMarker: string;
   /**
    * User-supplied strings (or regexes) that Shrink should treat as
    * protected — same pipeline as the built-in bracketed-Omitted
@@ -400,8 +402,8 @@ const DEFAULTS: Settings = {
   forReferenceUseGray50: false,
   shrinkRestoresOmissionsToNormal: false,
   condenseWarningDelimiter: '[',
-  condenseWarningCustomOpen: '',
-  condenseWarningCustomClose: '',
+  condenseWarningCustomPauseMarker: '',
+  condenseWarningCustomResumeMarker: '',
   shrinkCustomProtections: [],
   ribbonKeyOverrides: {},
 };
@@ -725,14 +727,14 @@ function sanitize(s: Settings): Settings {
     )
       ? (s.condenseWarningDelimiter as CondenseWarningDelimiter)
       : DEFAULTS.condenseWarningDelimiter,
-    condenseWarningCustomOpen:
-      typeof s.condenseWarningCustomOpen === 'string'
-        ? s.condenseWarningCustomOpen
-        : DEFAULTS.condenseWarningCustomOpen,
-    condenseWarningCustomClose:
-      typeof s.condenseWarningCustomClose === 'string'
-        ? s.condenseWarningCustomClose
-        : DEFAULTS.condenseWarningCustomClose,
+    condenseWarningCustomPauseMarker:
+      typeof s.condenseWarningCustomPauseMarker === 'string'
+        ? s.condenseWarningCustomPauseMarker
+        : DEFAULTS.condenseWarningCustomPauseMarker,
+    condenseWarningCustomResumeMarker:
+      typeof s.condenseWarningCustomResumeMarker === 'string'
+        ? s.condenseWarningCustomResumeMarker
+        : DEFAULTS.condenseWarningCustomResumeMarker,
     shrinkCustomProtections: sanitizeShrinkProtections(s.shrinkCustomProtections),
     ribbonKeyOverrides: sanitizeRibbonKeyOverrides(s.ribbonKeyOverrides),
   };
