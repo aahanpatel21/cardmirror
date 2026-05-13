@@ -2117,31 +2117,44 @@ body.pmd-nav-resize-active {
   font-size: 0.8rem;
 }
 
-/* Custom-delim row: radio + two short inputs for open/close + live
-   sample. The label wraps the radio; the inner span holds the rest. */
+/* Custom-delim row: radio + a column with "Custom:" header / open
+   input / close input / sample. `align-items: flex-start` on the row
+   keeps the radio aligned with the "Custom:" header line at the top
+   of the column rather than vertical-centered against the whole
+   stack. The inputs take a generous width so users can type long
+   delimiters without scrolling. */
 .pmd-condense-warning-delimiter-row-custom {
-  align-items: center;
+  align-items: flex-start;
+}
+
+.pmd-condense-warning-delimiter-row-custom > input[type="radio"] {
+  margin-top: 0.2rem;
 }
 
 .pmd-condense-warning-delimiter-custom-inner {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  flex-wrap: wrap;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .pmd-condense-warning-delimiter-custom-label {
   font-size: 0.85rem;
+  line-height: 1.3;
 }
 
 .pmd-condense-warning-delimiter-input {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.78rem;
-  width: 4.5rem;
-  padding: 0.1rem 0.3rem;
+  font-size: 0.85rem;
+  width: 20rem;
+  max-width: 100%;
+  padding: 0.25rem 0.45rem;
   border: 1px solid #c8d0d8;
   border-radius: 3px;
   background: #fff;
+  box-sizing: border-box;
 }
 
 /* Custom shrink protections list: text input + regex checkbox +

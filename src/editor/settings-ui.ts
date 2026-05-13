@@ -814,8 +814,7 @@ function buildCondenseWarningDelimiterEditor(): HTMLElement {
   const openInput = document.createElement('input');
   openInput.type = 'text';
   openInput.className = 'pmd-condense-warning-delimiter-input';
-  openInput.placeholder = 'open';
-  openInput.maxLength = 16;
+  openInput.placeholder = 'opening delimiter';
   openInput.value = settings.get('condenseWarningCustomOpen');
   openInput.addEventListener('input', () => {
     settings.set('condenseWarningCustomOpen', openInput.value);
@@ -824,8 +823,7 @@ function buildCondenseWarningDelimiterEditor(): HTMLElement {
   const closeInput = document.createElement('input');
   closeInput.type = 'text';
   closeInput.className = 'pmd-condense-warning-delimiter-input';
-  closeInput.placeholder = 'close';
-  closeInput.maxLength = 16;
+  closeInput.placeholder = 'closing delimiter';
   closeInput.value = settings.get('condenseWarningCustomClose');
   closeInput.addEventListener('input', () => {
     settings.set('condenseWarningCustomClose', closeInput.value);
@@ -844,10 +842,15 @@ function buildCondenseWarningDelimiterEditor(): HTMLElement {
   openInput.addEventListener('input', refreshCustomSample);
   closeInput.addEventListener('input', refreshCustomSample);
 
-  // The label-text portion: "Custom" word + the two inputs + sample.
-  const customInner = document.createElement('span');
+  // The label-text portion: a column with "Custom:" header, the two
+  // inputs stacked, then the sample. Using a column instead of an
+  // inline row lets the inputs take a generous width without
+  // forcing the dialog wide; the outer row's `align-items: flex-
+  // start` keeps the radio aligned with the "Custom:" header at
+  // the top of the column instead of its visual center.
+  const customInner = document.createElement('div');
   customInner.className = 'pmd-condense-warning-delimiter-custom-inner';
-  const customLabel = document.createElement('span');
+  const customLabel = document.createElement('div');
   customLabel.textContent = 'Custom:';
   customLabel.className = 'pmd-condense-warning-delimiter-custom-label';
   customInner.appendChild(customLabel);
