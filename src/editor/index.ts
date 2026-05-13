@@ -122,7 +122,8 @@ type FormattingPanelId =
   | StructuralRibbonCommandId
   | 'applyCite'
   | 'applyUnderline'
-  | 'applyEmphasis';
+  | 'applyEmphasis'
+  | 'clearToNormal';
 const FORMATTING_PANEL_BUTTONS: Record<FormattingPanelId, string> = {
   setPocket: 'style-pocket-btn',
   setHat: 'style-hat-btn',
@@ -133,6 +134,7 @@ const FORMATTING_PANEL_BUTTONS: Record<FormattingPanelId, string> = {
   applyCite: 'cite-btn',
   applyUnderline: 'underline-btn',
   applyEmphasis: 'emphasis-btn',
+  clearToNormal: 'normal-btn',
 };
 const FORMATTING_PANEL_SHORT_LABEL: Record<FormattingPanelId, string> = {
   setPocket: 'Pocket',
@@ -144,6 +146,7 @@ const FORMATTING_PANEL_SHORT_LABEL: Record<FormattingPanelId, string> = {
   applyCite: 'Cite',
   applyUnderline: 'Underline',
   applyEmphasis: 'Emphasis',
+  clearToNormal: 'Normal',
 };
 const formattingPanelEl = document.getElementById('formatting-panel') as HTMLElement | null;
 const citePanelEl = document.getElementById('cite-panel') as HTMLElement | null;

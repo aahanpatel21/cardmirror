@@ -33,7 +33,7 @@
  * cite-slot of a card rather than the anchor of an analytic_unit.
  */
 
-import { Fragment, type Node as PMNode, type ResolvedPos } from 'prosemirror-model';
+import { Fragment, type Mark, type Node as PMNode, type ResolvedPos } from 'prosemirror-model';
 import { Selection, TextSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state';
 import { toggleMark } from 'prosemirror-commands';
 import { schema } from '../schema/index.js';
@@ -1095,6 +1095,264 @@ export function setFontSize(pt: number | null): Command {
   };
 }
 
+// ----------------------------------------------------------------
+// F12 — Clear to Normal
+//
+// Verbatim parity adapted to our schema. Two coverage regimes:
+//
+//   - "Full" coverage (cursor in a paragraph, OR selection encompasses
+//     a paragraph end-to-end): demote the paragraph's structural type
+//     to body AND strip direct character formatting from its content.
+//   - "Partial" coverage (selection covers only part of a paragraph):
+//     strip marks across the selected sub-range only; paragraph type
+//     is untouched.
+//
+// Mark sets:
+//   - Demote/full: strip font_size, font_color, font_family, bold,
+//     italic, strikethrough. Keep highlight, shading, named-style
+//     marks (cite_mark / underline_mark / emphasis_mark / undertag_mark
+//     / analytic_mark), link, pilcrow_marker. Also convert
+//     `underline_direct` → `underline_mark` so direct underlining
+//     survives the demotion as the body-valid variant.
+//   - Partial: strip the above plus `underline_direct` AND all named-
+//     style marks — partial is "clear character formatting" in the
+//     Verbatim sense; only highlight/shading are exempted.
+//
+// Paragraph type demotion (full coverage):
+//   - pocket / hat / block → paragraph (setNodeMarkup)
+//   - tag → paragraph (dissolves the surrounding card; trailing
+//     children of the card lift to doc level)
+//   - analytic → paragraph (dissolves the analytic_unit)
+//   - undertag at doc level → paragraph (setNodeMarkup)
+//   - undertag inside a card / analytic_unit → card_body
+//   - cite_paragraph, card_body, paragraph → no type change (only
+//     the strip + underline_direct convert)
+
+const F12_STRIP_DIRECT_NAMES = [
+  'font_size',
+  'font_color',
+  'font_family',
+  'bold',
+  'italic',
+  'strikethrough',
+] as const;
+
+const F12_STRIP_PARTIAL_NAMES = [
+  ...F12_STRIP_DIRECT_NAMES,
+  'underline_direct',
+  'cite_mark',
+  'underline_mark',
+  'emphasis_mark',
+  'undertag_mark',
+  'analytic_mark',
+] as const;
+
+function stripMarkNamesOnTr(
+  tr: Transaction,
+  from: number,
+  to: number,
+  names: readonly string[],
+): void {
+  for (const name of names) {
+    const mt = schema.marks[name];
+    if (mt) tr.removeMark(from, to, mt);
+  }
+}
+
+function convertUnderlineDirectToMarkOnTr(
+  tr: Transaction,
+  from: number,
+  to: number,
+  doc: PMNode,
+): void {
+  const directType = schema.marks['underline_direct'];
+  const markType = schema.marks['underline_mark'];
+  if (!directType || !markType) return;
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (!node.isText) return true;
+    if (!node.marks.some((m) => m.type === directType)) return true;
+    const start = Math.max(from, pos);
+    const end = Math.min(to, pos + node.nodeSize);
+    if (start >= end) return true;
+    tr.removeMark(start, end, directType);
+    tr.addMark(start, end, markType.create());
+    return true;
+  });
+}
+
+function cleanFragmentForClearToNormal(
+  fragment: Fragment,
+  mode: 'cursor' | 'full',
+): Fragment {
+  const stripNames = mode === 'cursor' ? F12_STRIP_DIRECT_NAMES : F12_STRIP_PARTIAL_NAMES;
+  const stripSet = new Set<string>(stripNames);
+  const convertUnderlineDirect = mode === 'cursor';
+  const directType = schema.marks['underline_direct'];
+  const markType = schema.marks['underline_mark'];
+  const out: PMNode[] = [];
+  fragment.forEach((child) => {
+    if (!child.isText) {
+      out.push(child);
+      return;
+    }
+    let newMarks: readonly Mark[] = child.marks.filter((m) => !stripSet.has(m.type.name));
+    if (convertUnderlineDirect && directType && markType) {
+      if (newMarks.some((m) => m.type === directType)) {
+        newMarks = newMarks.filter((m) => m.type !== directType);
+        if (!newMarks.some((m) => m.type === markType)) {
+          newMarks = markType.create().addToSet(newMarks);
+        }
+      }
+    }
+    out.push(child.mark(newMarks));
+  });
+  return Fragment.fromArray(out);
+}
+
+interface ClearToNormalOp {
+  nodeStart: number;
+  nodeSize: number;
+  typeName: string;
+  /** Depth of the textblock in the original doc. */
+  depth: number;
+  /** `cursor` = empty selection at this paragraph; `full` = non-empty
+   *  selection covers it end-to-end; `partial` = sub-range coverage. */
+  mode: 'cursor' | 'full' | 'partial';
+  partialFrom?: number;
+  partialTo?: number;
+}
+
+export function clearToNormal(): Command {
+  return (state, dispatch) => {
+    const sel = state.selection;
+    const isEmpty = sel.empty;
+
+    const ops: ClearToNormalOp[] = [];
+    state.doc.nodesBetween(sel.from, sel.to, (node, pos) => {
+      if (!node.isTextblock) return true;
+      const contentFrom = pos + 1;
+      const contentTo = pos + node.nodeSize - 1;
+      const $pos = state.doc.resolve(pos + 1);
+      let mode: 'cursor' | 'full' | 'partial';
+      if (isEmpty) {
+        mode = 'cursor';
+      } else if (sel.from <= contentFrom && sel.to >= contentTo) {
+        mode = 'full';
+      } else {
+        mode = 'partial';
+      }
+      ops.push({
+        nodeStart: pos,
+        nodeSize: node.nodeSize,
+        typeName: node.type.name,
+        depth: $pos.depth,
+        mode,
+        partialFrom: mode === 'partial' ? Math.max(sel.from, contentFrom) : undefined,
+        partialTo: mode === 'partial' ? Math.min(sel.to, contentTo) : undefined,
+      });
+      return false;
+    });
+
+    if (ops.length === 0) return false;
+    if (!dispatch) return true;
+
+    // Apply in reverse position order so earlier positions stay
+    // stable through any dissolves (which can shrink the doc).
+    const tr = state.tr;
+    for (let i = ops.length - 1; i >= 0; i--) {
+      const op = ops[i]!;
+      if (op.mode === 'cursor' || op.mode === 'full') {
+        applyClearToNormalDemote(tr, op);
+      } else if (op.partialFrom != null && op.partialTo != null) {
+        applyClearToNormalPartial(tr, op.partialFrom, op.partialTo);
+      }
+    }
+
+    dispatch(tr);
+    return true;
+  };
+}
+
+/** Demote-and-strip path. Used for both `cursor` and `full` modes;
+ *  the strip set + underline_direct handling differ:
+ *    - cursor: keep named-style marks, convert underline_direct →
+ *      underline_mark (so direct underlining survives the demotion).
+ *    - full (entire paragraph in a non-empty selection): strip
+ *      everything the partial-coverage path would, then demote on
+ *      top of it. "Both behaviors at once."
+ */
+function applyClearToNormalDemote(tr: Transaction, op: ClearToNormalOp): void {
+  const { nodeStart, nodeSize, typeName, depth, mode } = op;
+  const contentFrom = nodeStart + 1;
+  const contentTo = nodeStart + nodeSize - 1;
+  const fragmentMode: 'cursor' | 'full' = mode === 'cursor' ? 'cursor' : 'full';
+  const stripNames =
+    fragmentMode === 'cursor' ? F12_STRIP_DIRECT_NAMES : F12_STRIP_PARTIAL_NAMES;
+
+  let target: 'paragraph' | 'card_body' | null = null;
+  let needDissolve = false;
+  switch (typeName) {
+    case 'pocket':
+    case 'hat':
+    case 'block':
+      target = 'paragraph';
+      break;
+    case 'tag':
+    case 'analytic':
+      target = 'paragraph';
+      needDissolve = true;
+      break;
+    case 'undertag':
+      target = depth === 1 ? 'paragraph' : 'card_body';
+      break;
+    case 'cite_paragraph':
+    case 'card_body':
+    case 'paragraph':
+      target = null;
+      break;
+    default:
+      target = null;
+  }
+
+  if (needDissolve) {
+    // Dissolve card / analytic_unit. The head's cleaned content
+    // becomes a doc-level paragraph; trailing children lift out.
+    const $head = tr.doc.resolve(contentFrom);
+    const containerDepth = $head.depth - 1;
+    if (containerDepth < 1) return;
+    const container = $head.node(containerDepth);
+    const containerStart = $head.before(containerDepth);
+    if (container.firstChild !== $head.parent) return;
+
+    const cleanedHead = cleanFragmentForClearToNormal(
+      container.firstChild.content,
+      fragmentMode,
+    );
+    const newPara = schema.nodes['paragraph']!.create(null, cleanedHead);
+    const lifted: PMNode[] = [newPara];
+    container.forEach((child, _off, index) => {
+      if (index === 0) return;
+      lifted.push(liftCardChild(child));
+    });
+    tr.replaceWith(containerStart, containerStart + container.nodeSize, Fragment.fromArray(lifted));
+    return;
+  }
+
+  // Non-dissolve: strip + (conditionally) convert in place, then
+  // change type if needed.
+  stripMarkNamesOnTr(tr, contentFrom, contentTo, stripNames);
+  if (fragmentMode === 'cursor') {
+    convertUnderlineDirectToMarkOnTr(tr, contentFrom, contentTo, tr.doc);
+  }
+  if (target !== null && target !== typeName) {
+    tr.setNodeMarkup(nodeStart, schema.nodes[target]!);
+  }
+}
+
+function applyClearToNormalPartial(tr: Transaction, from: number, to: number): void {
+  stripMarkNamesOnTr(tr, from, to, F12_STRIP_PARTIAL_NAMES);
+}
+
 /**
  * Walk text nodes in [from, to] and report whether every text char
  * carries a mark of the given name, plus whether any text was found
@@ -1497,7 +1755,8 @@ export type RibbonCommandId =
   | 'uncondense'
   | 'toggleCase'
   | 'copyPreviousCite'
-  | 'pasteAsText';
+  | 'pasteAsText'
+  | 'clearToNormal';
 
 export const STRUCTURAL_RIBBON_COMMAND_IDS: StructuralRibbonCommandId[] = [
   'setPocket',
@@ -1524,6 +1783,7 @@ export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
   'toggleCase',
   'copyPreviousCite',
   'pasteAsText',
+  'clearToNormal',
 ];
 
 export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
@@ -1547,6 +1807,7 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   toggleCase: 'Toggle case',
   copyPreviousCite: 'Copy previous cite',
   pasteAsText: 'Paste Text (plain)',
+  clearToNormal: 'Clear to Normal',
 };
 
 /**
@@ -1578,6 +1839,7 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   toggleCase: 'Shift-F3',
   copyPreviousCite: 'Alt-F8',
   pasteAsText: 'F2',
+  clearToNormal: 'F12',
 };
 
 /**
@@ -1654,6 +1916,8 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
     case 'copyPreviousCite': return copyPreviousCite();
     case 'pasteAsText':
       return pasteAsText();
+    case 'clearToNormal':
+      return clearToNormal();
   }
 }
 
