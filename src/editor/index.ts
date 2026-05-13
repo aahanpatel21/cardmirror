@@ -198,6 +198,10 @@ if (docMenuBtn) {
             run: () => runRibbon('convertAnalyticsToTags'),
           },
           {
+            label: 'Fix Formatting Gaps',
+            run: () => runRibbon('fixFormattingGaps'),
+          },
+          {
             label: 'Remove Hyperlinks',
             run: () => runRibbon('removeHyperlinks'),
           },

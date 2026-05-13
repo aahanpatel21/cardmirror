@@ -1964,6 +1964,144 @@ export function pasteAsText(): Command {
  * inside an anchor and disappears with the wrapper).
  */
 /**
+ * Verbatim's `FixFormattingGaps` — bridge missing mark coverage
+ * across short word-to-word gaps so word-by-word formatting doesn't
+ * leave visual breaks.
+ *
+ * Selection-sensitive (non-empty selection → that range; empty →
+ * whole doc). Walks each textblock in scope independently — bridges
+ * never cross paragraph breaks.
+ *
+ * Per-textblock, runs the regex
+ *
+ *   /[A-Za-z0-9][.,;:?()\-! ]+[A-Za-z0-9]/g
+ *
+ * — a word char, one or more "gap" chars (period / comma / semicolon
+ * / colon / question mark / parens / hyphen / exclamation / space),
+ * another word char. For each match, the bookends' marks are
+ * compared:
+ *
+ *   - underline_mark / emphasis_mark / cite_mark: if both bookends
+ *     carry the mark, `addMark` across the whole match range (the
+ *     bookends already have it, so this only really affects the
+ *     inner gap chars). These three marks are mutually exclusive via
+ *     schema `excludes`, so at most one will bridge per match.
+ *   - highlight / shading: if both bookends carry the mark, bridge
+ *     using the FIRST bookend's color attrs (matching Verbatim's
+ *     `c.Item(1).HighlightColorIndex` choice — first wins on color
+ *     mismatch).
+ *
+ * Bridging is independent per mark type and idempotent on the
+ * bookends, so a span with mixed bridgeable marks (e.g. underline +
+ * highlight on the bookends) gets both filled in.
+ *
+ * No-op (returns false) when no bridgeable gap exists in scope.
+ */
+export function fixFormattingGaps(): Command {
+  return (state, dispatch) => {
+    const sel = state.selection;
+    const from = sel.empty ? 0 : sel.from;
+    const to = sel.empty ? state.doc.content.size : sel.to;
+
+    const underlineType = schema.marks['underline_mark']!;
+    const emphasisType = schema.marks['emphasis_mark']!;
+    const citeType = schema.marks['cite_mark']!;
+    const highlightType = schema.marks['highlight']!;
+    const shadingType = schema.marks['shading']!;
+
+    const gapRegex = /[A-Za-z0-9][.,;:?()\-! ]+[A-Za-z0-9]/g;
+
+    type Add = { from: number; to: number; marks: Mark[] };
+    const adds: Add[] = [];
+
+    state.doc.nodesBetween(from, to, (node, pos) => {
+      if (!node.isTextblock) return true;
+      const tbFrom = Math.max(from, pos + 1);
+      const tbTo = Math.min(to, pos + node.nodeSize - 1);
+      if (tbFrom >= tbTo) return false;
+
+      // Walk inline children, building per-char (doc-pos, owning-
+      // text-node) lookup arrays alongside the text we'll regex.
+      let text = '';
+      const charDocPos: number[] = [];
+      const charNode: PMNode[] = [];
+      let inlineOffset = 0;
+      node.forEach((child) => {
+        if (child.isText && child.text) {
+          const childStart = pos + 1 + inlineOffset;
+          const localFrom = Math.max(tbFrom, childStart);
+          const localTo = Math.min(tbTo, childStart + child.nodeSize);
+          if (localFrom < localTo) {
+            const slice = child.text.slice(
+              localFrom - childStart,
+              localTo - childStart,
+            );
+            for (let i = 0; i < slice.length; i++) {
+              charDocPos.push(localFrom + i);
+              charNode.push(child);
+            }
+            text += slice;
+          }
+        }
+        inlineOffset += child.nodeSize;
+      });
+
+      gapRegex.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = gapRegex.exec(text)) !== null) {
+        if (m[0].length < 3) continue; // need at least 1 gap char between bookends
+        const firstIdx = m.index;
+        const lastIdx = firstIdx + m[0].length - 1;
+        const fromPos = charDocPos[firstIdx];
+        const toPos = charDocPos[lastIdx];
+        const firstNode = charNode[firstIdx];
+        const lastNode = charNode[lastIdx];
+        if (fromPos == null || toPos == null || !firstNode || !lastNode) continue;
+
+        const fm = firstNode.marks;
+        const lm = lastNode.marks;
+        const marksToAdd: Mark[] = [];
+
+        // Presence-only marks (mutually exclusive in our schema, so
+        // at most one of these three will ever bridge in a given match).
+        for (const t of [underlineType, emphasisType, citeType]) {
+          if (
+            fm.some((mk) => mk.type === t) &&
+            lm.some((mk) => mk.type === t)
+          ) {
+            marksToAdd.push(t.create());
+          }
+        }
+        // Color-bearing marks: bridge with FIRST bookend's attrs even
+        // if last bookend's color differs (Verbatim's behavior).
+        for (const t of [highlightType, shadingType]) {
+          const firstMk = fm.find((mk) => mk.type === t);
+          const lastMk = lm.find((mk) => mk.type === t);
+          if (firstMk && lastMk) {
+            marksToAdd.push(t.create(firstMk.attrs));
+          }
+        }
+
+        if (marksToAdd.length > 0) {
+          adds.push({ from: fromPos, to: toPos + 1, marks: marksToAdd });
+        }
+      }
+      return false;
+    });
+
+    if (adds.length === 0) return false;
+    if (!dispatch) return true;
+
+    const tr = state.tr;
+    for (const { from: f, to: t, marks } of adds) {
+      for (const m of marks) tr.addMark(f, t, m);
+    }
+    dispatch(tr);
+    return true;
+  };
+}
+
+/**
  * Verbatim's `ConvertAnalyticsToTags` — bulk swap every
  * `analytic_unit` in scope to a `card` (and its `analytic` heading
  * to a `tag`). Selection-sensitive:
@@ -2398,7 +2536,8 @@ export type RibbonCommandId =
   | 'selectSimilar'
   | 'selectSimilarScoped'
   | 'removeHyperlinks'
-  | 'convertAnalyticsToTags';
+  | 'convertAnalyticsToTags'
+  | 'fixFormattingGaps';
 
 export const STRUCTURAL_RIBBON_COMMAND_IDS: StructuralRibbonCommandId[] = [
   'setPocket',
@@ -2440,6 +2579,7 @@ export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
   'selectSimilarScoped',
   'removeHyperlinks',
   'convertAnalyticsToTags',
+  'fixFormattingGaps',
 ];
 
 export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
@@ -2478,6 +2618,7 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   selectSimilarScoped: 'Select Similar Formatting (Scoped)',
   removeHyperlinks: 'Remove Hyperlinks',
   convertAnalyticsToTags: 'Convert Analytics to Tags',
+  fixFormattingGaps: 'Fix Formatting Gaps',
 };
 
 /**
@@ -2526,6 +2667,7 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   selectSimilarScoped: '',
   removeHyperlinks: '',
   convertAnalyticsToTags: '',
+  fixFormattingGaps: '',
 };
 
 /**
@@ -2712,6 +2854,8 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
       return removeHyperlinks();
     case 'convertAnalyticsToTags':
       return convertAnalyticsToTags();
+    case 'fixFormattingGaps':
+      return fixFormattingGaps();
   }
 }
 

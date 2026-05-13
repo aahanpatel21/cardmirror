@@ -22,6 +22,7 @@ import {
   copyPreviousCite,
   removeHyperlinks,
   convertAnalyticsToTags,
+  fixFormattingGaps,
   buildRibbonKeymap,
   DEFAULT_RIBBON_KEYS,
   RIBBON_COMMAND_IDS,
@@ -2972,5 +2973,216 @@ describe('convertAnalyticsToTags', () => {
     expect(card.child(1).type.name).toBe('card_body');
     expect(card.child(2).type.name).toBe('cite_paragraph');
     expect(card.child(3).type.name).toBe('undertag');
+  });
+});
+
+// ---- fixFormattingGaps ----
+
+describe('fixFormattingGaps', () => {
+  function underline(text: string) {
+    return schema.text(text, [schema.marks['underline_mark']!.create()]);
+  }
+  function emphasis(text: string) {
+    return schema.text(text, [schema.marks['emphasis_mark']!.create()]);
+  }
+  function cite(text: string) {
+    return schema.text(text, [schema.marks['cite_mark']!.create()]);
+  }
+  function withHighlight(text: string, color: string) {
+    return schema.text(text, [schema.marks['highlight']!.create({ color })]);
+  }
+  function withShading(text: string, color: string) {
+    return schema.text(text, [schema.marks['shading']!.create({ color })]);
+  }
+  function p(...children: import('prosemirror-model').Node[]) {
+    return schema.nodes['paragraph']!.create(null, children);
+  }
+  function makeDoc(...children: import('prosemirror-model').Node[]) {
+    return schema.nodes['doc']!.createChecked(null, children);
+  }
+
+  // For each char in textContent, get the set of mark type names
+  // carried at that position.
+  function marksByChar(
+    doc: import('prosemirror-model').Node,
+  ): { char: string; marks: Set<string> }[] {
+    const out: { char: string; marks: Set<string> }[] = [];
+    doc.descendants((node) => {
+      if (!node.isText || !node.text) return true;
+      const names = new Set(node.marks.map((m) => m.type.name));
+      for (const ch of node.text) {
+        out.push({ char: ch, marks: names });
+      }
+      return false;
+    });
+    return out;
+  }
+
+  it('is a no-op when no bridgeable gap exists', () => {
+    const doc = makeDoc(p(schema.text('plain text here')));
+    const state = EditorState.create({ doc, schema });
+    expect(fixFormattingGaps()(state, undefined)).toBe(false);
+  });
+
+  it('bridges underline_mark across a single-space gap', () => {
+    const doc = makeDoc(p(underline('foo'), schema.text(' '), underline('bar')));
+    const state = EditorState.create({ doc, schema });
+    let next: EditorState | null = null;
+    fixFormattingGaps()(state, (tr) => { next = state.apply(tr); });
+    expect(next).not.toBeNull();
+    const chars = marksByChar(next!.doc);
+    // every char including the space carries underline_mark.
+    for (const c of chars) {
+      expect(c.marks.has('underline_mark')).toBe(true);
+    }
+  });
+
+  it('bridges emphasis_mark', () => {
+    const doc = makeDoc(p(emphasis('alpha'), schema.text(', '), emphasis('beta')));
+    const state = EditorState.create({ doc, schema });
+    let next: EditorState | null = null;
+    fixFormattingGaps()(state, (tr) => { next = state.apply(tr); });
+    const chars = marksByChar(next!.doc);
+    for (const c of chars) {
+      expect(c.marks.has('emphasis_mark')).toBe(true);
+    }
+  });
+
+  it('bridges cite_mark', () => {
+    // cite_mark inside a cite_paragraph is the natural home, but the
+    // command should bridge wherever the bookends both have it.
+    const doc = makeDoc(
+      schema.nodes['cite_paragraph']!.create(null, [
+        cite('Smith'),
+        schema.text(', '),
+        cite('2024'),
+      ]),
+    );
+    const state = EditorState.create({ doc, schema });
+    let next: EditorState | null = null;
+    fixFormattingGaps()(state, (tr) => { next = state.apply(tr); });
+    const chars = marksByChar(next!.doc);
+    for (const c of chars) {
+      expect(c.marks.has('cite_mark')).toBe(true);
+    }
+  });
+
+  // After `addMark` replaces the last bookend's color with the
+  // first's, PM merges the now-uniformly-marked runs into a single
+  // text node — so we can't find "just the space" anymore. Walk
+  // every char and check the resulting mark/color at each position.
+  function colorAt(
+    doc: import('prosemirror-model').Node,
+    markName: 'highlight' | 'shading',
+    docPos: number,
+  ): string | null {
+    let result: string | null = null;
+    doc.descendants((node, pos) => {
+      if (result != null) return false;
+      if (!node.isText || !node.text) return true;
+      if (docPos >= pos && docPos < pos + node.nodeSize) {
+        const m = node.marks.find((mk) => mk.type.name === markName);
+        result = m ? String(m.attrs['color'] ?? '') : null;
+        return false;
+      }
+      return true;
+    });
+    return result;
+  }
+
+  it('bridges highlight using the first bookend color when colors differ', () => {
+    const doc = makeDoc(p(
+      withHighlight('aaa', 'yellow'),
+      schema.text(' '),
+      withHighlight('bbb', 'green'),
+    ));
+    const state = EditorState.create({ doc, schema });
+    let next: EditorState | null = null;
+    fixFormattingGaps()(state, (tr) => { next = state.apply(tr); });
+    // Doc layout post-bridge: <p>aaa bbb</p>, all with highlight:yellow.
+    // Position 4 (1 for <p> open + 3 for "aaa") is the space.
+    expect(colorAt(next!.doc, 'highlight', 4)).toBe('yellow');
+    // Every char carries the highlight now.
+    const chars = marksByChar(next!.doc);
+    for (const c of chars) expect(c.marks.has('highlight')).toBe(true);
+  });
+
+  it('bridges shading similarly', () => {
+    const doc = makeDoc(p(
+      withShading('xxx', 'C0C0C0'),
+      schema.text('. '),
+      withShading('yyy', 'D0D0D0'),
+    ));
+    const state = EditorState.create({ doc, schema });
+    let next: EditorState | null = null;
+    fixFormattingGaps()(state, (tr) => { next = state.apply(tr); });
+    // Position 4 (1 open + "xxx") is the first gap char ".".
+    expect(colorAt(next!.doc, 'shading', 4)).toBe('C0C0C0');
+    expect(colorAt(next!.doc, 'shading', 5)).toBe('C0C0C0');
+    const chars = marksByChar(next!.doc);
+    for (const c of chars) expect(c.marks.has('shading')).toBe(true);
+  });
+
+  it('does not bridge when only one bookend has the mark', () => {
+    const doc = makeDoc(p(underline('foo'), schema.text(' bar')));
+    const state = EditorState.create({ doc, schema });
+    expect(fixFormattingGaps()(state, undefined)).toBe(false);
+  });
+
+  it('does not cross paragraph breaks', () => {
+    const doc = makeDoc(
+      p(underline('foo')),
+      p(underline('bar')),
+    );
+    const state = EditorState.create({ doc, schema });
+    expect(fixFormattingGaps()(state, undefined)).toBe(false);
+  });
+
+  it('respects selection scope', () => {
+    // Two paragraphs each have a bridgeable gap. Select only the first.
+    const para1 = p(underline('aa'), schema.text(' '), underline('bb'));
+    const para2 = p(emphasis('cc'), schema.text(' '), emphasis('dd'));
+    const doc = makeDoc(para1, para2);
+    const state0 = EditorState.create({ doc, schema });
+    // Selection within para1 only.
+    const selStart = 1;
+    const selEnd = 1 + para1.content.size;
+    const state = state0.apply(
+      state0.tr.setSelection(TextSelection.create(state0.doc, selStart, selEnd)),
+    );
+    let next: EditorState | null = null;
+    fixFormattingGaps()(state, (tr) => { next = state.apply(tr); });
+    // Para1 bridged; para2 untouched.
+    const para1Chars = marksByChar(next!.doc.child(0));
+    for (const c of para1Chars) expect(c.marks.has('underline_mark')).toBe(true);
+    // Para2: the space between cc and dd should NOT have emphasis.
+    let spaceMarks: Set<string> | null = null;
+    next!.doc.child(1).descendants((node) => {
+      if (!node.isText) return true;
+      if (node.text === ' ') {
+        spaceMarks = new Set(node.marks.map((m) => m.type.name));
+      }
+      return false;
+    });
+    expect(spaceMarks).not.toBeNull();
+    expect(spaceMarks!.has('emphasis_mark')).toBe(false);
+  });
+
+  it('bridges multiple mark types simultaneously', () => {
+    const both = schema.marks['underline_mark']!.create();
+    const hl = schema.marks['highlight']!.create({ color: 'yellow' });
+    const doc = makeDoc(p(
+      schema.text('foo', [both, hl]),
+      schema.text(' '),
+      schema.text('bar', [both, hl]),
+    ));
+    const state = EditorState.create({ doc, schema });
+    let next: EditorState | null = null;
+    fixFormattingGaps()(state, (tr) => { next = state.apply(tr); });
+    const chars = marksByChar(next!.doc);
+    for (const c of chars) {
+      expect(c.marks.has('underline_mark')).toBe(true);
+      expect(c.marks.has('highlight')).toBe(true);
+    }
   });
 });
