@@ -187,10 +187,6 @@ class SettingsModal {
       row.appendChild(text);
       row.appendChild(buildBodyFontEditor());
       return row;
-    } else if (meta.kind === 'lineHeight') {
-      row.appendChild(text);
-      row.appendChild(buildLineHeightEditor(meta.key as LineHeightKey));
-      return row;
     } else if (meta.kind === 'lineHeights') {
       row.appendChild(text);
       row.appendChild(buildLineHeightsEditor());
@@ -422,42 +418,6 @@ type LineHeightKey =
   | 'lineHeightAnalytic'
   | 'lineHeightHeading'
   | 'lineHeightUndertag';
-
-function buildLineHeightEditor(key: LineHeightKey): HTMLElement {
-  const wrap = document.createElement('div');
-  wrap.className = 'pmd-line-height-editor';
-
-  const input = document.createElement('input');
-  input.type = 'number';
-  input.className = 'pmd-line-height-input';
-  input.min = '1.0';
-  input.max = '2.0';
-  input.step = '0.05';
-  input.value = String(settings.get(key));
-  input.addEventListener('change', () => {
-    const v = parseFloat(input.value);
-    if (!Number.isFinite(v)) {
-      input.value = String(settings.get(key));
-      return;
-    }
-    settings.set(key, v);
-  });
-  wrap.appendChild(input);
-
-  const unit = document.createElement('span');
-  unit.className = 'pmd-line-height-unit';
-  unit.textContent = '× font size';
-  wrap.appendChild(unit);
-
-  const unsubscribe = settings.subscribe(() => {
-    if (document.activeElement !== input) {
-      input.value = String(settings.get(key));
-    }
-  });
-  wrap.addEventListener('DOMNodeRemoved', () => unsubscribe());
-
-  return wrap;
-}
 
 const LINE_HEIGHT_ROWS: { key: LineHeightKey; label: string }[] = [
   { key: 'lineHeight', label: 'Body' },

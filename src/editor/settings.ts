@@ -329,7 +329,6 @@ export interface SettingMeta {
     | 'displayTypography'
     | 'displayColors'
     | 'bodyFont'
-    | 'lineHeight'
     | 'lineHeights'
     | 'formattingPanelMode'
     | 'headingMode';

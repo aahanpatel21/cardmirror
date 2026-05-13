@@ -43,10 +43,11 @@
  * Matches Word's "single" line-spacing across mixed-font runs without
  * a font-size cascade.
  *
- * The multiplier is governed by `shrunkLineHeightMultiplier` — a
- * linear ramp from 1.0 at 6pt to 1.6 at 11pt, clamped outside that
- * range. Smaller fonts pack proportionally tighter (since they're
- * usually fine-print citation material the user is happy to compress).
+ * The multiplier is governed by `shrunkLineHeightCss` — a linear
+ * ramp from 1.0 at 6pt up to the body knob at 11pt, clamped outside
+ * that range. Smaller fonts pack proportionally tighter (since
+ * they're usually fine-print citation material the user is happy
+ * to compress).
  *
  * Why named-style cascade is no longer a concern: with paragraph
  * font-size left alone, `.pmd-underline` / `.pmd-emphasis` / etc.
@@ -108,10 +109,10 @@ function computeDecorationsInRange(doc: PMNode, from: number, to: number): Decor
   const decos: Decoration[] = [];
   doc.nodesBetween(from, to, (node, pos) => {
     if (!BODY_PARA_TYPES.has(node.type.name)) return;
-    const stats = computeFontSizeStats(node);
-    if (stats.min >= DEFAULT_HALF_POINTS) return;
+    const minHp = computeMinHalfPoints(node);
+    if (minHp >= DEFAULT_HALF_POINTS) return;
 
-    const minPt = stats.min / 2;
+    const minPt = minHp / 2;
     decos.push(
       Decoration.node(pos, pos + node.nodeSize, {
         class: 'pmd-fs-shrunk',
@@ -162,62 +163,39 @@ function computeDecorationsInRange(doc: PMNode, from: number, to: number): Decor
  * and any external consumers.
  */
 export function computeMinHalfPoints(para: PMNode): number {
-  return computeFontSizeStats(para).min;
+  let min = DEFAULT_HALF_POINTS;
+  para.descendants((child) => {
+    if (!child.isText || !child.text) return;
+    const fontSizeMark = child.marks.find((m) => m.type.name === 'font_size');
+    if (!fontSizeMark) return;
+    const hp = Number(fontSizeMark.attrs['halfPoints'] ?? DEFAULT_HALF_POINTS);
+    if (hp < min) min = hp;
+  });
+  return min;
 }
 
 
 /**
  * CSS `line-height` value for a shrunken paragraph as a function of
- * the paragraph's smallest font_size in pt. Two anchors:
+ * the paragraph's smallest font_size in pt. The plugin only calls
+ * this when `minPt < 11`, so:
  *
- *   minPt ≥ 11pt → body knob (`var(--pmd-line-height)`) × minPt.
- *                  Plugin doesn't fire here in practice (the >=
- *                  threshold guard above), so this branch only
- *                  matters if the threshold is ever loosened.
- *   minPt = 6pt  → 1.0 × minPt = 6pt absolute. Fully tight.
- *   minPt ≤ 6pt  → 1.0 × minPt. Fully tight, clamped.
- *
- * Between 6pt and 11pt the multiplier ramps linearly from 1.0 at
- * 6pt up to the body knob at 11pt — so changing `--pmd-line-height`
- * proportionally scales the looser end of the ramp without lifting
- * the very-small-font floor off 1.0. Bumping body to 1.6 makes 8pt
- * shrunken paragraphs 8pt × 1.24 = 9.92pt; bumping it to 2.0 makes
- * them 8pt × 1.4 = 11.2pt; etc. 6pt-and-below stays at 6pt regardless.
+ *   minPt ≤ 6pt        → `${minPt}pt` (1.0 × minPt, fully tight).
+ *   6pt < minPt < 11pt → linear ramp from 1.0 at 6pt up to the body
+ *                        knob at 11pt. Bumping body to 1.6 makes 8pt
+ *                        shrunken paragraphs 8pt × 1.24 = 9.92pt;
+ *                        bumping it to 2.0 makes them 8pt × 1.4 =
+ *                        11.2pt; etc. 6pt-and-below stays at 6pt
+ *                        regardless of the body knob.
  *
  * Returned as a CSS expression so the browser re-evaluates whenever
  * `--pmd-line-height` changes — no need to recompute decorations
  * when the user nudges the body knob.
  */
-export function shrunkLineHeightCss(minPt: number): string {
+function shrunkLineHeightCss(minPt: number): string {
   if (minPt <= 6) return `${minPt}pt`;
-  if (minPt >= 11) return `calc(${minPt}pt * var(--pmd-line-height))`;
   // ramp fraction: 0 at 6pt → 1 at 11pt.
   const rampFrac = +((minPt - 6) / 5).toFixed(4);
   return `calc(${minPt}pt * (1 + ${rampFrac} * (var(--pmd-line-height) - 1)))`;
 }
 
-interface FontSizeStats {
-  min: number;
-  max: number;
-  /** True if any text node has no `font_size` mark (i.e., its size
-   *  comes from CSS / paragraph defaults rather than direct formatting). */
-  hasBare: boolean;
-}
-
-function computeFontSizeStats(para: PMNode): FontSizeStats {
-  let min = DEFAULT_HALF_POINTS;
-  let max = DEFAULT_HALF_POINTS;
-  let hasBare = false;
-  para.descendants((child) => {
-    if (!child.isText || !child.text) return;
-    const fontSizeMark = child.marks.find((m) => m.type.name === 'font_size');
-    if (!fontSizeMark) {
-      hasBare = true;
-      return;
-    }
-    const hp = Number(fontSizeMark.attrs['halfPoints'] ?? DEFAULT_HALF_POINTS);
-    if (hp < min) min = hp;
-    if (hp > max) max = hp;
-  });
-  return { min, max, hasBare };
-}

@@ -1625,8 +1625,7 @@ body.pmd-nav-resize-active {
   background: var(--pmd-c-bg);
 }
 
-.pmd-body-font-editor,
-.pmd-line-height-editor {
+.pmd-body-font-editor {
   margin-top: 0.5rem;
   display: flex;
   align-items: center;
