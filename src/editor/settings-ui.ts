@@ -838,9 +838,7 @@ function buildCondenseWarningDelimiterEditor(): HTMLElement {
     const o = openInput.value;
     const c = closeInput.value;
     customSample.textContent =
-      o && c
-        ? `${o}PARAGRAPH INTEGRITY PAUSES${c}`
-        : '(set both open and close)';
+      o && c ? `${o}PARAGRAPH INTEGRITY PAUSES${c}` : '';
   };
   refreshCustomSample();
   openInput.addEventListener('input', refreshCustomSample);
@@ -947,7 +945,6 @@ function buildShrinkProtectionsEditor(): HTMLElement {
       patternInput.addEventListener('input', validate);
       regexCb.addEventListener('change', validate);
       validate();
-      row.appendChild(note);
 
       const delBtn = document.createElement('button');
       delBtn.type = 'button';
@@ -961,6 +958,11 @@ function buildShrinkProtectionsEditor(): HTMLElement {
         commit(next);
       });
       row.appendChild(delBtn);
+
+      // Note goes after the delete button so its `flex: 0 0 100%`
+      // wraps to its own line BELOW the row instead of pushing the
+      // delete button down. Order in DOM dictates wrap order.
+      row.appendChild(note);
 
       list.appendChild(row);
     });
@@ -980,12 +982,16 @@ function buildShrinkProtectionsEditor(): HTMLElement {
 
   const unsubscribe = settings.subscribe((s) => {
     void s;
-    // Re-render only when the rules list reference changed AND no
-    // input in this editor is focused (otherwise typing would lose
-    // focus on every keystroke).
-    if (!(document.activeElement && wrap.contains(document.activeElement))) {
-      render();
-    }
+    // Skip re-render while the user is TYPING in a text input — a
+    // re-render would replace the input element and drop focus. But
+    // do re-render when buttons / checkboxes are focused (so + Add
+    // and × delete refresh the list live).
+    const active = document.activeElement;
+    const isTextInputFocused =
+      active instanceof HTMLInputElement &&
+      active.type === 'text' &&
+      wrap.contains(active);
+    if (!isTextInputFocused) render();
   });
   render();
   wrap.addEventListener('DOMNodeRemoved', () => unsubscribe());
