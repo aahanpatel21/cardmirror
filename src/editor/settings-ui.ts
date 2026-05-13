@@ -851,7 +851,7 @@ function buildCondenseWarningDelimiterEditor(): HTMLElement {
   const customInner = document.createElement('div');
   customInner.className = 'pmd-condense-warning-delimiter-custom-inner';
   const customLabel = document.createElement('div');
-  customLabel.textContent = 'Custom:';
+  customLabel.textContent = 'Custom (must set both):';
   customLabel.className = 'pmd-condense-warning-delimiter-custom-label';
   customInner.appendChild(customLabel);
   customInner.appendChild(openInput);
