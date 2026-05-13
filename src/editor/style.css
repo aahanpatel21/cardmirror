@@ -2117,6 +2117,123 @@ body.pmd-nav-resize-active {
   font-size: 0.8rem;
 }
 
+/* Custom-delim row: radio + two short inputs for open/close + live
+   sample. The label wraps the radio; the inner span holds the rest. */
+.pmd-condense-warning-delimiter-row-custom {
+  align-items: center;
+}
+
+.pmd-condense-warning-delimiter-custom-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.pmd-condense-warning-delimiter-custom-label {
+  font-size: 0.85rem;
+}
+
+.pmd-condense-warning-delimiter-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  width: 4.5rem;
+  padding: 0.1rem 0.3rem;
+  border: 1px solid #c8d0d8;
+  border-radius: 3px;
+  background: #fff;
+}
+
+/* Custom shrink protections list: text input + regex checkbox +
+   inline validation note + delete. */
+.pmd-shrink-protections-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
+.pmd-shrink-protections-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pmd-shrink-protections-empty {
+  margin: 0.25rem 0;
+  font-size: 0.78rem;
+  color: #777;
+  font-style: italic;
+}
+
+.pmd-shrink-protection-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.pmd-shrink-protection-pattern {
+  flex: 1 1 12rem;
+  min-width: 8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid #c8d0d8;
+  border-radius: 3px;
+  background: #fff;
+}
+
+.pmd-shrink-protection-regex-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.pmd-shrink-protection-note {
+  flex: 0 0 100%;
+  font-size: 0.72rem;
+  color: #b85a00;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.pmd-shrink-protection-delete {
+  flex: 0 0 auto;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #c8d0d8;
+  background: #fff;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.pmd-shrink-protection-delete:hover {
+  background: #fee;
+  border-color: #c0392b;
+  color: #c0392b;
+}
+
+.pmd-shrink-protections-add {
+  align-self: flex-start;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.78rem;
+  border: 1px solid #c8d0d8;
+  border-radius: 3px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.pmd-shrink-protections-add:hover {
+  background: #f0f4fa;
+}
+
 /* Keybindings editor: scrollable list of rows, each row is
    `[label] [chips…] [+] [↺]` plus an inline "note" that briefly
    surfaces conflict / validation messages without growing the layout. */

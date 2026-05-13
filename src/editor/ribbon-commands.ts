@@ -45,7 +45,6 @@ import {
   uncondense,
   toggleCase,
 } from './condense.js';
-import type { CondenseWarningDelimiter } from './settings.js';
 import { togglePlainPaste } from './paste-plugin.js';
 import {
   selectSimilar,
@@ -1590,7 +1589,7 @@ const SHRINK_NORMAL_TO_SMALL_PT = 8;
 // so each bracket pair stops at the nearest closer within the same
 // paragraph. Double-bracket variants come first so the longer match
 // wins when both shapes overlap.
-const PROTECTED_RANGE_REGEXES = [
+const BUILTIN_PROTECTED_REGEXES: readonly RegExp[] = [
   // Omissions. Double-bracket variants first so the longer match wins
   // when both shapes overlap; the post-sort+merge in
   // findProtectedRanges collapses any residual overlap.
@@ -1603,14 +1602,67 @@ const PROTECTED_RANGE_REGEXES = [
   // "Condense with warning" markers — all 6 delimiter variants, doubles
   // first. Matched regardless of the current `condenseWarningDelimiter`
   // setting so older markers (or markers from another user's setting
-  // choice) stay protected after the setting changes.
+  // choice) stay protected after the setting changes. The `'custom'`
+  // delimiter's markers get auto-added via `compileShrinkProtections`
+  // when the user has configured one.
   /\[\[PARAGRAPH INTEGRITY (?:PAUSES|RESUMES)\]\]/gi,
   /<<PARAGRAPH INTEGRITY (?:PAUSES|RESUMES)>>/gi,
   /\{\{PARAGRAPH INTEGRITY (?:PAUSES|RESUMES)\}\}/gi,
   /\[PARAGRAPH INTEGRITY (?:PAUSES|RESUMES)\]/gi,
   /<PARAGRAPH INTEGRITY (?:PAUSES|RESUMES)>/gi,
   /\{PARAGRAPH INTEGRITY (?:PAUSES|RESUMES)\}/gi,
-] as const;
+];
+
+const REGEX_ESCAPE_RE = /[.*+?^${}()|[\]\\]/g;
+
+/** Escape a literal string for use as a regex source. */
+function escapeRegexLiteral(s: string): string {
+  return s.replace(REGEX_ESCAPE_RE, '\\$&');
+}
+
+/**
+ * Combine the built-in protected patterns with user-supplied custom
+ * protections and (if "Condense with warning" is using custom
+ * delimiters) the two auto-generated warning-marker patterns for
+ * those delimiters. Each custom entry is either a literal string —
+ * regex-escaped and compiled with `gi` — or a raw regex source
+ * compiled verbatim with `gi`. Invalid regex sources are skipped.
+ *
+ * Empty pattern strings and empty custom-delim halves are skipped so
+ * a half-filled "custom" setting doesn't produce a runaway empty
+ * regex.
+ */
+export function compileShrinkProtections(
+  custom: readonly { pattern: string; isRegex: boolean }[],
+  customDelimOpen: string,
+  customDelimClose: string,
+): RegExp[] {
+  const out: RegExp[] = [...BUILTIN_PROTECTED_REGEXES];
+  if (customDelimOpen && customDelimClose) {
+    const open = escapeRegexLiteral(customDelimOpen);
+    const close = escapeRegexLiteral(customDelimClose);
+    try {
+      out.push(
+        new RegExp(`${open}PARAGRAPH INTEGRITY (?:PAUSES|RESUMES)${close}`, 'gi'),
+      );
+    } catch {
+      // Defensive: escape should always produce valid regex, but if
+      // someone smuggled in something exotic, skip rather than throw.
+    }
+  }
+  for (const rule of custom) {
+    if (!rule.pattern) continue;
+    const source = rule.isRegex
+      ? rule.pattern
+      : escapeRegexLiteral(rule.pattern);
+    try {
+      out.push(new RegExp(source, 'gi'));
+    } catch {
+      // Invalid user regex — silently skip rather than break shrink.
+    }
+  }
+  return out;
+}
 
 const SHRINK_EXEMPT_MARK_NAMES = new Set([
   'underline_mark',
@@ -1622,17 +1674,19 @@ export function shrinkText(
   effectivePt: (node: PMNode | null, parent: PMNode) => number,
   normalPt: () => number,
   restoreOmissions: () => boolean,
+  protectionPatterns: () => readonly RegExp[],
 ): Command {
   return (state, dispatch) => {
     const ranges = computeShrinkScope(state);
     if (ranges.length === 0) return false;
 
-    // If the protect-restore setting is on, identify omission spans
-    // and warning markers up front so they can be excluded from both
-    // the size-cycle decision and the size mutation. Otherwise treat
-    // them as regular text.
+    // If the protect-restore setting is on, identify protected spans
+    // (built-in omissions + warning markers + user custom rules + auto-
+    // generated patterns for the custom condense-with-warning delim)
+    // up front so they can be excluded from both the size-cycle decision
+    // and the size mutation. Otherwise treat them as regular text.
     const protectedRanges = restoreOmissions()
-      ? findProtectedRanges(state.doc, ranges)
+      ? findProtectedRanges(state.doc, ranges, protectionPatterns())
       : [];
 
     // Walk eligible (non-exempt) text nodes inside each range to
@@ -1757,6 +1811,7 @@ function computeShrinkScope(state: import('prosemirror-state').EditorState): { f
 function findProtectedRanges(
   doc: PMNode,
   ranges: { from: number; to: number }[],
+  patterns: readonly RegExp[],
 ): { from: number; to: number }[] {
   const matches: { from: number; to: number }[] = [];
   for (const range of ranges) {
@@ -1772,10 +1827,17 @@ function findProtectedRanges(
       text += slice;
       return true;
     });
-    for (const re of PROTECTED_RANGE_REGEXES) {
+    for (const re of patterns) {
       re.lastIndex = 0;
       let m: RegExpExecArray | null;
       while ((m = re.exec(text)) !== null) {
+        // Defensive against zero-width matches (e.g. a user-supplied
+        // regex like `(?=)` would match every position): advance
+        // lastIndex by 1 to avoid an infinite loop.
+        if (m[0].length === 0) {
+          re.lastIndex = m.index + 1;
+          continue;
+        }
         const matchFrom = charPos[m.index];
         const matchTo = charPos[m.index + m[0].length - 1];
         if (matchFrom == null || matchTo == null) continue;
@@ -2391,13 +2453,21 @@ export interface RibbonContext {
   /** Body "Normal" size in pt — the size Shrink jumps back to at the
    *  bottom of its cycle. */
   normalPt: () => number;
-  /** Whether Shrink (Mod-8) excludes bracketed-Omitted spans AND the
-   *  PARAGRAPH INTEGRITY PAUSES/RESUMES markers from the cycle and
-   *  pins them at Normal size. Off by default. */
+  /** Whether Shrink (Mod-8) excludes protected text (omissions,
+   *  warning markers, user custom rules) from the cycle and pins
+   *  them at Normal size. Off by default. */
   shrinkRestoresOmissionsToNormal: () => boolean;
-  /** Open delimiter for "Condense with warning" markers — one of
-   *  `[`, `[[`, `<`, `<<`, `{`, `{{`. */
-  condenseWarningDelimiter: () => CondenseWarningDelimiter;
+  /** Compiled protected-range patterns Shrink uses to find spans to
+   *  preserve at Normal size. The editor builds this from the static
+   *  built-in patterns, the user's custom protections, and the
+   *  custom condense-with-warning delimiter (if configured). */
+  shrinkProtectionPatterns: () => readonly RegExp[];
+  /** Open + close delimiter pair for "Condense with warning" markers.
+   *  For the six built-in enum values these are deterministic mirror
+   *  pairs; for `'custom'` they come from the user-typed setting
+   *  strings. The resolver lets the command consume one shape
+   *  regardless of which the user picked. */
+  condenseWarningDelimiter: () => { open: string; close: string };
   /** Side-effecting actions for the menu-only / button-only commands.
    *  All four are no-ops by default so tests / standalone uses of
    *  `getRibbonCommand` don't need to wire them. The real editor
@@ -2421,7 +2491,8 @@ const DEFAULT_RIBBON_CONTEXT: RibbonContext = {
   effectivePtForNode: () => 11,
   normalPt: () => 11,
   shrinkRestoresOmissionsToNormal: () => false,
-  condenseWarningDelimiter: () => '[',
+  shrinkProtectionPatterns: () => BUILTIN_PROTECTED_REGEXES,
+  condenseWarningDelimiter: () => ({ open: '[', close: ']' }),
   runCreateReference: () => {},
   openWordCountDialog: () => {},
   toggleReadMode: () => {},
@@ -2476,6 +2547,7 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
         ctx.effectivePtForNode,
         ctx.normalPt,
         ctx.shrinkRestoresOmissionsToNormal,
+        ctx.shrinkProtectionPatterns,
       );
     case 'createReference':
       // Side-effecting (clipboard write + toast). Returns true so the

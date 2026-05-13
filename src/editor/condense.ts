@@ -23,10 +23,6 @@
 import { Fragment, type Node as PMNode, type Mark, type NodeType } from 'prosemirror-model';
 import { TextSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state';
 import { schema } from '../schema/index.js';
-import {
-  condenseWarningCloseFor,
-  type CondenseWarningDelimiter,
-} from './settings.js';
 
 // ---------- Pilcrow primitives ----------
 
@@ -1022,7 +1018,7 @@ export const CONDENSE_WARNING_RESUME_LABEL = 'PARAGRAPH INTEGRITY RESUMES';
  * or when no card_body is actually touched.
  */
 export function condenseWithWarning(
-  getDelimiter: () => CondenseWarningDelimiter,
+  getDelimiter: () => { open: string; close: string },
 ): Command {
   return (state, dispatch) => {
     const { from, to, empty } = state.selection;
@@ -1060,10 +1056,17 @@ export function condenseWithWarning(
       return false;
     });
     if (invalid || paragraphs.length === 0) return false;
+    // Don't emit broken markers if the user picked Custom but left a
+    // half-filled delim setting. No-op + console warn.
+    const { open, close } = getDelimiter();
+    if (!open || !close) {
+      console.warn(
+        'condenseWithWarning: custom delimiter has empty open or close — skipping',
+      );
+      return false;
+    }
     if (!dispatch) return true;
 
-    const open = getDelimiter();
-    const close = condenseWarningCloseFor(open);
     const cardBodyType = schema.nodes['card_body']!;
 
     const pausePara = cardBodyType.create(

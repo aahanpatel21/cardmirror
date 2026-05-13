@@ -289,10 +289,29 @@ export interface Settings {
   /**
    * Open delimiter used by "Condense with warning" to bracket the
    * `PARAGRAPH INTEGRITY PAUSES/RESUMES` markers. One of `[`, `[[`,
-   * `<`, `<<`, `{`, `{{`. The close delimiter is the mirror. Default
-   * `[` matches the most common convention in user docs.
+   * `<`, `<<`, `{`, `{{`, or `custom` (which reads
+   * `condenseWarningCustomOpen` / `Close` instead). Default `[`
+   * matches the most common convention in user docs.
    */
   condenseWarningDelimiter: CondenseWarningDelimiter;
+  /** Custom open delimiter, used when `condenseWarningDelimiter` is
+   *  `'custom'`. Empty string disables auto-protection of the
+   *  custom-delim warning markers in shrink. */
+  condenseWarningCustomOpen: string;
+  /** Custom close delimiter, used when `condenseWarningDelimiter` is
+   *  `'custom'`. */
+  condenseWarningCustomClose: string;
+  /**
+   * User-supplied strings (or regexes) that Shrink should treat as
+   * protected — same pipeline as the built-in bracketed-Omitted
+   * patterns and the PARAGRAPH INTEGRITY PAUSES/RESUMES markers. The
+   * whole list is gated by `shrinkRestoresOmissionsToNormal`. Each
+   * entry: a string and an `isRegex` flag. When false, the string is
+   * regex-escaped and matched case-insensitively. When true, it's
+   * compiled as a regex source verbatim (still with `gi` flags).
+   * Invalid regex sources are silently dropped at compile time.
+   */
+  shrinkCustomProtections: ShrinkProtection[];
   /**
    * User-supplied overrides for ribbon-command key bindings. Each
    * entry maps a `RibbonCommandId` to its custom key spec — either a
@@ -305,13 +324,18 @@ export interface Settings {
   ribbonKeyOverrides: Partial<Record<RibbonCommandId, string | string[]>>;
 }
 
-/** Open-delimiter options for "Condense with warning" markers. */
-export type CondenseWarningDelimiter = '[' | '[[' | '<' | '<<' | '{' | '{{';
+/** Open-delimiter options for "Condense with warning" markers. The
+ *  six built-ins use mirror-pair closers via `condenseWarningCloseFor`;
+ *  `'custom'` reads the close string from `condenseWarningCustomClose`. */
+export type CondenseWarningDelimiter =
+  | '[' | '[[' | '<' | '<<' | '{' | '{{' | 'custom';
 const CONDENSE_WARNING_DELIMITERS: CondenseWarningDelimiter[] = [
-  '[', '[[', '<', '<<', '{', '{{',
+  '[', '[[', '<', '<<', '{', '{{', 'custom',
 ];
 
-/** Return the mirror close delimiter for a given open. */
+/** Return the mirror close for a built-in open. Throws on 'custom'
+ *  (callers should branch on the enum first and read the user-typed
+ *  close string from settings instead). */
 export function condenseWarningCloseFor(d: CondenseWarningDelimiter): string {
   switch (d) {
     case '[': return ']';
@@ -320,7 +344,19 @@ export function condenseWarningCloseFor(d: CondenseWarningDelimiter): string {
     case '<<': return '>>';
     case '{': return '}';
     case '{{': return '}}';
+    case 'custom':
+      throw new Error("condenseWarningCloseFor: 'custom' has no mirror — read from settings");
   }
+}
+
+/** User-supplied shrink protection rule. `pattern` is treated as a
+ *  literal string by default (escaped, matched case-insensitively
+ *  with `i` flag, like the built-in omission patterns) or as a raw
+ *  regex source when `isRegex` is true. Invalid regex sources are
+ *  silently dropped at compile time. */
+export interface ShrinkProtection {
+  pattern: string;
+  isRegex: boolean;
 }
 
 export type HeadingMode = 'strict' | 'respect' | 'demolish';
@@ -364,6 +400,9 @@ const DEFAULTS: Settings = {
   forReferenceUseGray50: false,
   shrinkRestoresOmissionsToNormal: false,
   condenseWarningDelimiter: '[',
+  condenseWarningCustomOpen: '',
+  condenseWarningCustomClose: '',
+  shrinkCustomProtections: [],
   ribbonKeyOverrides: {},
 };
 
@@ -393,6 +432,7 @@ export interface SettingMeta {
     | 'formattingPanelMode'
     | 'headingMode'
     | 'condenseWarningDelimiter'
+    | 'shrinkCustomProtections'
     | 'keybindings';
 }
 
@@ -502,10 +542,17 @@ export const SETTING_METADATA: SettingMeta[] = [
   },
   {
     key: 'shrinkRestoresOmissionsToNormal',
-    label: 'Shrink keeps omissions and warnings at Normal size',
+    label: 'Shrink keeps protected text at Normal size',
     description:
-      'When on, Shrink (Mod-8) leaves bracketed "Omitted" spans and the PARAGRAPH INTEGRITY PAUSES/RESUMES markers from "Condense with warning" at Normal size so they stay visible in the shrunken output. When off, both are shrunk along with the rest of the text.',
+      'When on, Shrink (Mod-8) leaves bracketed "Omitted" spans, the PARAGRAPH INTEGRITY PAUSES/RESUMES markers from "Condense with warning", and any custom protections (below) at Normal size so they stay visible in the shrunken output. When off, all of these are shrunk along with the rest of the text.',
     kind: 'toggle',
+  },
+  {
+    key: 'shrinkCustomProtections',
+    label: 'Custom shrink protections',
+    description:
+      'Strings (or regex sources, if the box is checked) that Shrink should leave at Normal size whenever protection is on. Literal entries are matched case-insensitively after escaping; regex entries are compiled with `gi` flags. Invalid regex entries are skipped.',
+    kind: 'shrinkCustomProtections',
   },
   {
     key: 'condenseWarningDelimiter',
@@ -678,8 +725,29 @@ function sanitize(s: Settings): Settings {
     )
       ? (s.condenseWarningDelimiter as CondenseWarningDelimiter)
       : DEFAULTS.condenseWarningDelimiter,
+    condenseWarningCustomOpen:
+      typeof s.condenseWarningCustomOpen === 'string'
+        ? s.condenseWarningCustomOpen
+        : DEFAULTS.condenseWarningCustomOpen,
+    condenseWarningCustomClose:
+      typeof s.condenseWarningCustomClose === 'string'
+        ? s.condenseWarningCustomClose
+        : DEFAULTS.condenseWarningCustomClose,
+    shrinkCustomProtections: sanitizeShrinkProtections(s.shrinkCustomProtections),
     ribbonKeyOverrides: sanitizeRibbonKeyOverrides(s.ribbonKeyOverrides),
   };
+}
+
+function sanitizeShrinkProtections(raw: unknown): ShrinkProtection[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ShrinkProtection[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') continue;
+    const pattern = (r as ShrinkProtection).pattern;
+    if (typeof pattern !== 'string') continue;
+    out.push({ pattern, isRegex: !!(r as ShrinkProtection).isRegex });
+  }
+  return out;
 }
 
 /** Keep only string / string[] entries, coercing arrays to plain arrays

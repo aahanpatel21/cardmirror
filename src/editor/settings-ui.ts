@@ -21,6 +21,7 @@ import {
   type FormattingPanelMode,
   type HeadingMode,
   type CondenseWarningDelimiter,
+  type ShrinkProtection,
   condenseWarningCloseFor,
 } from './settings.js';
 import { isFontAvailable } from './font-detect.js';
@@ -203,6 +204,10 @@ class SettingsModal {
     } else if (meta.kind === 'condenseWarningDelimiter') {
       row.appendChild(text);
       row.appendChild(buildCondenseWarningDelimiterEditor());
+      return row;
+    } else if (meta.kind === 'shrinkCustomProtections') {
+      row.appendChild(text);
+      row.appendChild(buildShrinkProtectionsEditor());
       return row;
     } else if (meta.kind === 'keybindings') {
       row.appendChild(text);
@@ -788,6 +793,203 @@ function buildCondenseWarningDelimiterEditor(): HTMLElement {
     row.appendChild(sample);
     wrap.appendChild(row);
   }
+
+  // Custom row: radio + two short text inputs for open/close. When
+  // 'custom' is selected, the inputs become live; otherwise they're
+  // still editable (so the user can type before committing the radio
+  // — Word-style) but visually muted.
+  const customRow = document.createElement('label');
+  customRow.className =
+    'pmd-condense-warning-delimiter-row pmd-condense-warning-delimiter-row-custom';
+  const customRadio = document.createElement('input');
+  customRadio.type = 'radio';
+  customRadio.name = groupName;
+  customRadio.value = 'custom';
+  customRadio.checked = settings.get('condenseWarningDelimiter') === 'custom';
+  customRadio.addEventListener('change', () => {
+    if (customRadio.checked) settings.set('condenseWarningDelimiter', 'custom');
+  });
+  customRow.appendChild(customRadio);
+
+  const openInput = document.createElement('input');
+  openInput.type = 'text';
+  openInput.className = 'pmd-condense-warning-delimiter-input';
+  openInput.placeholder = 'open';
+  openInput.maxLength = 16;
+  openInput.value = settings.get('condenseWarningCustomOpen');
+  openInput.addEventListener('input', () => {
+    settings.set('condenseWarningCustomOpen', openInput.value);
+  });
+
+  const closeInput = document.createElement('input');
+  closeInput.type = 'text';
+  closeInput.className = 'pmd-condense-warning-delimiter-input';
+  closeInput.placeholder = 'close';
+  closeInput.maxLength = 16;
+  closeInput.value = settings.get('condenseWarningCustomClose');
+  closeInput.addEventListener('input', () => {
+    settings.set('condenseWarningCustomClose', closeInput.value);
+  });
+
+  const customSample = document.createElement('span');
+  customSample.className = 'pmd-condense-warning-delimiter-sample';
+
+  const refreshCustomSample = (): void => {
+    const o = openInput.value;
+    const c = closeInput.value;
+    customSample.textContent =
+      o && c
+        ? `${o}PARAGRAPH INTEGRITY PAUSES${c}`
+        : '(set both open and close)';
+  };
+  refreshCustomSample();
+  openInput.addEventListener('input', refreshCustomSample);
+  closeInput.addEventListener('input', refreshCustomSample);
+
+  // The label-text portion: "Custom" word + the two inputs + sample.
+  const customInner = document.createElement('span');
+  customInner.className = 'pmd-condense-warning-delimiter-custom-inner';
+  const customLabel = document.createElement('span');
+  customLabel.textContent = 'Custom:';
+  customLabel.className = 'pmd-condense-warning-delimiter-custom-label';
+  customInner.appendChild(customLabel);
+  customInner.appendChild(openInput);
+  customInner.appendChild(closeInput);
+  customInner.appendChild(customSample);
+  customRow.appendChild(customInner);
+  wrap.appendChild(customRow);
+
+  return wrap;
+}
+
+/**
+ * Custom shrink-protections editor — analogous to the readers editor
+ * but with a per-row `regex` checkbox. Each row: text input for the
+ * pattern, regex checkbox, delete button. Footer "+ Add" button.
+ *
+ * Validation: invalid regex sources flash an inline note on the row.
+ * Shrink itself silently skips them at compile time, so a typo
+ * doesn't break the command — the note is purely a UX hint.
+ */
+function buildShrinkProtectionsEditor(): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'pmd-shrink-protections-editor';
+
+  const list = document.createElement('div');
+  list.className = 'pmd-shrink-protections-list';
+  wrap.appendChild(list);
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'pmd-shrink-protections-add';
+  addBtn.textContent = '+ Add protection';
+  wrap.appendChild(addBtn);
+
+  function commit(next: ShrinkProtection[]): void {
+    settings.set('shrinkCustomProtections', next);
+  }
+
+  function render(): void {
+    list.innerHTML = '';
+    const rules = settings.get('shrinkCustomProtections');
+    rules.forEach((rule, idx) => {
+      const row = document.createElement('div');
+      row.className = 'pmd-shrink-protection-row';
+
+      const patternInput = document.createElement('input');
+      patternInput.type = 'text';
+      patternInput.className = 'pmd-shrink-protection-pattern';
+      patternInput.value = rule.pattern;
+      patternInput.placeholder = rule.isRegex
+        ? 'regex source'
+        : 'literal string';
+      patternInput.addEventListener('change', () => {
+        const next = settings.get('shrinkCustomProtections').map((r, i) =>
+          i === idx ? { ...r, pattern: patternInput.value } : r,
+        );
+        commit(next);
+      });
+      row.appendChild(patternInput);
+
+      const regexLabel = document.createElement('label');
+      regexLabel.className = 'pmd-shrink-protection-regex-toggle';
+      const regexCb = document.createElement('input');
+      regexCb.type = 'checkbox';
+      regexCb.checked = rule.isRegex;
+      regexCb.addEventListener('change', () => {
+        const next = settings.get('shrinkCustomProtections').map((r, i) =>
+          i === idx ? { ...r, isRegex: regexCb.checked } : r,
+        );
+        commit(next);
+      });
+      regexLabel.appendChild(regexCb);
+      const regexTxt = document.createElement('span');
+      regexTxt.textContent = 'regex';
+      regexLabel.appendChild(regexTxt);
+      row.appendChild(regexLabel);
+
+      // Inline note for invalid regex sources. Updated on input so
+      // the user gets immediate feedback.
+      const note = document.createElement('span');
+      note.className = 'pmd-shrink-protection-note';
+      const validate = (): void => {
+        if (!regexCb.checked || !patternInput.value) {
+          note.textContent = '';
+          return;
+        }
+        try {
+          new RegExp(patternInput.value, 'gi');
+          note.textContent = '';
+        } catch (err) {
+          note.textContent = `invalid: ${(err as Error).message}`;
+        }
+      };
+      patternInput.addEventListener('input', validate);
+      regexCb.addEventListener('change', validate);
+      validate();
+      row.appendChild(note);
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'pmd-shrink-protection-delete';
+      delBtn.textContent = '×';
+      delBtn.title = 'Remove protection';
+      delBtn.addEventListener('click', () => {
+        const next = settings
+          .get('shrinkCustomProtections')
+          .filter((_, i) => i !== idx);
+        commit(next);
+      });
+      row.appendChild(delBtn);
+
+      list.appendChild(row);
+    });
+
+    if (rules.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'pmd-shrink-protections-empty';
+      empty.textContent = 'No custom protections.';
+      list.appendChild(empty);
+    }
+  }
+
+  addBtn.addEventListener('click', () => {
+    const cur = settings.get('shrinkCustomProtections');
+    commit([...cur, { pattern: '', isRegex: false }]);
+  });
+
+  const unsubscribe = settings.subscribe((s) => {
+    void s;
+    // Re-render only when the rules list reference changed AND no
+    // input in this editor is focused (otherwise typing would lose
+    // focus on every keystroke).
+    if (!(document.activeElement && wrap.contains(document.activeElement))) {
+      render();
+    }
+  });
+  render();
+  wrap.addEventListener('DOMNodeRemoved', () => unsubscribe());
+
   return wrap;
 }
 

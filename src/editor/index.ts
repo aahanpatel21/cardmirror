@@ -23,6 +23,7 @@ import { createReference } from './create-reference.js';
 import { showToast } from './toast.js';
 import {
   settings,
+  condenseWarningCloseFor,
   DISPLAY_SIZE_KEYS,
   DISPLAY_COLOR_KEYS,
   type DisplaySizes,
@@ -56,6 +57,7 @@ import {
   ribbonCommandForKey,
   setFontSize,
   adjustFontSize,
+  compileShrinkProtections,
   RIBBON_COMMAND_LABELS,
   type StructuralRibbonCommandId,
   type RibbonContext,
@@ -113,7 +115,30 @@ const ribbonContext: RibbonContext = {
   normalPt: () => settings.get('displaySizes').normal,
   shrinkRestoresOmissionsToNormal: () =>
     settings.get('shrinkRestoresOmissionsToNormal'),
-  condenseWarningDelimiter: () => settings.get('condenseWarningDelimiter'),
+  shrinkProtectionPatterns: () =>
+    compileShrinkProtections(
+      settings.get('shrinkCustomProtections'),
+      // When the delimiter is the user-typed `'custom'` shape, feed
+      // those strings into the protection list so the markers we
+      // emit are also auto-protected from shrink. Built-in
+      // delimiters are already covered by the static base.
+      settings.get('condenseWarningDelimiter') === 'custom'
+        ? settings.get('condenseWarningCustomOpen')
+        : '',
+      settings.get('condenseWarningDelimiter') === 'custom'
+        ? settings.get('condenseWarningCustomClose')
+        : '',
+    ),
+  condenseWarningDelimiter: () => {
+    const d = settings.get('condenseWarningDelimiter');
+    if (d === 'custom') {
+      return {
+        open: settings.get('condenseWarningCustomOpen'),
+        close: settings.get('condenseWarningCustomClose'),
+      };
+    }
+    return { open: d, close: condenseWarningCloseFor(d) };
+  },
   runCreateReference: () => {
     if (!view) return;
     void createReference(

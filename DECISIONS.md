@@ -1662,3 +1662,61 @@ clears the badge.
 Pickup pill gets a `.pmd-nav-pickup-pill-copy` class while in copy
 mode; a small green `+` badge renders in the bottom-right corner via
 `::after`, echoing the OS file-manager copy-cursor pattern.
+
+## 2026-05-13: Custom shrink protections + custom warning delimiter
+
+Two related extensions to the protected-shrink system that lets users
+keep tunneling more of their personal conventions into the editor.
+
+### Settings model
+
+- `shrinkCustomProtections: { pattern: string; isRegex: boolean }[]`
+  — user-supplied protection rules. Literal entries are
+  regex-escaped at compile time; regex entries pass through. Both
+  compile with `gi` flags (matching the built-in shape). Invalid
+  regex sources are silently skipped at compile time.
+- `condenseWarningDelimiter` gains a `'custom'` value, paired with
+  `condenseWarningCustomOpen` and `condenseWarningCustomClose`
+  strings. The built-in enum values still use their mirror-pair
+  closers; `'custom'` reads both halves from the user-typed strings.
+
+### Shrink pipeline
+
+`PROTECTED_RANGE_REGEXES` (the static const) is renamed
+`BUILTIN_PROTECTED_REGEXES` and is now combined at runtime by a new
+`compileShrinkProtections(custom, customDelimOpen, customDelimClose)`
+into a `RegExp[]`. The shrink command consumes that list via a new
+`ctx.shrinkProtectionPatterns` getter. The pipeline is still gated
+by the existing `shrinkRestoresOmissionsToNormal` toggle — custom
+protections share its on/off semantics rather than getting their own
+switch.
+
+`findProtectedRanges` previously walked the static list; it now
+takes the patterns as a parameter. It also gained a zero-width-match
+guard for user-supplied regexes (`/(?=)/gi` etc.) so a pathological
+input can't cause an infinite loop.
+
+### Condense-with-warning custom delimiter
+
+`condenseWithWarning` now takes a `getDelimiter: () => { open, close }`
+resolver instead of an enum. The editor's `ribbonContext.condenseWarning-
+Delimiter` materializes the pair: built-in enum values produce the
+mirror pair via `condenseWarningCloseFor`; `'custom'` reads the two
+user-typed strings. If either half is empty when `'custom'` is
+selected, the command no-ops with a console warn rather than
+emitting half-formed markers.
+
+The same custom open/close get auto-fed into the shrink protection
+pipeline so the markers the command emits are also auto-protected —
+fulfilling the "same pipeline" guarantee the user asked for.
+
+### Settings UI
+
+- "Custom shrink protections" — new row below the existing
+  shrink-restores toggle. Same shape as the readers editor: text
+  input + regex checkbox + delete + add-row footer. An inline note
+  beneath each row flags invalid regex source as the user types
+  (purely a UX hint; shrink itself silently skips bad regex).
+- "Condense with warning: marker delimiter" — adds a "Custom" radio
+  row beneath the six built-in rows, with two short text inputs for
+  open and close + a live sample preview.
