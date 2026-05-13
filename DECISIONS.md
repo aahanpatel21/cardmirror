@@ -921,10 +921,8 @@ with three branches gated on two settings:
 | `Mod-Alt-Shift-F3` | `Ctrl-Alt-Shift-F3` (Uncondense) | Find 6-pt ¶, split textblock at each. |
 | `Shift-F3` | Word's `Shift-F3` (Toggle Case) | 3-state cycle on selection. |
 
-Verbatim's Shrink (originally Alt-F3, font-size cycle on un-underlined
-runs) is not yet implemented — the slot is now free since we rebound
-Alt-F3 to no-integrity condense. A future implementation can pick a
-new key (Ctrl-8 is Verbatim's alternate).
+Verbatim's Shrink (font-size cycle on un-underlined runs) lives on
+`Mod-8` — see the 2026-05-12 Shrink entry below for the full ruleset.
 
 ### The `headingMode` setting
 
@@ -1357,3 +1355,52 @@ manually added to a tag survives an F7-while-already-in-analytic
 
 All other dissolves (tag → pocket via setHeading, tag → undertag via
 setUndertag, etc.) still strip.
+
+## 2026-05-12: Shrink (Mod-8) — Verbatim parity with scoped omissions toggle
+
+Port of Verbatim's `ShrinkText`. Cycles the size of "filler" (non-
+underlined, non-emphasized) text through `11 → 8 → 7 → 6 → 5 → 4 → 11`;
+mixed sizes normalize to 8 pt; underline / emphasis runs are exempt
+and keep their existing size (the point of Shrink is to compress the
+connective text while leaving the highlighted argument-text readable).
+
+### Scope
+
+- Empty selection inside a `card` → all `card_body` paragraphs of that
+  card.
+- Empty selection inside an `analytic_unit` → all `card_body`
+  paragraphs of that unit.
+- Empty selection in a doc-level `paragraph` → that paragraph.
+- Empty selection in pocket / hat / block / doc-level undertag / doc-
+  level cite_paragraph → no-op (those aren't body text).
+- Non-empty selection → the parts of the selection that fall inside
+  `card_body` paragraphs (in cards or analytic_units) and doc-level
+  generic `paragraph` paragraphs. Tags, undertags, cite paragraphs,
+  and headings within the selection are skipped.
+
+### Omission handling
+
+Bracketed "Omitted" spans (`[…Omitted…]`, `[[…Omitted…]]`, `<…Omitted…>`,
+`<<…Omitted…>>`, all case-insensitive via `gi`; bracket pairs stop at
+the nearest closer in the same paragraph because JS `.` doesn't cross
+newlines) get optional special treatment, gated by the new setting
+`shrinkRestoresOmissionsToNormal` (default **off**).
+
+When **on**:
+
+- Omission ranges are computed up front from the scope and **excluded
+  from the cycle-decision input**. Without this exclusion, an omission
+  that had been pinned at Normal in a prior cycle would make the size-
+  set size > 1 on the next press, forcing the rest of the text back to
+  8 pt and stranding the cycle.
+- Omission ranges are also excluded from the size mutation; eligible
+  text-node intervals are split around them via `subtractRanges`.
+- After the eligible pass, omission ranges are forced to Normal size
+  so they remain visible in the shrunken output (regardless of any
+  pre-existing `font_size` mark).
+
+When **off**, omissions are treated as ordinary text: shrunk with the
+surrounding body, no exclusion, no restore. The default is off because
+the default doc style already keeps Omitted text readable in normal
+view; the restore behavior is a power-user feature for users who shrink
+aggressively but want omissions preserved as landmarks.

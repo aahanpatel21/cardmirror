@@ -111,6 +111,10 @@ const ribbonContext: RibbonContext = {
   condenseOnPaste: () => settings.get('condenseOnPaste'),
   clearFormattingOnNamedStyleToggleOff: () =>
     settings.get('clearFormattingOnNamedStyleToggleOff'),
+  effectivePtForNode: (node, parent) => effectivePtForNode(node, parent),
+  normalPt: () => settings.get('displaySizes').normal,
+  shrinkRestoresOmissionsToNormal: () =>
+    settings.get('shrinkRestoresOmissionsToNormal'),
 };
 
 openBtn.addEventListener('click', () => dropzone.click());

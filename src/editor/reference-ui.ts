@@ -45,7 +45,7 @@ const GROUPS: ShortcutGroup[] = [
   },
   {
     title: 'Editing utilities',
-    commands: ['pasteAsText', 'clearToNormal', 'copyPreviousCite'],
+    commands: ['pasteAsText', 'clearToNormal', 'shrink', 'copyPreviousCite'],
   },
 ];
 

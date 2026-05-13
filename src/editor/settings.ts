@@ -278,6 +278,12 @@ export interface Settings {
    *  in Gray-50% (#808080) instead of black. Heading line stays
    *  black either way. */
   forReferenceUseGray50: boolean;
+  /** When true, Shrink (Mod-8) treats bracketed "Omitted" spans
+   *  specially: their existing size is excluded from the cycle
+   *  decision, and after the size pass each omission is restored to
+   *  Normal so it remains visible in the shrunken output. When off,
+   *  omissions are shrunk along with the surrounding text. */
+  shrinkRestoresOmissionsToNormal: boolean;
 }
 
 export type HeadingMode = 'strict' | 'respect' | 'demolish';
@@ -319,6 +325,7 @@ const DEFAULTS: Settings = {
   condenseOnPaste: false,
   clearFormattingOnNamedStyleToggleOff: true,
   forReferenceUseGray50: false,
+  shrinkRestoresOmissionsToNormal: false,
 };
 
 /** Public read-only view of the built-in defaults — handy for any UI
@@ -450,6 +457,13 @@ export const SETTING_METADATA: SettingMeta[] = [
     label: 'Create Reference uses Gray-50% text',
     description:
       'When on, the body text of a "Create Reference" excerpt is rendered in Gray-50% (#808080) instead of black. The heading line stays black either way.',
+    kind: 'toggle',
+  },
+  {
+    key: 'shrinkRestoresOmissionsToNormal',
+    label: 'Shrink keeps omissions at Normal size',
+    description:
+      'When on, Shrink (Mod-8) leaves bracketed "Omitted" spans at Normal size so they stay visible in the shrunken output. When off, omissions are shrunk along with the rest of the text.',
     kind: 'toggle',
   },
   {
@@ -600,6 +614,10 @@ function sanitize(s: Settings): Settings {
       s.forReferenceUseGray50 === undefined
         ? DEFAULTS.forReferenceUseGray50
         : !!s.forReferenceUseGray50,
+    shrinkRestoresOmissionsToNormal:
+      s.shrinkRestoresOmissionsToNormal === undefined
+        ? DEFAULTS.shrinkRestoresOmissionsToNormal
+        : !!s.shrinkRestoresOmissionsToNormal,
   };
 }
 

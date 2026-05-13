@@ -1534,6 +1534,261 @@ function applyClearToNormalPartial(tr: Transaction, from: number, to: number): v
   stripMarkNamesOnTr(tr, from, to, F12_STRIP_PARTIAL_NAMES);
 }
 
+// ----------------------------------------------------------------
+// Shrink — Verbatim parity.
+//
+// Cycles the size of "filler" (non-underlined / non-emphasized) text
+// through a small ramp:   11 → 8 → 7 → 6 → 5 → 4 → 11.  Mixed-size
+// runs normalize to 8pt. Underlined and emphasized text keep their
+// existing size — the point of Shrink is to compress the connective
+// text while leaving the highlighted argument-text readable.
+//
+// Bracketed-Omitted spans (`[…Omitted…]`, `[[…Omitted…]]`,
+// `<…Omitted…>`, `<<…Omitted…>>`, case-insensitive) get optional
+// special treatment, gated by the `shrinkRestoresOmissionsToNormal`
+// setting (default off). When the setting is ON: omission text is
+// excluded from the size-cycle decision (otherwise an omission stuck
+// at Normal would make `sizes.size !== 1` and reset the cycle to 8pt,
+// stranding the rest of the text) AND is restored to Normal at the
+// end so it stays readable. When the setting is OFF: omissions are
+// shrunk along with everything else.
+//
+// Scope:
+//   - Empty selection, cursor inside a `card` (anywhere) → all
+//     card_body paragraphs of that card.
+//   - Empty selection, cursor inside an `analytic_unit` → all
+//     card_body paragraphs of that unit.
+//   - Empty selection, cursor in a doc-level `paragraph` → that
+//     paragraph.
+//   - Anything else with empty selection (pocket / hat / block /
+//     doc-level undertag / doc-level cite_paragraph) → no-op.
+//   - Non-empty selection → the parts of the selection that fall
+//     inside card_body paragraphs (in cards or analytic_units) and
+//     doc-level generic paragraphs. Tags, undertags, cite paragraphs,
+//     headings within the selection are skipped (their content stays
+//     at its existing size).
+
+const SHRINK_NORMAL_TO_SMALL_PT = 8;
+// Cycle order, for reference: 11 → 8 → 7 → 6 → 5 → 4 → 11.
+// `i` for case-insensitive ("omitted" / "OMITTED" / etc. all match);
+// `.*?` is non-greedy and JS `.` doesn't cross newlines by default,
+// so each bracket pair stops at the nearest closer within the same
+// paragraph. Double-bracket variants come first so the longer match
+// wins when both shapes overlap.
+const OMISSION_REGEXES = [
+  /\[\[.*?Omitted.*?\]\]/gi,
+  /<<.*?Omitted.*?>>/gi,
+  /\[.*?Omitted.*?\]/gi,
+  /<.*?Omitted.*?>/gi,
+] as const;
+
+const SHRINK_EXEMPT_MARK_NAMES = new Set([
+  'underline_mark',
+  'underline_direct',
+  'emphasis_mark',
+]);
+
+export function shrinkText(
+  effectivePt: (node: PMNode | null, parent: PMNode) => number,
+  normalPt: () => number,
+  restoreOmissions: () => boolean,
+): Command {
+  return (state, dispatch) => {
+    const ranges = computeShrinkScope(state);
+    if (ranges.length === 0) return false;
+
+    // If the omission-restore setting is on, identify omission ranges
+    // up front so they can be excluded from both the size-cycle
+    // decision and the size mutation. Otherwise treat omissions as
+    // regular text.
+    const omissionRanges = restoreOmissions()
+      ? findOmissionRanges(state.doc, ranges)
+      : [];
+
+    // Walk eligible (non-exempt) text nodes inside each range to
+    // collect their effective sizes and the per-text-node sub-ranges
+    // that the size change should touch. Within each text node, drop
+    // any portion that overlaps an omission range.
+    const eligible: { from: number; to: number }[] = [];
+    const sizes = new Set<number>();
+    for (const range of ranges) {
+      state.doc.nodesBetween(range.from, range.to, (node, pos, parent) => {
+        if (!node.isText || !parent) return true;
+        if (node.marks.some((m) => SHRINK_EXEMPT_MARK_NAMES.has(m.type.name))) {
+          return true;
+        }
+        const start = Math.max(range.from, pos);
+        const end = Math.min(range.to, pos + node.nodeSize);
+        if (start >= end) return true;
+        const subRanges = subtractRanges(start, end, omissionRanges);
+        if (subRanges.length === 0) return true;
+        for (const sub of subRanges) eligible.push(sub);
+        sizes.add(effectivePt(node, parent));
+        return true;
+      });
+    }
+    if (eligible.length === 0 && omissionRanges.length === 0) return false;
+
+    const normal = normalPt();
+    const newSize = nextShrinkSize(sizes, normal);
+    if (!dispatch) return true;
+
+    const tr = state.tr;
+    const fontSizeType = schema.marks['font_size']!;
+    const newHp = Math.round(newSize * 2);
+    for (const { from, to } of eligible) {
+      tr.removeMark(from, to, fontSizeType);
+      tr.addMark(from, to, fontSizeType.create({ halfPoints: newHp }));
+    }
+
+    // Force omission ranges to Normal size. Done after the eligible
+    // pass so they overwrite any pre-existing font_size mark.
+    const normalHp = Math.round(normal * 2);
+    for (const { from, to } of omissionRanges) {
+      tr.removeMark(from, to, fontSizeType);
+      tr.addMark(from, to, fontSizeType.create({ halfPoints: normalHp }));
+    }
+
+    dispatch(tr);
+    return true;
+  };
+}
+
+function nextShrinkSize(sizes: Set<number>, normalPt: number): number {
+  if (sizes.size !== 1) return SHRINK_NORMAL_TO_SMALL_PT;
+  const current = [...sizes][0]!;
+  if (current > 8) return 8;
+  if (current === 8) return 7;
+  if (current === 7) return 6;
+  if (current === 6) return 5;
+  if (current === 5) return 4;
+  if (current === 4) return normalPt;
+  // Unusual size (e.g., 3pt, 9pt, 10pt) — jump back to Normal so the
+  // user can re-enter the cycle from a known starting point.
+  // Note: 9pt and 10pt aren't on the ramp but a value here means the
+  // user manually set them; Normal is the safest exit.
+  return normalPt;
+}
+
+function computeShrinkScope(state: import('prosemirror-state').EditorState): { from: number; to: number }[] {
+  const sel = state.selection;
+  if (sel.empty) {
+    const $pos = sel.$from;
+    if ($pos.depth < 1) return [];
+    const docLevel = $pos.node(1);
+    const docLevelStart = $pos.before(1);
+    const t = docLevel.type.name;
+    if (t === 'card' || t === 'analytic_unit') {
+      const out: { from: number; to: number }[] = [];
+      let offset = 1;
+      docLevel.forEach((child) => {
+        if (child.type.name === 'card_body') {
+          const childStart = docLevelStart + offset;
+          out.push({ from: childStart + 1, to: childStart + child.nodeSize - 1 });
+        }
+        offset += child.nodeSize;
+      });
+      return out;
+    }
+    if (t === 'paragraph') {
+      return [{ from: docLevelStart + 1, to: docLevelStart + docLevel.nodeSize - 1 }];
+    }
+    return [];
+  }
+
+  // Non-empty selection: filter to card_body + doc-level paragraph.
+  const out: { from: number; to: number }[] = [];
+  state.doc.nodesBetween(sel.from, sel.to, (node, pos) => {
+    if (!node.isTextblock) return true;
+    const t = node.type.name;
+    if (t !== 'card_body' && t !== 'paragraph') return false;
+    const contentFrom = pos + 1;
+    const contentTo = pos + node.nodeSize - 1;
+    const from = Math.max(sel.from, contentFrom);
+    const to = Math.min(sel.to, contentTo);
+    if (from < to) out.push({ from, to });
+    return false;
+  });
+  return out;
+}
+
+/**
+ * Find all bracketed-Omitted spans within the given doc ranges,
+ * returned as sorted, merged doc-position [from, to) ranges.
+ *
+ * Each scope range gets its text gathered with a per-char back-map to
+ * doc positions so regex matches can be translated back into the doc.
+ * Double-bracket variants are checked first so the longer match wins
+ * on overlap; final sort+merge collapses any residual overlap between
+ * variants (e.g. `[[…Omitted…]]` also matches the inner `[…Omitted…]`).
+ */
+function findOmissionRanges(
+  doc: PMNode,
+  ranges: { from: number; to: number }[],
+): { from: number; to: number }[] {
+  const omissions: { from: number; to: number }[] = [];
+  for (const range of ranges) {
+    const charPos: number[] = [];
+    let text = '';
+    doc.nodesBetween(range.from, range.to, (node, pos) => {
+      if (!node.isText || !node.text) return true;
+      const start = Math.max(range.from, pos);
+      const end = Math.min(range.to, pos + node.nodeSize);
+      if (start >= end) return true;
+      const slice = node.text.slice(start - pos, end - pos);
+      for (let i = 0; i < slice.length; i++) charPos.push(start + i);
+      text += slice;
+      return true;
+    });
+    for (const re of OMISSION_REGEXES) {
+      re.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(text)) !== null) {
+        const matchFrom = charPos[m.index];
+        const matchTo = charPos[m.index + m[0].length - 1];
+        if (matchFrom == null || matchTo == null) continue;
+        omissions.push({ from: matchFrom, to: matchTo + 1 });
+      }
+    }
+  }
+  if (omissions.length === 0) return omissions;
+  omissions.sort((a, b) => a.from - b.from || b.to - a.to);
+  const merged: { from: number; to: number }[] = [];
+  for (const r of omissions) {
+    const last = merged[merged.length - 1];
+    if (last && r.from <= last.to) {
+      last.to = Math.max(last.to, r.to);
+    } else {
+      merged.push({ from: r.from, to: r.to });
+    }
+  }
+  return merged;
+}
+
+/**
+ * Return [start, end) minus any portions covered by `excludes`.
+ * `excludes` must be sorted by `from` and non-overlapping (which
+ * `findOmissionRanges` guarantees).
+ */
+function subtractRanges(
+  start: number,
+  end: number,
+  excludes: { from: number; to: number }[],
+): { from: number; to: number }[] {
+  if (excludes.length === 0) return [{ from: start, to: end }];
+  const out: { from: number; to: number }[] = [];
+  let cursor = start;
+  for (const e of excludes) {
+    if (e.to <= cursor) continue;
+    if (e.from >= end) break;
+    if (e.from > cursor) out.push({ from: cursor, to: e.from });
+    cursor = Math.max(cursor, e.to);
+    if (cursor >= end) return out;
+  }
+  if (cursor < end) out.push({ from: cursor, to: end });
+  return out;
+}
+
 /**
  * Walk text nodes in [from, to] and report whether every text char
  * carries a mark of the given name, plus whether any text was found
@@ -1937,7 +2192,8 @@ export type RibbonCommandId =
   | 'toggleCase'
   | 'copyPreviousCite'
   | 'pasteAsText'
-  | 'clearToNormal';
+  | 'clearToNormal'
+  | 'shrink';
 
 export const STRUCTURAL_RIBBON_COMMAND_IDS: StructuralRibbonCommandId[] = [
   'setPocket',
@@ -1965,6 +2221,7 @@ export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
   'copyPreviousCite',
   'pasteAsText',
   'clearToNormal',
+  'shrink',
 ];
 
 export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
@@ -1989,6 +2246,7 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   copyPreviousCite: 'Copy previous cite',
   pasteAsText: 'Toggle plain-paste mode',
   clearToNormal: 'Clear',
+  shrink: 'Shrink card text',
 };
 
 /**
@@ -2021,6 +2279,7 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   copyPreviousCite: 'Alt-F8',
   pasteAsText: 'F2',
   clearToNormal: 'F12',
+  shrink: 'Mod-8',
 };
 
 /**
@@ -2046,6 +2305,17 @@ export interface RibbonContext {
   /** Whether F9's toggle-off direction also strips direct formatting
    *  (Verbatim's "press F9 twice clears formatting"). */
   clearFormattingOnNamedStyleToggleOff: () => boolean;
+  /** Resolves a text run's effective font-size in pt, accounting for
+   *  font_size marks, named-style marks, and paragraph defaults — same
+   *  resolver the chip / increment-decrement buttons use. Used by
+   *  Shrink to compute its starting size. */
+  effectivePtForNode: (node: PMNode | null, parent: PMNode) => number;
+  /** Body "Normal" size in pt — the size Shrink jumps back to at the
+   *  bottom of its cycle. */
+  normalPt: () => number;
+  /** Whether Shrink (Mod-8) excludes bracketed-Omitted spans from the
+   *  cycle and pins them at Normal size. Off by default. */
+  shrinkRestoresOmissionsToNormal: () => boolean;
 }
 
 const DEFAULT_RIBBON_CONTEXT: RibbonContext = {
@@ -2056,6 +2326,9 @@ const DEFAULT_RIBBON_CONTEXT: RibbonContext = {
   headingMode: () => 'respect',
   condenseOnPaste: () => false,
   clearFormattingOnNamedStyleToggleOff: () => true,
+  effectivePtForNode: () => 11,
+  normalPt: () => 11,
+  shrinkRestoresOmissionsToNormal: () => false,
 };
 
 function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
@@ -2099,6 +2372,12 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
       return pasteAsText();
     case 'clearToNormal':
       return clearToNormal();
+    case 'shrink':
+      return shrinkText(
+        ctx.effectivePtForNode,
+        ctx.normalPt,
+        ctx.shrinkRestoresOmissionsToNormal,
+      );
   }
 }
 

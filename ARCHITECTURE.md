@@ -1240,16 +1240,16 @@ buttons preview the styles they apply (bold / underline / color / box,
 following per-style typography flags). Tooltips display the active
 keyboard binding using the platform's modifier glyphs.
 
-**Empty Verbatim ribbon slots:** Verbatim's F12 (Clear Formatting),
-Shrink (Alt+F3 → font-size cycle on un-underlined runs), and the
-Cleanup family aren't shipped yet. The same registry surface will hold
-them when they land. (Verbatim's F11 was Highlight Yellow — single-
-color; ours is a fuller toggle-plus-picker with the full Word palette
-and a sibling background-color control. Verbatim's F3 family —
-Condense / CondenseNoPilcrows / CondenseWithPilcrows / Uncondense —
-is shipped via our F3 / Alt+F3 / Mod+Alt+F3 / Mod+Alt+Shift+F3
-rebinding; the user-visible mapping differs slightly to consolidate
-ergonomically. Shrink is the open slot.)
+**Empty Verbatim ribbon slots:** the Cleanup family (AutoNumberTags,
+ReformatAllCites, ConvertToDefaultStyles, …) isn't shipped yet. The
+same registry surface will hold them when they land. F12 (Clear),
+Shrink (`Mod-8`), Create Reference, and the F11 / F2 / F3 families
+are all wired through the registry already. (Verbatim's F11 was
+Highlight Yellow — single-color; ours is a fuller toggle-plus-picker
+with the full Word palette and a sibling background-color control.
+Verbatim's F3 family — Condense / CondenseNoPilcrows /
+CondenseWithPilcrows / Uncondense — is shipped via our F3 / Alt+F3 /
+Mod+Alt+F3 / Mod+Alt+Shift+F3 rebinding.)
 
 ## 16. Stylepox handling
 
