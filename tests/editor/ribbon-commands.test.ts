@@ -20,6 +20,7 @@ import {
   setShadingColor,
   setFontColor,
   copyPreviousCite,
+  removeHyperlinks,
   buildRibbonKeymap,
   DEFAULT_RIBBON_KEYS,
   RIBBON_COMMAND_IDS,
@@ -2724,5 +2725,122 @@ describe('F4–F7 promotion strips marks; tag↔analytic preserves them', () => 
     expect(next).not.toBeNull();
     expect(next!.doc.firstChild!.type.name).toBe('undertag');
     expect(hasMarkOnText(next!.doc, 'plain', 'highlight')).toBe(false);
+  });
+});
+
+// ---- removeHyperlinks ----
+
+describe('removeHyperlinks', () => {
+  function withLink(text: string, href: string) {
+    return schema.text(text, [schema.marks['link']!.create({ href })]);
+  }
+
+  function hasLink(doc: import('prosemirror-model').Node): boolean {
+    let found = false;
+    doc.descendants((node) => {
+      if (found) return false;
+      if (!node.isText) return true;
+      if (node.marks.some((m) => m.type.name === 'link')) found = true;
+      return true;
+    });
+    return found;
+  }
+
+  it('is a no-op when no link marks exist in scope', () => {
+    const doc = schema.nodes['doc']!.createChecked(null, [
+      schema.nodes['paragraph']!.create(null, schema.text('plain text')),
+    ]);
+    const state = EditorState.create({ doc, schema });
+    const result = removeHyperlinks()(state, undefined);
+    expect(result).toBe(false);
+  });
+
+  it('with empty selection, strips link marks doc-wide', () => {
+    const doc = schema.nodes['doc']!.createChecked(null, [
+      schema.nodes['paragraph']!.create(null, [
+        schema.text('before '),
+        withLink('linked', 'https://a'),
+        schema.text(' after'),
+      ]),
+      schema.nodes['paragraph']!.create(null, withLink('another link', 'https://b')),
+    ]);
+    const state = EditorState.create({ doc, schema });
+    expect(hasLink(state.doc)).toBe(true);
+    let next: EditorState | null = null;
+    removeHyperlinks()(state, (tr) => { next = state.apply(tr); });
+    expect(next).not.toBeNull();
+    expect(hasLink(next!.doc)).toBe(false);
+    // The text content survives the unlink.
+    // PM joins block children with a NUL char in textContent; check
+    // each paragraph independently.
+    expect(next!.doc.firstChild!.textContent).toBe("before linked after");
+    expect(next!.doc.lastChild!.textContent).toBe("another link");
+  });
+
+  it('with non-empty selection, strips only link marks in the selection', () => {
+    const link1 = withLink('linkA', 'https://a');
+    const link2 = withLink('linkB', 'https://b');
+    const para1 = schema.nodes['paragraph']!.create(null, [
+      schema.text('p1 '),
+      link1,
+    ]);
+    const para2 = schema.nodes['paragraph']!.create(null, [
+      schema.text('p2 '),
+      link2,
+    ]);
+    const doc = schema.nodes['doc']!.createChecked(null, [para1, para2]);
+    const state0 = EditorState.create({ doc, schema });
+
+    // Select inside paragraph 1 only — covers link1's text range.
+    // Doc layout: <doc><p>0 p1<sp>linkA</p><p>p2<sp>linkB</p></doc>
+    // Position 1 = inside p1 at start. Want to cover "linkA" only.
+    const para1Start = 1;                       // inside <p1>
+    const link1Start = para1Start + 'p1 '.length;
+    const link1End = link1Start + 'linkA'.length;
+    const state = state0.apply(
+      state0.tr.setSelection(TextSelection.create(state0.doc, link1Start, link1End)),
+    );
+    let next: EditorState | null = null;
+    const ran = removeHyperlinks()(state, (tr) => { next = state.apply(tr); });
+    expect(ran).toBe(true);
+    expect(next).not.toBeNull();
+    // link1 removed, link2 untouched.
+    const link2Text = next!.doc.lastChild!.lastChild!;
+    expect(link2Text.marks.some((m) => m.type.name === 'link')).toBe(true);
+    const para1Children: import('prosemirror-model').Node[] = [];
+    next!.doc.firstChild!.forEach((c) => para1Children.push(c));
+    expect(
+      para1Children.every(
+        (c) => !c.isText || !c.marks.some((m) => m.type.name === 'link'),
+      ),
+    ).toBe(true);
+  });
+
+  it('splits a partially-selected link, leaving the unselected portion linked', () => {
+    const doc = schema.nodes['doc']!.createChecked(null, [
+      schema.nodes['paragraph']!.create(
+        null,
+        withLink('hello world', 'https://x'),
+      ),
+    ]);
+    const state0 = EditorState.create({ doc, schema });
+
+    // Select just the "hello " part. Position 1 = inside the paragraph.
+    const start = 1;
+    const end = start + 'hello '.length;
+    const state = state0.apply(
+      state0.tr.setSelection(TextSelection.create(state0.doc, start, end)),
+    );
+    let next: EditorState | null = null;
+    removeHyperlinks()(state, (tr) => { next = state.apply(tr); });
+    expect(next).not.toBeNull();
+    // The paragraph should now have one unlinked "hello " + one linked "world".
+    const children: import('prosemirror-model').Node[] = [];
+    next!.doc.firstChild!.forEach((c) => children.push(c));
+    expect(children.length).toBe(2);
+    expect(children[0]!.text).toBe('hello ');
+    expect(children[0]!.marks.some((m) => m.type.name === 'link')).toBe(false);
+    expect(children[1]!.text).toBe('world');
+    expect(children[1]!.marks.some((m) => m.type.name === 'link')).toBe(true);
   });
 });

@@ -1946,6 +1946,45 @@ export function pasteAsText(): Command {
   return togglePlainPaste();
 }
 
+/**
+ * Remove every `link` mark from the current scope — Verbatim's
+ * `RemoveHyperlinks` macro, parity-friendly. Selection-sensitive:
+ *
+ *   - Non-empty selection → strip link marks within the selection.
+ *     Partial overlap with a link splits the mark, leaving the
+ *     untouched portion linked (PM's natural `removeMark` behavior).
+ *   - Empty selection → strip link marks across the whole doc.
+ *
+ * No-op (returns false) when no `link` mark is present in scope.
+ * Other marks (font_size, color, bold, etc.) carried by linked runs
+ * are untouched — only the `link` mark itself goes, which is what
+ * removes both the URL data AND the browser's default `<a>` styling
+ * (since our `link` mark renders as `<a href>` and the editor has no
+ * CSS overriding that, the user-agent blue/underline came from being
+ * inside an anchor and disappears with the wrapper).
+ */
+export function removeHyperlinks(): Command {
+  return (state, dispatch) => {
+    const linkType = schema.marks['link']!;
+    const sel = state.selection;
+    const from = sel.empty ? 0 : sel.from;
+    const to = sel.empty ? state.doc.content.size : sel.to;
+    // Pre-scan: bail before constructing a transaction if no run in
+    // scope carries the mark. Keeps history clean and lets callers
+    // use the return value as "did anything happen?"
+    let found = false;
+    state.doc.nodesBetween(from, to, (node) => {
+      if (found) return false;
+      if (node.marks.some((m) => m.type === linkType)) found = true;
+      return !found;
+    });
+    if (!found) return false;
+    if (!dispatch) return true;
+    dispatch(state.tr.removeMark(from, to, linkType));
+    return true;
+  };
+}
+
 function findPreviousCites(doc: PMNode, $from: ResolvedPos): PMNode[] {
   // Phase 1: look in the cursor's enclosing card for cites whose end
   // is before the cursor.
@@ -2294,7 +2333,8 @@ export type RibbonCommandId =
   | 'wordCountSelection'
   | 'openShortcutsReference'
   | 'selectSimilar'
-  | 'selectSimilarScoped';
+  | 'selectSimilarScoped'
+  | 'removeHyperlinks';
 
 export const STRUCTURAL_RIBBON_COMMAND_IDS: StructuralRibbonCommandId[] = [
   'setPocket',
@@ -2334,6 +2374,7 @@ export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
   'openShortcutsReference',
   'selectSimilar',
   'selectSimilarScoped',
+  'removeHyperlinks',
 ];
 
 export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
@@ -2370,6 +2411,7 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   openShortcutsReference: 'Open keyboard shortcuts',
   selectSimilar: 'Select Similar Formatting',
   selectSimilarScoped: 'Select Similar Formatting (Scoped)',
+  removeHyperlinks: 'Remove Hyperlinks',
 };
 
 /**
@@ -2416,6 +2458,7 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   openShortcutsReference: '',
   selectSimilar: '',
   selectSimilarScoped: '',
+  removeHyperlinks: '',
 };
 
 /**
@@ -2598,6 +2641,8 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
       return selectSimilar(ctx.effectivePtForNode);
     case 'selectSimilarScoped':
       return selectSimilarScoped();
+    case 'removeHyperlinks':
+      return removeHyperlinks();
   }
 }
 

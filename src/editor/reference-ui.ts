@@ -72,6 +72,10 @@ const GROUPS: ShortcutGroup[] = [
     title: 'Select',
     commands: ['selectSimilar', 'selectSimilarScoped'],
   },
+  {
+    title: 'Cleanup',
+    commands: ['removeHyperlinks'],
+  },
 ];
 
 class ReferenceModal {

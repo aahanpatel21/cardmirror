@@ -186,10 +186,19 @@ if (docMenuBtn) {
   docMenuBtn.addEventListener('mousedown', (e) => e.preventDefault());
   docMenuBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    // Sections alphabetical by title — Highlighting then Select.
-    // Each "Standardize" item operates on the current selection if
-    // there is one, doc-wide if not.
+    // Sections alphabetical by title — Cleanup, Highlighting, Select.
+    // Each entry that touches body text is selection-sensitive
+    // (selection if non-empty, doc-wide otherwise).
     openDocMenu(docMenuBtn, view, [
+      {
+        title: 'Cleanup',
+        items: [
+          {
+            label: 'Remove Hyperlinks',
+            run: () => runRibbon('removeHyperlinks'),
+          },
+        ],
+      },
       {
         title: 'Highlighting',
         items: [
