@@ -214,11 +214,24 @@ export class CommentsColumn {
       this.root.style.minHeight = '';
       return;
     }
+    // Bail when the column is hidden. render() fires from
+    // `dispatchTransaction` on every doc-changing keystroke; if the
+    // user has the comments toggle off, there's nothing visible to
+    // paint and the O(doc) `collectRanges` walk below (plus all the
+    // DOM construction) is wasted work. The toggle handler in
+    // `editor/index.ts` calls `render()` explicitly when the column
+    // is shown, so the column repopulates from the current state at
+    // that moment with no lost data.
+    if (this.root.hidden) return;
     const state = getCommentsState(view.state);
-    const ranges = collectRanges(view.state.doc);
 
     this.root.innerHTML = '';
     if (state.threads.size === 0) {
+      // Empty-comments early-bail BEFORE the O(doc) `collectRanges`
+      // walk: this render fires from `dispatchTransaction` on every
+      // doc-changing keystroke, so docs with no comments would
+      // otherwise pay a full-doc walk per keystroke just to populate
+      // an empty-state placeholder.
       this.root.classList.add('pmd-comments-empty-state');
       const empty = document.createElement('div');
       empty.className = 'pmd-comments-empty';
@@ -228,6 +241,7 @@ export class CommentsColumn {
       return;
     }
     this.root.classList.remove('pmd-comments-empty-state');
+    const ranges = collectRanges(view.state.doc);
 
     // Iterate threads in document order so the column matches the
     // top-to-bottom flow of the editor. Orphans (mark removed but
