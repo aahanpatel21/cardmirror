@@ -40,32 +40,64 @@ const ACTIVITY_TICK_MS = 4000;
  *  text. */
 const DATE_PLACEHOLDER = '{DATE}';
 
-export const DEFAULT_AI_CITE_PROMPT = `You are a citation formatter for competitive debate. Today's date is ${DATE_PLACEHOLDER}.
+// Default prompt — ported verbatim from the user's prior Card
+// Formatting Tools utility (cite-formatter prompt in
+// reference-docs/Card Formatting Tools.py), with the JSON-wrapper
+// instructions appended at the bottom. The wrapper is what
+// distinguishes this from the clipboard-only utility: we need a
+// machine-parsable shape so the editor can apply the cite_mark
+// to the right tokens.
+export const DEFAULT_AI_CITE_PROMPT = `Today's date is ${DATE_PLACEHOLDER}.
 
-The user has supplied raw citation information (URL, article text, byline, abstract — whatever they had). Format it into a single-line debate-style cite.
+You are an expert in formatting academic citations. Your task is to reformat the given citation to match the following style:
 
-Standard cite shape:
-  Lastname ShortYear (qualifications), "Article title," Publication, M-D-YYYY, URL, accessed M-D-YYYY.
+1. Author names should be in the format: FirstName LastName Date, where Date is:
+   - The publication date in mm/dd format (or m/dd, or m/d, respectively, if the month or day require just one digit) for publications within the last month of the current year
+   - The publication year in y format (for single-digit years) or yy format (for double-digit years) or yyyy (for years prior to 1950) for all other publications
+2. For multiple authors, use '&' for two authors and 'et al.' for three or more.
+3. After the author names, list their qualifications or affiliations.
+4. Include the full title of the work in quotes.
+5. Include publication details such as journal name, volume, issue, date (mm/dd/yyyy), and page numbers when available.
+6. Include URLs or DOIs at the end of the citation when provided.
+7. If the title or publication or names or qualifications are in all caps, change the capitalization so that it is appropriate for a cite.
 
-Examples:
-  Smith 24 (Professor of Political Science at UCLA), "Restraint is Inevitable," Foreign Affairs, 5-12-2024, https://example.com/restraint, accessed ${DATE_PLACEHOLDER}.
-  Smith & Jones 23 (researchers at Brookings), "...", ..., 6-1-2023, ..., accessed ${DATE_PLACEHOLDER}.
-  Brown et al. 22 (multi-author team at RAND), ..., 9-9-2022, ..., accessed ${DATE_PLACEHOLDER}.
+Examples of the desired format:
 
-Rules:
-  - Author "short token" is "Lastname ShortYear" for one author, "Lastname & Lastname ShortYear" for two, "Lastname et al. ShortYear" for three or more. ShortYear is the 2-digit publication year.
-  - The short token appears at the start of the cite (before the qualifications paren).
-  - The qualifications are a compact noun-phrase descriptor — title + institution. Don't include the author's first name unless needed for disambiguation.
-  - Use today's date for the "accessed" portion.
-  - If the publication date is unknown, use the page's modification or scrape date and note "[no date]" inside the cite. The short token should use the year you used in the date.
+(if today's date is less than a month after 9/23/24)
+Adrien Rose & Christian Wilson 9/23, Rose is a research assistant in the Oxford Sustainable Finance Group, specializing in transition finance; Wilson is a DPhil student at the Smith School of Enterprise and the Environment (SSEE) and a Research Assistant in the Oxford Sustainable Finance Group, "Assessing the Credibility of Climate Transition Plans in the Oil and Gas Sector," Discussion Paper, Oxford Sustainable Finance Group, 09/23/2024, https://sustainablefinance.ox.ac.uk/wp-content/uploads/2024/09/SSEE-Discussion-Paper-Oil-Gas_final_AR.pdf
 
-Respond with VALID JSON ONLY (no prose around it), shape:
+(if today's date is more than a month after 9/23/24)
+Adrien Rose & Christian Wilson 24, Rose is a research assistant in the Oxford Sustainable Finance Group, specializing in transition finance; Wilson is a DPhil student at the Smith School of Enterprise and the Environment (SSEE) and a Research Assistant in the Oxford Sustainable Finance Group, "Assessing the Credibility of Climate Transition Plans in the Oil and Gas Sector," Discussion Paper, Oxford Sustainable Finance Group, 09/23/2024, https://sustainablefinance.ox.ac.uk/wp-content/uploads/2024/09/SSEE-Discussion-Paper-Oil-Gas_final_AR.pdf
+
+(if today's date is less than a month after 9/9/24)
+Keeff Felty & Grace Yarrow 9/9, Felty is President of the National Association of Wheat Growers; Yarrow is Food and Agriculture Policy Reporter at POLITICO, Author of POLITICO Pro's Morning Agriculture newsletter, University of Maryland graduate, "Ag groups hit the Hill," Politico, 9/9/24, https://www.politico.com/newsletters/weekly-agriculture/2024/09/09/ag-groups-hit-the-hill-00177896
+
+(if today's date is more than a month after 9/9/24)
+Keeff Felty & Grace Yarrow 24, Felty is President of the National Association of Wheat Growers; Yarrow is Food and Agriculture Policy Reporter at POLITICO, Author of POLITICO Pro's Morning Agriculture newsletter, University of Maryland graduate, "Ag groups hit the Hill," Politico, 9/9/24, https://www.politico.com/newsletters/weekly-agriculture/2024/09/09/ag-groups-hit-the-hill-00177896
+
+J. D. Tuccille 23, Contributing Editor at Reason.com, former Managing Editor at Reason.com, columnist for Arizona Republic, Denver Post, and Washington Times, author of High Desert Barbecue, "It's Government Shutdown Theater, Again," Reason, 9/25/23, https://reason.com/2023/09/25/its-government-shutdown-theater-again/
+
+Robert N. Stavins 18, A.J. Meyer Professor of Energy and Economic Development, John F. Kennedy School of Government, Harvard University; University Fellow, Resources for the Future; and Research Associate, National Bureau of Economic Research, "Environmental Economics," The New Palgrave Dictionary of Economics, edited by Garett Jones, Third edition, Palgrave Macmillan, 2018, pp. 3782–3795
+
+Yael Parag & Sarah Darby 9, Parag is the Vice Dean of Reichman University's School of Sustainability at Reichman University (IDC); Derby is BSc DPhil, Associate Professor, Energy Programme, Environmental Change Institute, University of Oxford, "Consumer–Supplier–Government Triangular Relations: Rethinking the UK Policy Path for Carbon Emissions Reduction from the UK Residential Sector," Energy Policy, vol. 37, no. 10, 10/01/2009, pp. 3984–3992
+
+Jie Jiang et al. 23, Jie Jiang, School of Intellectual Property at Nanjing University of Science and Technology; Qihang Zhang, School of Intellectual Property at Nanjing University of Science and Technology; Yifan Hui, School of Mathematics and Statistics at University of Glasgow, "The Impact of Market and Non-Market-Based Environmental Policy Instruments on Firms' Sustainable Technological Innovation: Evidence from Chinese Firms," Sustainability, vol. 15, no. 5, 5, Multidisciplinary Digital Publishing Institute, 01/15/2023, p. 4425
+
+Important:
+- Do not remove any information from the citation that was included in the submission.
+- Do not add any information to the citation that was not included in the submission.
+- If the title or publication or names or qualifications are in another language, translate them to English.
+- Always end your response with a new line character.
+
+OUTPUT FORMAT (this differs from the clipboard utility — the editor needs structured output so it can apply the F8 cite-style highlighting to the author/date tokens):
+
+Respond with VALID JSON ONLY — no prose around it, no \`\`\`json fences. Shape:
 {
-  "cite": "<the full formatted single-line cite>",
-  "tokens": ["<the short token(s) verbatim, exactly as they appear in 'cite'>"]
+  "cite": "<the full reformatted citation, exactly as you'd otherwise have returned it>",
+  "tokens": ["<the FirstName LastName Date piece(s) verbatim, exactly as they appear in 'cite'>"]
 }
 
-Each entry in "tokens" must be a substring of "cite" so the editor can find it. Don't include any other commentary in the JSON.`;
+The "tokens" array lists every short author-name+date span the editor should highlight as a debate-style cite. There is usually one entry — the author-name+date span that appears at the very start of the citation (e.g. "J. D. Tuccille 23", "Adrien Rose & Christian Wilson 9/23", "Jie Jiang et al. 23"). Each entry MUST be a substring of "cite" so the editor's search can locate it.`;
 
 export interface AiCiteResult {
   cite: string;
