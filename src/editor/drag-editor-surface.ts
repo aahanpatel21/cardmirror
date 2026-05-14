@@ -74,16 +74,20 @@ export class EditorDragSurface implements DragSurface {
 
     this.unregisterSurface = dragController.registerSurface(this);
     this.unsubscribeDrag = dragController.subscribe((event) => {
-      if (event === 'begin') {
-        const session = dragController.getSession();
-        if (session) this.renderIndicators(session.items[0]!.level);
-      } else if (event === 'end') {
+      if (event === 'end') {
         this.removeIndicators();
         this.dragOriginatedHere = false;
         this.detachDragListeners();
         // Re-evaluate cursor based on current modifier state.
         this.applyPickupClass();
       }
+      // 'begin' deliberately does NOT pre-render indicators —
+      // rendering walks the doc + calls coordsAtPos per heading,
+      // each of which forces a browser layout. For docs with
+      // hundreds of headings (and multi-doc with several such
+      // docs) that's a multi-second stall on pointerdown.
+      // Indicators are instead rendered lazily inside `hitTest`
+      // the first time the pointer enters this surface.
     });
 
     document.addEventListener('keydown', this.boundOnKey);
@@ -147,6 +151,13 @@ export class EditorDragSurface implements DragSurface {
     }
 
     const session = dragController.getSession();
+    // Lazy-render: build indicators the first time the pointer
+    // crosses into this surface during an active drag. See the
+    // comment in `attach()` — eager begin-time rendering was the
+    // source of multi-second drag-pickup stalls.
+    if (session && this.indicators.length === 0) {
+      this.renderIndicators(session.items[0]!.level);
+    }
     type Cand = { el: HTMLElement; insertPos: number; centerY: number; dy: number };
     const valid: Cand[] = [];
     for (const r of this.indicators) {
