@@ -146,10 +146,11 @@ export const EXPLAIN_SYSTEM_PROMPT =
   "Use the surrounding context (tag, analytic, cite) to interpret the selection.\n\n" +
   "Default to 3–4 sentences of plain prose. Don't aim to answer the question directly " +
   "— prioritize giving the user enough background to situate the question within the " +
-  "relevant scholarly or policy literature: what field handles this, who the central " +
-  "authors / schools of thought are, where the question sits relative to the major " +
-  "positions, and a concrete place or two to read further (specific authors, " +
-  "journals, think-tank archives, debate-camp evidence repos).\n\n" +
+  "relevant literature: what field handles this, who the central authors or schools of " +
+  "thought are, and which concepts / debates / theoretical frames matter. Recommend " +
+  "AUTHORS and CONCEPTS the user can look up; do NOT recommend specific texts (book " +
+  "titles, article titles, journal issues). The user will find the right sources " +
+  "themselves once they have the names and the vocabulary.\n\n" +
   "For follow-up replies in an ongoing thread, be much terser. Up to four sentences, " +
   "but go shorter if the question can be answered in one or two. Don't repeat context " +
   "the user has already seen.\n\n" +
