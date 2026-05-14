@@ -1794,3 +1794,14 @@ Importer reads `<w:vertAlign w:val="…"/>` inside `<w:rPr>` (the line
 that previously dropped `vertAlign` with a `// drop` comment).
 Exporter emits the right `<w:vertAlign/>` whenever either mark is
 present; the `excludes` schema guarantee means at most one will be.
+
+## 2026-05-13: Built-in shrink protection — FOOTNOTE callouts
+
+Added six entries to `BUILTIN_PROTECTED_REGEXES` matching
+`<delimiter>…FOOTNOTE…</delimiter>` for each of the six delimiter
+shapes (`[`, `[[`, `<`, `<<`, `{`, `{{`), case-insensitive. Same
+non-greedy `.*?` pattern shape as the existing Omissions entries
+so any body text on either side of the literal "FOOTNOTE" stays
+inside the protected range. Doubles listed before singles so the
+longer match wins on overlap, matching the rest of the file's
+ordering convention.

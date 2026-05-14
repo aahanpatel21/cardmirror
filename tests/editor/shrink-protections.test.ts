@@ -15,12 +15,36 @@ function sources(regexes: readonly RegExp[]): string[] {
 describe('compileShrinkProtections', () => {
   it('returns the built-in patterns when there are no customs', () => {
     const list = compileShrinkProtections([], '', '');
-    // Built-ins: 6 omission shapes + 6 warning-marker shapes = 12.
-    expect(list.length).toBe(12);
+    // Built-ins: 6 omission shapes + 6 warning-marker shapes
+    // + 6 footnote shapes = 18.
+    expect(list.length).toBe(18);
     // All have `gi` flags.
     for (const r of list) {
       expect(r.flags).toContain('g');
       expect(r.flags).toContain('i');
+    }
+  });
+
+  it('protects footnote callouts in every delimiter shape', () => {
+    const list = compileShrinkProtections([], '', '');
+    const cases: string[] = [
+      '[FOOTNOTE 7]',
+      '[[FOOTNOTE 7]]',
+      '<FOOTNOTE 7>',
+      '<<FOOTNOTE 7>>',
+      '{FOOTNOTE 7}',
+      '{{FOOTNOTE 7}}',
+      // Body text on either side of FOOTNOTE inside the delimiters:
+      '[See FOOTNOTE 12, supra]',
+      // Case-insensitive:
+      '[footnote omitted]',
+    ];
+    for (const s of cases) {
+      const matched = list.some((r) => {
+        r.lastIndex = 0;
+        return r.test(s);
+      });
+      expect(matched, `expected ${s} to be protected`).toBe(true);
     }
   });
 

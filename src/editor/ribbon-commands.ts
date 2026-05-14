@@ -1790,6 +1790,15 @@ const BUILTIN_PROTECTED_REGEXES: readonly RegExp[] = [
   /\[PARAGRAPH INTEGRITY (?:PAUSES|RESUMES)\]/gi,
   /<PARAGRAPH INTEGRITY (?:PAUSES|RESUMES)>/gi,
   /\{PARAGRAPH INTEGRITY (?:PAUSES|RESUMES)\}/gi,
+  // Footnote callouts — anything containing "FOOTNOTE" between any of
+  // our six delimiter shapes. Doubles before singles so the longer
+  // match wins when both shapes overlap.
+  /\[\[.*?FOOTNOTE.*?\]\]/gi,
+  /<<.*?FOOTNOTE.*?>>/gi,
+  /\{\{.*?FOOTNOTE.*?\}\}/gi,
+  /\[.*?FOOTNOTE.*?\]/gi,
+  /<.*?FOOTNOTE.*?>/gi,
+  /\{.*?FOOTNOTE.*?\}/gi,
 ];
 
 const REGEX_ESCAPE_RE = /[.*+?^${}()|[\]\\]/g;
