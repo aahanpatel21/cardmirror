@@ -2,13 +2,44 @@
  * Cycling activity-text "stage" used by the comments-column
  * Thinking… placeholder and the cite-creator tooltip.
  *
- * The stage is a small fixed-height container. At any time it
+ * The stage is a small variable-height container. At any time it
  * holds one line "at rest" (the current activity). On `cycleActivityText`
  * we insert a new line at the bottom (translated 100% down, opacity 0),
  * shift it into the rest position, and simultaneously slide the
  * old line out the top (translate -100%, opacity 0). When the old
  * line's transition finishes it's removed.
+ *
+ * The lines are absolutely positioned so the in/out animations don't
+ * push surrounding content around. That means the lines don't
+ * contribute to the stage's intrinsic height. To support multi-line
+ * activities we observe whichever line is currently at rest and
+ * push its measured height onto `stage.style.height`, with a CSS
+ * height transition so growth/shrink reads as a smooth resize.
  */
+
+/** ResizeObserver tracking the current rest line for each stage,
+ *  keyed by stage element. Re-pointed each cycle. */
+const stageObservers = new WeakMap<HTMLElement, ResizeObserver>();
+
+/** Point the stage's height-tracking observer at `line`. The
+ *  observer pushes `line.offsetHeight` onto `stage.style.height`
+ *  so the stage grows / shrinks to fit the current rest line. */
+function trackHeight(stage: HTMLElement, line: HTMLElement): void {
+  if (typeof ResizeObserver === 'undefined') return;
+  const existing = stageObservers.get(stage);
+  if (existing) existing.disconnect();
+  const apply = (): void => {
+    const h = line.getBoundingClientRect().height;
+    if (h > 0) stage.style.height = `${h}px`;
+  };
+  const ro = new ResizeObserver(apply);
+  ro.observe(line);
+  stageObservers.set(stage, ro);
+  // First measurement: ResizeObserver fires after a layout pass, but
+  // the stage may not yet be in the DOM at construction time. rAF
+  // covers both the in-DOM and just-mounted cases.
+  requestAnimationFrame(apply);
+}
 
 /** Build a fresh stage element pre-populated with one resting line. */
 export function makeActivityStage(initialText: string): HTMLSpanElement {
@@ -18,6 +49,7 @@ export function makeActivityStage(initialText: string): HTMLSpanElement {
   line.className = 'pmd-activity-line pmd-activity-rest';
   line.textContent = initialText;
   stage.appendChild(line);
+  trackHeight(stage, line);
   return stage;
 }
 
@@ -42,6 +74,7 @@ export function cycleActivityText(stage: HTMLElement, newText: string): void {
   void next.getBoundingClientRect();
   next.classList.remove('pmd-activity-in');
   next.classList.add('pmd-activity-rest');
+  trackHeight(stage, next);
 
   if (current) {
     current.classList.remove('pmd-activity-rest');
