@@ -3531,6 +3531,16 @@ body.pmd-multi-doc #app {
    * of left margin. In multi-doc mode the new nav rail sits
    * at the window edge and is sized by its own dataset. */
   margin-left: var(--nav-width);
+  /* Lock #app to viewport height so the flex chain
+   * (shell → row → pane → body) gets a definite size to fill.
+   * Without this, `flex: 1 1 auto` resolves to content height
+   * (no scrollbars in the panes, the whole page scrolls as one,
+   * pane title chip/footer drift off the viewport with content).
+   * `min-height` alone isn't enough — content can exceed it and
+   * make the page itself scroll. */
+  height: calc(100vh - var(--ribbon-height) - var(--status-bar-height));
+  min-height: 0;
+  overflow: hidden;
 }
 body.pmd-multi-doc #status-bar {
   left: var(--nav-width);
