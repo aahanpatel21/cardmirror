@@ -65,14 +65,18 @@ interface DocRecord {
    *  from the slot's nav section when visibility changes. */
   navEl: HTMLElement;
   dragSurface: EditorDragSurface;
-  /** Debounce handle for `navPanel.update`. Rebuilding the nav on
-   *  every transaction (including selection moves) replaces the
-   *  `<li>` elements between two clicks of a dblclick, so the
-   *  native `dblclick` event never fires. A 200ms debounce matches
-   *  the single-doc `scheduleHeavyUpdate` cadence and keeps the
-   *  li alive long enough for dblclick / chevron / drag pickup to
-   *  resolve. */
-  navUpdateTimer: ReturnType<typeof setTimeout> | null;
+  /** Debounce handle for per-pane "heavy" work (nav re-render +
+   *  word-count walk). Both are O(doc-size) operations that PM
+   *  fires transactions for several times per keystroke (composite
+   *  edits, selection sync, etc.). Single-doc debounces the same
+   *  work via `scheduleHeavyUpdate`; we match its 200ms cadence so
+   *  per-keystroke editing of a large doc stays responsive.
+   *
+   *  Also matters for the nav specifically: rebuilding the heading
+   *  list replaces every `<li>` element, which would invalidate a
+   *  dblclick in progress unless the rebuild waits for a typing
+   *  pause. */
+  heavyUpdateTimer: ReturnType<typeof setTimeout> | null;
 }
 
 class Slot {
@@ -217,9 +221,9 @@ class Slot {
     if (idx < 0) return;
     const closing = this.stack[idx]!;
     this.detachVisible();
-    if (closing.navUpdateTimer !== null) {
-      clearTimeout(closing.navUpdateTimer);
-      closing.navUpdateTimer = null;
+    if (closing.heavyUpdateTimer !== null) {
+      clearTimeout(closing.heavyUpdateTimer);
+      closing.heavyUpdateTimer = null;
     }
     closing.view.destroy();
     closing.dragSurface.detach();
@@ -352,9 +356,9 @@ class Slot {
       this.closeVisible();
       return;
     }
-    if (rec.navUpdateTimer !== null) {
-      clearTimeout(rec.navUpdateTimer);
-      rec.navUpdateTimer = null;
+    if (rec.heavyUpdateTimer !== null) {
+      clearTimeout(rec.heavyUpdateTimer);
+      rec.heavyUpdateTimer = null;
     }
     rec.view.destroy();
     rec.dragSurface.detach();
@@ -460,9 +464,9 @@ class MultiPaneShell {
             // Flush the pane's debounced nav update so this runs
             // against the post-drop doc and the new IDs are visible.
             const rec = targetSlot.visible;
-            if (rec.navUpdateTimer !== null) {
-              clearTimeout(rec.navUpdateTimer);
-              rec.navUpdateTimer = null;
+            if (rec.heavyUpdateTimer !== null) {
+              clearTimeout(rec.heavyUpdateTimer);
+              rec.heavyUpdateTimer = null;
             }
             rec.navPanel.applyMaxLevelToNewHeadings();
           }
@@ -700,23 +704,27 @@ function buildDocRecord(filename: string, doc: PMNode, slot: Slot): DocRecord {
     dispatchTransaction(tx) {
       const next = view.state.apply(tx);
       view.updateState(next);
-      slot.refreshWordCount();
-      // Debounce the nav re-render. Rebuilding it on every
-      // transaction (including selection moves) recreates every
-      // `<li>` between the two clicks of a dblclick, which the
-      // browser then refuses to fire because the element identity
-      // changed. 200ms matches the single-doc `scheduleHeavyUpdate`
-      // cadence.
-      if (record.navUpdateTimer !== null) {
-        clearTimeout(record.navUpdateTimer);
+      // Debounce both O(doc-size) updates into a single timer:
+      //   - navPanel.update walks the doc for headings (and
+      //     rebuilds every `<li>`, which would invalidate any
+      //     dblclick in progress if it ran per keystroke)
+      //   - slot.refreshWordCount walks every text node for the
+      //     read-aloud count
+      // Running these on every transaction makes typing in large
+      // docs O(N) per keystroke. The 200ms timer matches the
+      // single-doc `scheduleHeavyUpdate` cadence.
+      if (record.heavyUpdateTimer !== null) {
+        clearTimeout(record.heavyUpdateTimer);
       }
-      record.navUpdateTimer = setTimeout(() => {
-        record.navUpdateTimer = null;
+      record.heavyUpdateTimer = setTimeout(() => {
+        record.heavyUpdateTimer = null;
         record.navPanel.update(view.state.doc);
+        slot.refreshWordCount();
       }, 200);
-      // If this pane is the focused one, push state into the shared
-      // chrome (so refreshFontSizeDisplay, refreshWordCount in
-      // editor/index.ts see the new view state).
+      // Cheap O(1) chrome refresh — keeps the font-size chip in
+      // sync as the cursor moves. `setActiveView`'s call to
+      // `refreshWordCount` short-circuits in multi-doc mode
+      // because the shared status-bar counter is hidden anyway.
       if (getActiveView() === view) {
         setActiveView(view);
       }
@@ -739,7 +747,7 @@ function buildDocRecord(filename: string, doc: PMNode, slot: Slot): DocRecord {
     navPanel,
     navEl,
     dragSurface,
-    navUpdateTimer: null,
+    heavyUpdateTimer: null,
   };
   return record;
 }

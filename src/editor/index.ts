@@ -1090,6 +1090,11 @@ function effectiveFontSizeForDisplay(state: EditorState): FontSizeInfo {
 }
 
 function refreshWordCount(): void {
+  // In multi-doc mode the shared status-bar word counter is hidden
+  // (each pane shows its own in its footer). Skip the O(doc-size)
+  // walk entirely — it's pure waste; the result lands in an
+  // element that's `display: none`.
+  if (multiDocActive) return;
   if (!view) {
     wordCountText.textContent = '—';
     return;
