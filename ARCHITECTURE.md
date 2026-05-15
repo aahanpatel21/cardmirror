@@ -129,18 +129,18 @@ section in §15 for the rationale.
 Notes:
 
 - **Top-level is a sequence**, not a singular root. Real `.docx` files
-  contain multiple "files" separated by empty Heading1 paragraphs (e.g.
-  `DA - Reconciliation.docx` carries both DA and CP). The schema embraces
-  this rather than fighting it.
+  routinely carry multiple "files" in one document separated by empty
+  Heading1 paragraphs (e.g. a DA and its companion CP shipped together).
+  The schema embraces this rather than fighting it.
 - **Heading-level nodes are flat**, not tree containers. Hierarchy
   (which cards sit under which Block, which Block under which Hat, etc.)
   is implicit in document order + outline level — not enforced by
   schema containment. The nav panel walks the flat sequence and groups
   by outline level to derive the tree view. See `DECISIONS.md`
   2026-05-08 "Schema design — heading-level nodes are flat paragraphs."
-- **Pocket is optional at root.** `CP - Bifurcation PIC vs Fed Workers.docx`
-  has zero Heading1 paragraphs. Top-level entry can be Hat, Block, or
-  a plain paragraph.
+- **Pocket is optional at root.** Some real working docs have zero
+  Heading1 paragraphs. Top-level entry can be Hat, Block, or a plain
+  paragraph.
 - **Plain `paragraph` block** is a first-class block-level type for
   unstyled body text. Real docs frequently contain unstyled paragraphs
   interspersed with structured content (especially in speech docs);
@@ -359,8 +359,8 @@ mode and is what we want as the default.
 
 We still need to **round-trip page breaks** in the docx, since real
 templates include them — most notably the canonical Pocket style has
-`<w:pageBreakBefore/>` (`Debate.dotm:word/styles.xml:420`), so every
-Pocket starts on a new page in Word's "Print Layout" view. The schema
+`<w:pageBreakBefore/>`, so every Pocket starts on a new page in
+Word's "Print Layout" view. The schema
 treats page breaks as **attributes preserved through round-trip but
 not rendered as page boundaries** in our editing surface. Hard page
 breaks (`<w:br w:type="page"/>`) become a `page_break` inline node that
@@ -384,8 +384,8 @@ Affordances required:
   not stored in the doc.
 - **Drag-to-reorder** within and across levels. Drops respect the
   schema (you can't drop a Hat into a Card; you can drop a Block into
-  any Hat). Equivalent to `Paperless.MoveUp` / `MoveDown` /
-  `MoveToBottom` (`Paperless.bas:397-583`) but as direct manipulation.
+  any Hat). Equivalent to Verbatim's `MoveUp` / `MoveDown` /
+  `MoveToBottom` macros but as direct manipulation.
 - **Promote / demote** — change a node's outline level (Tag → Block,
   Block → Hat, etc.). The schema permits these by allowing
   outline-level nodes at multiple positions; promote/demote is just a
@@ -393,8 +393,8 @@ Affordances required:
 - **Delete heading and contents** — atomic deletion of the entire
   subtree rooted at the selected heading.
 - **Select heading and contents** — selects the heading paragraph
-  plus every descendant. Equivalent of
-  `Paperless.SelectHeadingAndContent` (`Paperless.bas:254-295`).
+  plus every descendant. Equivalent of Verbatim's
+  `SelectHeadingAndContent` macro.
 - **Grab heading and contents** — copy (or cut) the entire subtree
   to clipboard, schema-aware. Pastes elsewhere as the same subtree
   shape, not as loose paragraphs.
@@ -410,12 +410,12 @@ CSS analogues but need explicit handling. The display config (per §5)
 ships with these as the default rendering, matching what Verbatim
 produces:
 
-| Style    | Verbatim feature | Default render | Source |
-|----------|------------------|----------------|--------|
-| Pocket (Heading1) | `<w:pBdr>` on all four sides | Paragraph rectangle (CSS `border` on the block element) | `Debate.dotm:word/styles.xml:421-426` |
-| Hat (Heading2) | `<w:pageBreakBefore/>` + centered, double underline | Centered, double-underlined heading; page-break ignored in web view | `styles.xml:438-462` |
-| Block (Heading3) | `<w:pageBreakBefore/>` + centered, single underline | Centered, single-underlined heading; page-break ignored in web view | `styles.xml:463-487` |
-| Emphasis (character) | `<w:bdr>` single 1pt | Inline rectangle around the emphasized run (CSS `border` on the inline element) | `styles.xml:570` |
+| Style    | Verbatim feature | Default render |
+|----------|------------------|----------------|
+| Pocket (Heading1) | `<w:pBdr>` on all four sides | Paragraph rectangle (CSS `border` on the block element) |
+| Hat (Heading2) | `<w:pageBreakBefore/>` + centered, double underline | Centered, double-underlined heading; page-break ignored in web view |
+| Block (Heading3) | `<w:pageBreakBefore/>` + centered, single underline | Centered, single-underlined heading; page-break ignored in web view |
+| Emphasis (character) | `<w:bdr>` single 1pt | Inline rectangle around the emphasized run (CSS `border` on the inline element) |
 
 Round-trip note: these features are declared in the canonical style
 definitions, so on export we emit the standard Verbatim style block
