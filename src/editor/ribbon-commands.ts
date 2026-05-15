@@ -3040,12 +3040,13 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   mergeTableCells: '',
   splitTableCell: '',
   deleteTable: '',
-  // `Mod-n` would be the natural pick but Chrome refuses to let us
-  // suppress its "new window" default for `Ctrl-N` / `Cmd-N`, so we
-  // fall back to `Mod-Shift-N`. (Same caveat as F11 / F5 noted on
-  // the global keydown listener — un-preventable in some browsers
-  // until we ship the future Electron build.)
-  newDocument: 'Mod-Shift-N',
+  // Chrome won't let JS suppress its `Ctrl-N` (new window) or
+  // `Ctrl-Shift-N` (new incognito window) defaults — both keys
+  // are un-preventable in the browser, so we use `Mod-Alt-N`
+  // instead. Users on a future Electron build (or who don't care
+  // about the conflict on their platform) can rebind via Settings
+  // → Keybindings.
+  newDocument: 'Mod-Alt-n',
   openFile: 'Mod-o',
   saveAs: 'Mod-s',
 };
