@@ -1,8 +1,7 @@
 # Advanced Verbatim custom macros — effect-level inventory
 
-Source: `reference-docs/Custom-Verbatim-Styles-and-Macros/`. These are the
-custom macros shipped as part of **Advanced Verbatim**, the project owner's
-forked Verbatim build. Per the project owner, the implementations are
+Source: the custom-macro `.txt` exports that ship with **Advanced
+Verbatim**, the project owner's forked Verbatim build. Per the project owner, the implementations are
 exploratory and **not load-bearing** — what matters for our reimplementation
 is achieving comparable *effects*, not preserving the macros line-for-line.
 

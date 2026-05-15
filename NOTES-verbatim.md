@@ -1,7 +1,9 @@
 # Verbatim — style manipulation reference
 
-Notes from reading `reference-docs/verbatim/desktop/src/` (VBA). Source paths
-below are relative to that directory unless stated otherwise.
+Notes from reading the VBA source of upstream Verbatim
+(<https://github.com/ashtarcommunications/verbatim>, `desktop/src/`).
+File names below (`Formatting.bas`, `Paperless.bas`, `Settings.bas`,
+etc.) are relative to that directory.
 
 The headline takeaway for our docx contract: **Verbatim's document model is
 *hybrid*** — structural meaning lives in **named Word styles + outline level**,
@@ -34,9 +36,9 @@ by `w:styleId="HeadingN"` with the debate-specific name carried as an
 Each `HeadingN` also has a linked character style `HeadingNChar`
 (`<w:link w:val="HeadingNChar"/>`) so inline application works transparently.
 
-References: `Formatting.bas:648-662` (RemoveExtraStyles allowlist),
-`Settings.bas:347-350` (hotkeys), `Debate.dotm:word/styles.xml` lines
-396-509 for the canonical definitions.
+References: `Formatting.bas` `RemoveExtraStyles` (allowlist),
+`Settings.bas` hotkey table, and `Debate.dotm`'s `word/styles.xml`
+for the canonical style definitions.
 
 ### Character styles (emphasis)
 
@@ -54,14 +56,14 @@ So when reading real docx files, expect `<w:rStyle w:val="Style13ptBold"/>`
 and `<w:rStyle w:val="StyleUnderline"/>` — the names `Cite` and `Underline`
 appear nowhere in the OOXML for these character styles.
 
-References: `Formatting.bas:673-677`, `Settings.bas:256/258/351`,
-`Debate.dotm:word/styles.xml:642-668`.
+References: `Formatting.bas` (style allowlist + F-key handlers),
+`Settings.bas` (hotkey table), `Debate.dotm` `word/styles.xml`.
 
 ### Legacy / cleanup-only
 
 - `Analytic*` — in **stock** Verbatim, any style whose name starts with
   `analytic` (case-insensitive) is rewritten to `Tag` by
-  `ConvertAnalyticsToTags` (`Formatting.bas:604-610`). See §7 below for how
+  `ConvertAnalyticsToTags` (`Formatting.bas`). See §7 below for how
   this project's custom variant repurposes the name.
 
 ---
@@ -73,27 +75,27 @@ reads/writes alongside styles:
 
 - **Highlight color** — `range.HighlightColorIndex` (yellow/blue/red/green/teal/…).
   *There is no "Highlighted" style.* All highlighting is direct formatting.
-  Color name ↔ enum: `Formatting.bas:193-232`.
+  Color name ↔ enum: `Formatting.bas`.
 - **Font size** — direct override; shrink cycles 11 → 8 → 7 → 6 → 5 → 4 → Normal
-  (`Shrink.bas:60-77`).
+  (`Shrink.bas`).
 - **Bold** — direct only; e.g. `FixFakeTags` reclassifies bold body-level text
-  bigger than the Underline style's size as a Tag (`Formatting.bas:592-602`).
+  bigger than the Underline style's size as a Tag (`Formatting.bas`).
 - **Font.Underline** — both a style (`Underline`) *and* a direct property.
-  Comment at `Formatting.bas:19` explicitly notes that style-only checks don't
+  Comment at `Formatting.bas` explicitly notes that style-only checks don't
   work; you must inspect both.
 - **Font color** — used for marker annotations (e.g. red "Marked [time]"
   inserted by `Paperless.SendToSpeech`).
 - **Pilcrow glyph** — Unicode ¶ (Win char code 182, Mac 166), forced to 6 pt
   non-bold non-underlined; Verbatim uses these to *encode* paragraph breaks
   inside a condensed run while keeping it visually one paragraph
-  (`Condense.bas:27-28, 110`).
+  (`Condense.bas`).
 
 ### Coexistence rules
 
 - Applying the `Underline` style sets `Font.Underline` too (and removing the
   style does not always clear the property — hence the dual checks).
 - The `Emphasis` style is sometimes paired with yellow highlight; some cleanup
-  paths re-pair them deliberately (`Formatting.bas:826-875`).
+  paths re-pair them deliberately (`Formatting.bas`).
 - Direct font size overrides whatever the style declares.
 - `ClearFormatting()` clears both layers but leaves paragraph style at `Normal`.
 
@@ -105,43 +107,43 @@ Routing happens in `Ribbon.bas:RibbonMain()` which dispatches to
 module-level subs. Grouped below by what they touch.
 
 ### a) Apply structural styles
-- F4 / F5 / F6 / F7 → Pocket / Hat / Block / Tag (`Settings.bas:347-350`)
-- F8 → Cite character style (`Settings.bas:351`)
+- F4 / F5 / F6 / F7 → Pocket / Hat / Block / Tag (`Settings.bas`)
+- F8 → Cite character style (`Settings.bas`)
 
 ### b) Emphasis & highlighting
-- `Formatting.ToggleUnderline` (F9, `Ribbon.bas:256`) — toggle Underline style.
-- `Formatting.UnderlineMode` (`Formatting.bas:6`) — interactive "underline as
+- `Formatting.ToggleUnderline` (F9, `Ribbon.bas`) — toggle Underline style.
+- `Formatting.UnderlineMode` (`Formatting.bas`) — interactive "underline as
   you type" loop until toggled off.
-- `Formatting.AutoUnderline` (`Formatting.bas:407-506`) — analyzes the *Tag*
+- `Formatting.AutoUnderline` (`Formatting.bas`) — analyzes the *Tag*
   for synonyms, scores chunks of card text, applies `Underline` if score ≥ 0.1
   and (optionally) `Emphasis` if ≥ 0.25.
-- `Formatting.AutoEmphasizeFirst` (`Formatting.bas:508-513`) — emphasizes the
+- `Formatting.AutoEmphasizeFirst` (`Formatting.bas`) — emphasizes the
   first character of each word in selection.
-- `Formatting.UniHighlight` (`Formatting.bas:120-148`) — recolor every
+- `Formatting.UniHighlight` (`Formatting.bas`) — recolor every
   highlight in the doc to a chosen color.
-- `Formatting.UniHighlightWithException` (`Formatting.bas:150-191`) — same,
+- `Formatting.UniHighlightWithException` (`Formatting.bas`) — same,
   but skip one configured color.
-- `Formatting.RemoveEmphasis` (`Formatting.bas:515-543`) — find/replace
+- `Formatting.RemoveEmphasis` (`Formatting.bas`) — find/replace
   Emphasis → Underline (with confirmation).
-- `Formatting.RemoveNonHighlightedUnderlining` (`Formatting.bas:987-1029`).
+- `Formatting.RemoveNonHighlightedUnderlining` (`Formatting.bas`).
 
 ### c) Shrink / condense / expand
-- `Shrink.ShrinkAllOrCard` (`Shrink.bas:4`) — cycle font size on current card,
+- `Shrink.ShrinkAllOrCard` (`Shrink.bas`) — cycle font size on current card,
   or whole doc if cursor is in empty area.
-- `Shrink.ShrinkAll` / `Shrink.UnshrinkAll` (`Shrink.bas:149-176`).
-- `Shrink.ShrinkPilcrows` (`Shrink.bas:178-225`) — force pilcrows to 6pt clean.
+- `Shrink.ShrinkAll` / `Shrink.UnshrinkAll` (`Shrink.bas`).
+- `Shrink.ShrinkPilcrows` (`Shrink.bas`) — force pilcrows to 6pt clean.
 - `Condense.CondenseNoPilcrows` / `CondenseWithPilcrows` / `Uncondense`
-  (`Condense.bas:20-245`) — collapse a card's whitespace, optionally encoding
+  (`Condense.bas`) — collapse a card's whitespace, optionally encoding
   paragraph breaks as 6pt pilcrows.
-- `Condense.RemovePilcrows` (`Condense.bas:247-296`).
+- `Condense.RemovePilcrows` (`Condense.bas`).
 
 ### d) Structural reorganization
 - `Paperless.MoveUp` / `MoveDown` / `MoveToBottom`
-  (`Paperless.bas:397-583`) — outline-aware reordering.
-- `Paperless.SelectHeadingAndContent` (`Paperless.bas:254-295`) — select a
+  (`Paperless.bas`) — outline-aware reordering.
+- `Paperless.SelectHeadingAndContent` (`Paperless.bas`) — select a
   heading and everything under it down to the next same-or-larger heading.
-- `Formatting.AutoNumberTags` / `DeNumberTags` (`Formatting.bas:545-590`).
-- `Formatting.CopyPreviousCite` (`Formatting.bas:84-118`).
+- `Formatting.AutoNumberTags` / `DeNumberTags` (`Formatting.bas`).
+- `Formatting.CopyPreviousCite` (`Formatting.bas`).
 
 ### e) Cleanup / normalization
 - `Formatting.FixFakeTags` (`592-602`) — bold body text > Underline-style size → Tag.
@@ -163,9 +165,9 @@ module-level subs. Grouped below by what they touch.
   with a workaround.
 
 ### f) View / paste
-- `View.InvisibilityMode` (`View.bas:165-243`) — hide all non-highlighted body
+- `View.InvisibilityMode` (`View.bas`) — hide all non-highlighted body
   text (sets `Font.Hidden`) except Cite paragraphs.
-- `Formatting.PasteText` (`Formatting.bas:45-69`) — unformatted paste, with
+- `Formatting.PasteText` (`Formatting.bas`) — unformatted paste, with
   optional auto-condense.
 - `Formatting.RemoveHyperlinks` (`290-301`).
 
@@ -173,7 +175,7 @@ module-level subs. Grouped below by what they touch.
 
 ## 4. Document-level metadata
 
-Set in `Startup.AutoNew` (`Startup.bas:12-17`) as Word document variables:
+Set in `Startup.AutoNew` (`Startup.bas`) as Word document variables:
 
 - `Creator`, `Team`, `VerbatimVersion`, `OS`, `OSVersion`, `WordVersion`
 
@@ -196,18 +198,18 @@ These are the things most likely to bite us:
 
 1. **`Underline` is dual** — both a character style and a direct font property.
    Verbatim's own code commits the dual representation
-   (`Formatting.bas:19` comment). Our docx import must read both; our export
+   (`Formatting.bas` comment). Our docx import must read both; our export
    must produce both, otherwise Verbatim's checks will misclassify our text.
 2. **Outline level is read directly**, not derived from style name. Many code
    paths use `OutlineLevel < wdOutlineLevel5` to find headings rather than
    matching `Style.NameLocal`. Our exported styles must declare the correct
    outline level — not just have the right name.
 3. **`Cite` detection has two modes** — the explicit style (`IdentifyCiteStyle`,
-   `Paperless.bas:341-364`) and a heuristic one (`IdentifyCite`,
-   `Paperless.bas:297-339`) keyed on `[(<`, URLs, and tokens like
+   `Paperless.bas`) and a heuristic one (`IdentifyCite`,
+   `Paperless.bas`) keyed on `[(<`, URLs, and tokens like
    "omitted/edited/modified/sic". Round-trip should keep the explicit style.
 4. **`Emphasis` ↔ yellow highlight pairing** — `ConvertToDefaultStyles`
-   (`Formatting.bas:826-875`) re-introduces yellow highlight on Emphasis-styled
+   (`Formatting.bas`) re-introduces yellow highlight on Emphasis-styled
    ranges. If we strip highlights on import we'll lose information; if we
    strip on export we may *break* a document on the next "Update Styles" run.
 5. **`FixFakeTags` is destructive** — bold body-level text larger than the
@@ -224,7 +226,7 @@ These are the things most likely to bite us:
 8. **Hidden styles are not deleted** — `RemoveExtraStyles` toggles
    `s.Visibility`. Our import must look at hidden styles too.
 9. **Linked styles** — `ConvertToDefaultStyles` explicitly unlinks via
-   `s.LinkStyle = "Normal"` (`Formatting.bas:830`). If we preserve links
+   `s.LinkStyle = "Normal"` (`Formatting.bas`). If we preserve links
    we'll cause cleanup churn next time the user runs it.
 10. **`Normal` style is load-bearing** — every shrink/unshrink op falls back
     to `Styles("Normal").Font.size`. Documents we produce must have a `Normal`
@@ -234,44 +236,42 @@ These are the things most likely to bite us:
 
 ## 6. Real-world observations from working documents
 
-Findings from surveying three of the project owner's actual working files
-(`reference-docs/example docs/`). These are facts about how Verbatim docs
-get serialized in practice — distinct from how the source code suggests
-they "should" look.
+Findings from surveying real Verbatim working files. These are facts
+about how Verbatim docs get serialized in practice — distinct from
+how the source code suggests they "should" look.
 
 ### Body paragraphs have no `pStyle`
 
-Confirmed across all three example docs: paragraphs that the user thinks
-of as "Normal/Card body" emit no `<w:pStyle>` at all. Word omits the
-default style by convention. **Importer rule**: a `<w:p>` with no
-`<w:pStyle>` is a body paragraph, not malformed.
+Paragraphs that the user thinks of as "Normal/Card body" emit no
+`<w:pStyle>` at all. Word omits the default style by convention.
+**Importer rule**: a `<w:p>` with no `<w:pStyle>` is a body
+paragraph, not malformed.
 
 ### Multiple "files" coexist in one .docx
 
-`DA - Reconciliation.docx` contains both the disad (Reconciliation DA)
-and a counterplan (Fixed Price Schedule PIC) in a single file. The
-boundary is just an empty `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr></w:p>`
+Real working docs routinely bundle multiple separate "files" (e.g. a
+disad and a companion counterplan) in a single `.docx`. The boundary
+is just an empty `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr></w:p>`
 followed by a new top-level Heading1 paragraph. No page break, no
-comment, no special markup. This pattern is normal — the docx root is
-effectively a *sequence of pocket-like sections*, not "the document."
+comment, no special markup. This pattern is normal — the docx root
+is effectively a *sequence of pocket-like sections*, not "the
+document."
 
-### "Patch Notes" is the project owner's personal cutting-board convention
+### Personal cutting-board conventions show up at the top of real docs
 
-All three example docs lead with a `Heading3` titled "Patch Notes" used
-as a version-log / cutting board. **This is the project owner's personal
-convention, not a community-wide debate practice** — don't generalize
-from it. We should not auto-classify "Patch Notes" headings as anything
-special on import for arbitrary users; the schema admits the loose
-paragraphs they contain as ordinary block-level content. In
-`Aff - Merp!.docx` the project owner's "Patch Notes" block additionally
-skips an outline level (Heading1 → Heading3 with no Heading2).
+Working docs often lead with a `Heading3`-styled block — typically
+titled something like "Patch Notes" — that the author uses as a
+version log or cutting board, before any real card content. **These
+are personal conventions, not a community-wide debate practice** —
+don't generalize from any particular title. The schema admits the
+loose paragraphs in such a block as ordinary block-level content;
+the importer should not special-case heading titles.
 
 ### Pocket-level structure is optional
 
-`CP - Bifurcation PIC vs Fed Workers.docx` (252 KB) has zero Heading1
-paragraphs. It opens at `Heading3` ("Patch Notes") and has only two
-`Heading2` sections. **Schema implication**: don't require Pocket at the
-root.
+Plenty of real working docs have zero Heading1 paragraphs and open
+straight at `Heading2` or `Heading3`. **Schema implication**: don't
+require Pocket at the root.
 
 ### Outline-level skips happen, especially around cutting-board regions
 
@@ -302,33 +302,34 @@ Every Word edit creates a new run. Real paragraphs contain dozens of
 adjacent `<w:r>` elements with identical `<w:rPr>`. Importer needs an
 adjacent-runs-with-same-formatting → merge pass to normalize.
 
-### Direct-formatting prevalence (real numbers)
+### Direct-formatting patterns to expect
 
-Aff / DA / CP from the survey:
+Patterns the importer must handle because they appear in real
+working docs (orders of magnitude vary; the qualitative shape doesn't):
 
-| Pattern                              | Aff   | DA    | CP   | Notes |
-|--------------------------------------|-------|-------|------|-------|
-| `<w:color w:val="555555"/>` runs     | 2,736 | 1,269 | 0    | The "for reference, do not read" sentinel; ubiquitous in working docs. |
-| `<w:shd w:fill="D2D2D2"/>` runs      |   684 |   411 | 0    | The protected-highlight (`HighlightToBackgroundColor`) shading. |
-| 6pt pilcrow (`¶` chars sized down)   |     0 |     0 | 0    | Not used in working drafts; only present in `Condense`-processed docs. |
-| `StyleUnderline` rStyle uses         |16,211 |14,039 |1,590 | Heavy. The everyday emphasis mark. |
-| `Emphasis` rStyle uses               |14,212 |10,625 |1,495 | Comparable to Underline. |
-| `Style13ptBold` rStyle uses (= Cite) |   387 |   363 |   52 | Citation metadata bolded inline. |
-| `Heading1` (Pocket)                  |     7 |     6 |   0  | |
-| `Heading2` (Hat)                     |    29 |    21 |   2  | |
-| `Heading3` (Block)                   |   162 |   136 |  26  | |
-| `Heading4` (Tag)                     |   362 |   321 |  50  | |
-| `Analytic`                           |    38 |    68 |  34  | Heavy use; not a niche feature. |
-| `Undertag`                           |     1 |     2 |   4  | Rare. |
+- `<w:color w:val="555555"/>` runs — the "for reference, do not read"
+  grey-text sentinel; ubiquitous, can number in the thousands per doc.
+- `<w:shd w:fill="D2D2D2"/>` runs — Verbatim's protected-highlight
+  shading (`HighlightToBackgroundColor`); common but lighter than 555555.
+- 6pt pilcrow (`¶` glyphs sized down) — present only in
+  `Condense`-processed docs; absent from typical working drafts.
+- `StyleUnderline` rStyle — the everyday emphasis mark, applied
+  heavily (often more than every other emphasis combined).
+- `Emphasis` rStyle — heavy use, often comparable to `StyleUnderline`.
+- `Style13ptBold` rStyle — cite metadata bolded inline; sparse compared
+  to the underline / emphasis runs.
+- `Analytic` paragraphs — heavy use, not a niche feature.
+- `Undertag` paragraphs — present but rare.
 
 ### Stylepox is a real, ambient threat
 
 The user has separately documented the "stylepox" phenomenon — random
 custom styles that propagate via copy-paste — and built a Stylepox
 Cleaner utility that normalizes infected docs. Reported infection rate:
-~62% of open-source college policy docs. One artifact appears in our
-samples: `AAAUNDERLINEKEYBOARD` (9 instances in Aff only). Treat it as
-an ambient hazard the import normalizer must handle.
+~62% of open-source college policy docs. A representative artifact:
+unrecognized style ids like `AAAUNDERLINEKEYBOARD` show up in working
+docs as copy-paste residue from infected sources. Treat it as an
+ambient hazard the import normalizer must handle.
 
 Reference: `https://debate-decoded.ghost.io/leveling-up-your-debate-software-3-curing-stylepox/`.
 
@@ -354,7 +355,7 @@ preserve both halves.
 
 #### Analytic (paragraph) + AnalyticChar (character)
 
-`Debate.dotm:word/styles.xml:870-895`
+`Debate.dotm` `word/styles.xml`
 
 ```xml
 <w:style w:type="paragraph" w:customStyle="1" w:styleId="Analytic">
@@ -390,7 +391,7 @@ preserve both halves.
 
 #### Undertag (paragraph) + UndertagChar (character)
 
-`Debate.dotm:word/styles.xml:838-869`
+`Debate.dotm` `word/styles.xml`
 
 ```xml
 <w:style w:type="paragraph" w:customStyle="1" w:styleId="Undertag">
@@ -462,15 +463,15 @@ stock Verbatim, but a user who explicitly hits "Convert to Default Styles"
 or "Remove Extra Styles" on the Format menu will silently degrade them.
 This is a documentation-and-warnings problem, not a docx-format problem.
 
-- **`ConvertAnalyticsToTags`** (`Formatting.bas:604-610`) — prefix-matches
+- **`ConvertAnalyticsToTags`** (`Formatting.bas`) — prefix-matches
   `analytic` (via `LCase$(Left$(p.Style, 8))`) and rewrites to `Tag`. The
   string `Analytic` matches exactly, so this *would* destroy the style if
   invoked. Just doesn't get invoked.
-- **`RemoveExtraStyles`** (`Formatting.bas:612-718`) — keeps only an
+- **`RemoveExtraStyles`** (`Formatting.bas`) — keeps only an
   allowlist of canonical names + Word built-ins; would hide both customs.
-- **`ConvertToDefaultStyles`** (`Formatting.bas:720-941`) — would collapse
+- **`ConvertToDefaultStyles`** (`Formatting.bas`) — would collapse
   variants into canonical names.
-- **`FixFakeTags`** (`Formatting.bas:592-602`) — rewrites bold body-level
+- **`FixFakeTags`** (`Formatting.bas`) — rewrites bold body-level
   text bigger than the Underline-style size into `Tag`. Since `Analytic`
   inherits Heading4's outline level (4) and is *not* body-level, it would
   not be affected. `Undertag` is body-level but italic-not-bold, so also

@@ -35,14 +35,11 @@ Microsoft Word add-in used by US policy/LD/PF debaters.
 - [`NOTES-custom-macros.md`](./NOTES-custom-macros.md) — Advanced
   Verbatim's custom macros, effect-level. What features the editor
   needs to replicate (or supersede).
-- `reference-docs/verbatim/` — upstream clone of stock Verbatim, read-only.
-- `reference-docs/Debate.dotm` — the canonical Advanced Verbatim
-  template. Source of truth for `Analytic` / `Undertag` style specs.
-- `reference-docs/Custom-Verbatim-Styles-and-Macros/` — Advanced Verbatim
-  custom macro `.txt` exports.
-- `reference-docs/example docs/` — three real working documents from
-  the project owner (one Aff, one DA, one CP). Used to sanity-check the
-  schema and round-trip against actual practice rather than theory.
+
+Round-trip fidelity is verified against real `.docx` files via the
+test suite. Point `CARDMIRROR_DOCS_DIR` at a folder of fixtures to
+run the round-trip / mark-fidelity / structural-validity tests
+(README → "Testing round-trip against your own .docx files").
 
 ## Reading order for a new contributor
 
