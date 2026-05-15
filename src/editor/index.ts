@@ -85,6 +85,14 @@ const exportBtn = document.getElementById('export-btn') as HTMLButtonElement;
 const settingsBtn = document.getElementById('settings-btn') as HTMLButtonElement;
 const referenceBtn = document.getElementById('reference-btn') as HTMLButtonElement | null;
 const readModeBtn = document.getElementById('read-mode-btn') as HTMLButtonElement;
+/** Resolver for "what value should the read-mode ribbon button
+ *  show as pressed?". Single-doc mode reads `settings.readMode`;
+ *  multi-doc swaps in a resolver that asks the focused pane's
+ *  per-DocRecord state via `setReadModeStateResolver`.
+ *  Declared up here (not next to `setReadModeStateResolver`)
+ *  because `applyReadMode` runs at module-init time before the
+ *  bottom-of-file declarations execute — a TDZ access otherwise. */
+let readModeStateForActive: () => boolean = () => settings.get('readMode');
 const wordCountBtn = document.getElementById('word-count-btn') as HTMLButtonElement;
 const commentsToggleBtn = document.getElementById('comments-toggle-btn') as HTMLButtonElement | null;
 const commentsAddBtn = document.getElementById('comments-add-btn') as HTMLButtonElement | null;
@@ -124,6 +132,9 @@ let multiDocOnFileOpen: ((file: File) => Promise<void> | void) | null = null;
 /** When the multi-pane shell is active, this delegates the
  *  "New doc" ribbon button to the shell's slot-routing flow. */
 let multiDocOnNewDoc: (() => Promise<void> | void) | null = null;
+/** When the multi-pane shell is active, this delegates the
+ *  read-mode ribbon button to the shell's per-pane toggle. */
+let multiDocToggleReadMode: (() => void) | null = null;
 
 /** Multi-pane shell hooks. Called by `multi-pane-shell.ts` at boot
  *  to install the override that redirects the single-doc dropzone
@@ -131,10 +142,12 @@ let multiDocOnNewDoc: (() => Promise<void> | void) | null = null;
 export function enableMultiDocMode(opts: {
   onFileOpen: (file: File) => Promise<void> | void;
   onNewDoc?: () => Promise<void> | void;
+  toggleReadMode?: () => void;
 }): void {
   multiDocActive = true;
   multiDocOnFileOpen = opts.onFileOpen;
   multiDocOnNewDoc = opts.onNewDoc ?? null;
+  multiDocToggleReadMode = opts.toggleReadMode ?? null;
   // Hide the single-doc surfaces. The multi-pane shell mounts its
   // own DOM into #app, alongside #editor + #comments-column which
   // we hide here.
@@ -161,9 +174,11 @@ export function setActiveView(v: EditorView | null): void {
     currentDoc = v.state.doc;
   }
   // Re-sync the chrome that depends on `view` (font-size chip,
-  // word-count display, paragraph integrity indicator, etc.).
+  // word-count display, paragraph integrity indicator,
+  // read-mode toggle pressed-state, etc.).
   refreshFontSizeDisplay();
   refreshWordCount();
+  refreshReadModeBtn();
 }
 
 /** Read-only accessor for the active view — exposed so other
@@ -231,6 +246,13 @@ const ribbonContext: RibbonContext = {
     if (view) openWordCount(view);
   },
   toggleReadMode: () => {
+    if (multiDocActive && multiDocToggleReadMode) {
+      // Per-pane in multi-doc mode: flip the focused pane's
+      // state and apply it locally without touching the global
+      // setting (so the other panes keep theirs).
+      multiDocToggleReadMode();
+      return;
+    }
     settings.set('readMode', !settings.get('readMode'));
   },
   openShortcutsReference: () => openReference(),
@@ -1215,21 +1237,65 @@ function refreshWordCount(): void {
   wordCountText.textContent = parts.join(' · ');
 }
 
+/**
+ * Single-doc read-mode application. Read mode is conceptually
+ * per-doc — in multi-doc mode each pane owns its own read-mode
+ * state via the shell — and the single-doc surface just happens
+ * to have exactly one doc, so the `settings.readMode` setting
+ * drives this one editor's read-mode flag.
+ */
 function applyReadMode(on: boolean): void {
   editorEl.classList.toggle('pmd-read-mode', on);
   editorEl.classList.toggle(
     'pmd-rm-no-emphasis-borders',
     on && settings.get('hideEmphasisBordersInReadMode'),
   );
-  readModeBtn.classList.toggle('pmd-active', on);
+  if (!multiDocActive) refreshReadModeBtn();
   if (view) {
     view.setProps({ editable: () => !on });
-    // Force the read-mode plugin to (re)compute decorations. With the
-    // optimization that skips decoration work while read mode is off,
-    // toggling on/off needs an explicit trigger since the plugin
-    // otherwise only reacts to doc changes.
-    view.dispatch(view.state.tr.setMeta(PMD_READ_MODE_TOGGLE, true));
+    // Send the new state to the read-mode plugin so it (re)builds
+    // its text-hiding decoration set. The meta value IS the
+    // desired on/off state — the plugin stores it as its own
+    // local state rather than re-reading the global setting,
+    // which made per-pane read mode in multi-doc work.
+    view.dispatch(view.state.tr.setMeta(PMD_READ_MODE_TOGGLE, on));
   }
+}
+
+/**
+ * Apply read-mode visuals + editability + plugin re-render to a
+ * SPECIFIC editor surface — same logic as `applyReadMode` above,
+ * just parameterised on the host element and view so the multi-pane
+ * shell can call it per pane without going through the
+ * `settings.readMode` global.
+ */
+export function applyReadModeToTarget(
+  hostEl: HTMLElement,
+  targetView: EditorView,
+  on: boolean,
+  hideEmphasisBorders: boolean,
+): void {
+  hostEl.classList.toggle('pmd-read-mode', on);
+  hostEl.classList.toggle('pmd-rm-no-emphasis-borders', on && hideEmphasisBorders);
+  targetView.setProps({ editable: () => !on });
+  targetView.dispatch(targetView.state.tr.setMeta(PMD_READ_MODE_TOGGLE, on));
+}
+
+/**
+ * Replace the resolver used by `refreshReadModeBtn`. In single-doc
+ * the default (read `settings.readMode`) is fine; the multi-pane
+ * shell calls this at boot to install a focused-pane resolver.
+ */
+export function setReadModeStateResolver(resolver: () => boolean): void {
+  readModeStateForActive = resolver;
+  // Resolver change implies the source-of-truth changed (e.g., the
+  // multi-pane shell just installed its focused-pane resolver) —
+  // refresh the button so it reflects the new answer.
+  refreshReadModeBtn();
+}
+
+function refreshReadModeBtn(): void {
+  readModeBtn.classList.toggle('pmd-active', readModeStateForActive());
 }
 
 const navPanel = new NavigationPanel(navEl);
@@ -1427,6 +1493,15 @@ function mountView(doc: PMNode, threads: Thread[] = []): void {
   navPanel.update(doc);
   refreshWordCount();
   refreshFontSizeDisplay();
+  // Push the current `settings.readMode` value through the full
+  // apply path now that `view` exists — `applyReadMode` ran at
+  // module init time before this view was constructed (so its
+  // `view.setProps` / plugin dispatch were skipped) and the
+  // plugin's local state defaults to OFF. Re-applying here lands
+  // both the editable flag AND the plugin's text-hiding
+  // decoration set in their correct on/off state for the
+  // persisted setting.
+  applyReadMode(settings.get('readMode'));
 }
 
 /** Publish `#editor`'s current width as `--pmd-card-intrinsic-width`

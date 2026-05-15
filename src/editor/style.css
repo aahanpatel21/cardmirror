@@ -4075,3 +4075,23 @@ html.pmd-emphasis-box .pmd-pane-editor .pmd-emphasis {
   padding: 0 0.1em;
   border-radius: 1px;
 }
+
+/* Read-mode mirrors for `#editor.pmd-read-mode` rules. Read mode in
+ * multi-doc is per-pane: the shell toggles `pmd-read-mode` on the
+ * individual `.pmd-pane-editor` whose user clicked the ribbon
+ * button, NOT on `documentElement`. So the selectors below key on
+ * the class being on the pane element itself. Specificity matches
+ * the single-doc `#editor.pmd-read-mode` form (1 class on the host
+ * + 1 class on the descendant), and the `.pmd-pane-editor` host-
+ * scoping keeps the rule from leaking to other panes. */
+.pmd-pane-editor.pmd-read-mode .ProseMirror {
+  white-space: normal;
+}
+.pmd-pane-editor.pmd-read-mode .pmd-emphasis:not(:has(.pmd-rm-keep)) {
+  border: none;
+  padding: 0;
+}
+.pmd-pane-editor.pmd-read-mode.pmd-rm-no-emphasis-borders .pmd-emphasis {
+  border: none;
+  padding: 0;
+}

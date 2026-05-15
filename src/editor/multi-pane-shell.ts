@@ -38,6 +38,8 @@ import {
   enableMultiDocMode,
   setActiveView,
   getActiveView,
+  applyReadModeToTarget,
+  setReadModeStateResolver,
 } from './index.js';
 
 type SlotId = 'slot1' | 'slot2' | 'slot3';
@@ -78,6 +80,10 @@ interface DocRecord {
    *  dblclick in progress unless the rebuild waits for a typing
    *  pause. */
   heavyUpdateTimer: IdleHandle | null;
+  /** Per-doc read-mode state. Multi-doc treats read mode as a
+   *  property of an individual open doc — the ribbon toggle flips
+   *  this for the focused pane only, leaving other panes untouched. */
+  readMode: boolean;
 }
 
 class Slot {
@@ -483,9 +489,35 @@ class MultiPaneShell {
           rec.view.dom.setAttribute('spellcheck', spellcheck);
         }
       }
+      // Read-mode is per-pane in multi-doc — flipped via the
+      // ribbon command's `toggleReadMode` hook below — so we
+      // deliberately ignore changes to the global
+      // `settings.readMode` here. Otherwise toggling read mode in
+      // one pane would force every other open doc into the same
+      // state.
+      // The `pmd-rm-no-emphasis-borders` flag IS settings-driven
+      // (it's a display preference, not per-doc), so when it
+      // changes we re-stamp the class on every currently-read-
+      // mode'd pane to match.
+      const hideEmphasisBorders = s.hideEmphasisBordersInReadMode;
+      for (const id of SLOT_IDS) {
+        for (const rec of this.slots[id].stack) {
+          if (rec.readMode) {
+            rec.editorEl.classList.toggle(
+              'pmd-rm-no-emphasis-borders',
+              hideEmphasisBorders,
+            );
+          }
+        }
+      }
       // Nav drag changes available pane width — re-sync.
       this.scheduleSyncAllCardIntrinsicWidths();
     });
+
+    // Tell the single-doc index.ts how to query "what should the
+    // read-mode button show?" — in multi-doc that's the focused
+    // pane's per-doc state, not the global setting.
+    setReadModeStateResolver(() => this.focusedSlot?.visible?.readMode ?? false);
 
     // Window resize is the other event that legitimately changes
     // pane widths. Deliberately NOT a ResizeObserver — see the doc
@@ -628,6 +660,25 @@ class MultiPaneShell {
         });
       }
     }
+  }
+
+  /** Flip the read-mode state of the focused pane's visible doc.
+   *  Called by the ribbon's `toggleReadMode` command (the global
+   *  command dispatches into the shell via `enableMultiDocMode`'s
+   *  `toggleReadMode` hook). No-op if no pane is focused. */
+  toggleFocusedReadMode(): void {
+    const rec = this.focusedSlot?.visible;
+    if (!rec) return;
+    rec.readMode = !rec.readMode;
+    applyReadModeToTarget(
+      rec.editorEl,
+      rec.view,
+      rec.readMode,
+      settings.get('hideEmphasisBordersInReadMode'),
+    );
+    // setActiveView is the path that drives `refreshReadModeBtn`,
+    // so we route through it to keep the ribbon button in sync.
+    setActiveView(rec.view);
   }
 
   /** Handle a slot becoming empty — if it had focus, transfer to
@@ -839,6 +890,9 @@ function buildDocRecord(filename: string, doc: PMNode, slot: Slot): DocRecord {
     navEl,
     dragSurface,
     heavyUpdateTimer: null,
+    // New docs always start with read mode OFF. The user toggles
+    // it per-pane via the ribbon command after opening.
+    readMode: false,
   };
   return record;
 }
@@ -852,5 +906,6 @@ export function mountMultiPaneShell(): void {
   enableMultiDocMode({
     onFileOpen: (file) => shell!.onFileOpen(file),
     onNewDoc: () => shell!.createNewDoc(),
+    toggleReadMode: () => shell!.toggleFocusedReadMode(),
   });
 }
