@@ -166,6 +166,13 @@ let multiDocNewSpeechDocument: (() => void) | null = null;
 let multiDocMarkActiveAsSpeech: (() => void) | null = null;
 let multiDocSendToSpeechAtCursor: (() => void) | null = null;
 let multiDocSendToSpeechAtEnd: (() => void) | null = null;
+/** Filename plumbing for Save-As. In single-doc mode the module's
+ *  `currentDocFilename` is the source of truth; in multi-doc each
+ *  pane owns its own filename, so the shell installs these hooks
+ *  to let Save-As read the focused pane's name and propagate the
+ *  user's rename back into the chip. */
+let multiDocGetFocusedFilename: (() => string | null) | null = null;
+let multiDocSetFocusedFilename: ((name: string) => void) | null = null;
 
 /** Multi-pane shell hooks. Called by `multi-pane-shell.ts` at boot
  *  to install the override that redirects the single-doc dropzone
@@ -178,6 +185,8 @@ export function enableMultiDocMode(opts: {
   markActiveAsSpeech?: () => void;
   sendToSpeechAtCursor?: () => void;
   sendToSpeechAtEnd?: () => void;
+  getFocusedFilename?: () => string | null;
+  setFocusedFilename?: (name: string) => void;
 }): void {
   multiDocActive = true;
   multiDocOnFileOpen = opts.onFileOpen;
@@ -187,6 +196,8 @@ export function enableMultiDocMode(opts: {
   multiDocMarkActiveAsSpeech = opts.markActiveAsSpeech ?? null;
   multiDocSendToSpeechAtCursor = opts.sendToSpeechAtCursor ?? null;
   multiDocSendToSpeechAtEnd = opts.sendToSpeechAtEnd ?? null;
+  multiDocGetFocusedFilename = opts.getFocusedFilename ?? null;
+  multiDocSetFocusedFilename = opts.setFocusedFilename ?? null;
   // Hide the single-doc surfaces. The multi-pane shell mounts its
   // own DOM into #app, alongside #editor + #comments-column which
   // we hide here.
@@ -1783,16 +1794,27 @@ dropzone.addEventListener('change', async () => {
   }
 });
 
-/** Default Save-As filename: the imported file's name, or untitled. */
+/** Default Save-As filename: the focused pane's filename in
+ *  multi-doc, the imported file's name in single-doc, falling
+ *  through to "untitled.docx". */
 function defaultSaveFilename(): string {
-  if (currentDocFilename) {
-    // If the imported name already ends in .docx, keep it. Otherwise
-    // append it so the browser doesn't ambiguously type the file.
-    return currentDocFilename.toLowerCase().endsWith('.docx')
-      ? currentDocFilename
-      : `${currentDocFilename}.docx`;
+  const raw =
+    (multiDocActive && multiDocGetFocusedFilename?.()) ||
+    currentDocFilename ||
+    'untitled.docx';
+  return raw.toLowerCase().endsWith('.docx') ? raw : `${raw}.docx`;
+}
+
+/** After Save-As commits, remember the user's chosen filename as
+ *  the new default — in single-doc that's `currentDocFilename`; in
+ *  multi-doc it propagates back into the focused pane's record so
+ *  the chip label updates. */
+function rememberSavedFilename(name: string): void {
+  if (multiDocActive && multiDocSetFocusedFilename) {
+    multiDocSetFocusedFilename(name);
+  } else {
+    currentDocFilename = name;
   }
-  return 'untitled.docx';
 }
 
 /**
@@ -1877,8 +1899,9 @@ async function runSaveAsFlow(): Promise<boolean> {
       await writable.write(blob);
       await writable.close();
       // Remember the user's chosen name as the new default — so a
-      // second Save As prefills the renamed file.
-      if (handle.name) currentDocFilename = handle.name;
+      // second Save As prefills the renamed file, and (in
+      // multi-doc) the chip label updates immediately to match.
+      if (handle.name) rememberSavedFilename(handle.name);
       return true;
     }
 
@@ -1889,7 +1912,7 @@ async function runSaveAsFlow(): Promise<boolean> {
     a.download = choice.filename;
     a.click();
     URL.revokeObjectURL(url);
-    currentDocFilename = choice.filename;
+    rememberSavedFilename(choice.filename);
     return true;
   } catch (err) {
     console.error('Save failed:', err);

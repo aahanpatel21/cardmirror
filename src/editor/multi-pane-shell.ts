@@ -353,6 +353,15 @@ class Slot {
     this.chipStackBtn.textContent = multi ? `▾ ${this.stack.length}` : '▾';
   }
 
+  /** Re-render the chip's filename label from the visible record.
+   *  Called after Save-As updates `record.filename` so the chip
+   *  reflects the user's chosen name. */
+  refreshChipFilename(): void {
+    const rec = this.visible;
+    if (!rec) return;
+    this.chipNameEl.textContent = rec.filename;
+  }
+
   /** Recompute and display the visible doc's word count + read times
    *  for the first two configured readers. */
   refreshWordCount(): void {
@@ -750,6 +759,26 @@ class MultiPaneShell {
     setActiveView(rec.view);
   }
 
+  /** The filename currently shown in the focused pane's chip, or
+   *  null when no pane is focused. Used by Save-As to prefill
+   *  with the active doc's name. */
+  getFocusedFilename(): string | null {
+    return this.focusedSlot?.visible?.filename ?? null;
+  }
+
+  /** Replace the focused pane's filename with `name` and refresh
+   *  the chip. Called by Save-As when the user commits a save
+   *  with a renamed file, so the in-app filename tracks the
+   *  on-disk name. */
+  setFocusedFilename(name: string): void {
+    const slot = this.focusedSlot;
+    if (!slot) return;
+    const rec = slot.visible;
+    if (!rec) return;
+    rec.filename = name;
+    slot.refreshChipFilename();
+  }
+
   /** Handle a slot becoming empty — if it had focus, transfer to
    *  the next active slot (or clear focus). */
   handleSlotEmptied(slot: Slot): void {
@@ -879,12 +908,33 @@ class MultiPaneShell {
     const target = await this.promptForSlot(`Speech ${trimmed}`);
     if (!target) return;
     const filename = formatSpeechFilename(trimmed);
-    const doc = makeBlankDoc();
+    // Title the Pocket heading with the filename (sans `.docx`) —
+    // matches what shows in the slot chip at the top of the pane,
+    // so the F4 row reads e.g. "Speech 2AC 5-15 12-30AM" instead
+    // of the generic "Untitled" the New-doc path uses. Below the
+    // pocket sits a trailing empty paragraph the cursor lands in,
+    // ready to receive ` sends.
+    const pocketTitle = filename.replace(/\.docx$/i, '');
+    const doc = makeSpeechBlankDoc(pocketTitle);
     const slot = this.slots[target];
     const record = buildDocRecord(filename, doc, slot);
     slot.push(record);
-    // Mark immediately. `slot.push` already routed focus through
-    // `setActiveView` (which fires the registry resolver hook).
+    // `slot.push` focused the new view; place the cursor in the
+    // trailing paragraph so the first ` press inserts BELOW the
+    // pocket rather than inside it. Position math: pocket node
+    // occupies [0, pocket.nodeSize), the next paragraph starts at
+    // pocket.nodeSize, and the inside-the-paragraph cursor sits at
+    // pocket.nodeSize + 1 (just past the paragraph's opening
+    // boundary token).
+    const pocketSize = doc.firstChild!.nodeSize;
+    const tr = record.view.state.tr.setSelection(
+      TextSelection.create(record.view.state.doc, pocketSize + 1),
+    );
+    record.view.dispatch(tr);
+    record.view.focus();
+    // Mark as the speech doc. The registry hook fires the
+    // resolver subscription, which refreshes chrome (the 📌
+    // button's aria-pressed + the slot's chip).
     getSpeechDocResolver().setSpeech(record.view);
     this.refreshSpeechChips();
   }
@@ -1091,6 +1141,17 @@ function makeBlankDoc(): PMNode {
   ]);
 }
 
+/** Speech-doc variant of `makeBlankDoc`. Same Pocket + trailing
+ *  paragraph shape, but the Pocket carries the user-supplied
+ *  speech name instead of "Untitled" so the F4 row at the top of
+ *  the doc reads as a useful label ("1NC Round 3 vs Hogwarts"). */
+function makeSpeechBlankDoc(title: string): PMNode {
+  return schema.nodes['doc']!.createChecked(null, [
+    schema.nodes['pocket']!.create({ id: newHeadingId() }, schema.text(title)),
+    schema.nodes['paragraph']!.create(null),
+  ]);
+}
+
 /** Single shell instance — multi-pane is a binary mode, so one is
  *  enough. */
 let shell: MultiPaneShell | null = null;
@@ -1199,5 +1260,7 @@ export function mountMultiPaneShell(): void {
     markActiveAsSpeech: () => shell!.markFocusedAsSpeech(),
     sendToSpeechAtCursor: () => shell!.sendToSpeech(false),
     sendToSpeechAtEnd: () => shell!.sendToSpeech(true),
+    getFocusedFilename: () => shell!.getFocusedFilename(),
+    setFocusedFilename: (name) => shell!.setFocusedFilename(name),
   });
 }
