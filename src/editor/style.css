@@ -3575,7 +3575,14 @@ body.pmd-nav-resize-active {
   pointer-events: none;
 }
 
-#editor.resize-cursor {
+/* prosemirror-tables's table-column-resize plugin sets
+ * `class: "resize-cursor"` via its `props.attributes`, which PM
+ * applies to `view.dom` (the `.ProseMirror` element), NOT to the
+ * editor host. The old selector `#editor.resize-cursor` looked
+ * for the class on `#editor` itself and never matched in either
+ * mode. Targeting `.ProseMirror.resize-cursor` works for
+ * single-doc and multi-pane both. */
+.ProseMirror.resize-cursor {
   cursor: col-resize;
 }
 
