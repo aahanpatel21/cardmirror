@@ -7,7 +7,7 @@
  * navigation panel, send-to-speech, drag-and-drop, etc.) is later work.
  */
 
-import { EditorState, type Plugin } from 'prosemirror-state';
+import { EditorState, Plugin } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { keymap } from 'prosemirror-keymap';
 import { history, undo, redo } from 'prosemirror-history';
@@ -396,7 +396,12 @@ function runRibbon(id: RibbonCommandId): void {
 }
 
 if (referenceBtn) {
-  referenceBtn.addEventListener('click', () => runRibbon('openShortcutsReference'));
+  // Call `openReference` directly (like `settingsBtn` → `openSettings`)
+  // rather than dispatching through `runRibbon`, which early-bails
+  // when `view` is null. The shortcuts dialog has no view
+  // dependency, so it should still open in multi-doc mode when no
+  // pane currently has a doc.
+  referenceBtn.addEventListener('click', () => openReference());
 }
 
 const docMenuBtn = document.getElementById('doc-menu-btn') as HTMLButtonElement | null;
@@ -1403,6 +1408,23 @@ export function buildEditorPlugins(): Plugin[] {
       usePilcrows: () => settings.get('usePilcrows'),
       headingMode: () => settings.get('headingMode'),
       onArmedChange: (armed) => updatePlainPasteIndicator(armed),
+    }),
+    // When `enableTextDragDrop` is off, swallow the browser's
+    // `dragstart` on the editor's contenteditable so the user
+    // can't initiate a text-move drag from a selection. Doesn't
+    // affect the card / heading pickup-modifier drag — that
+    // system uses pointerdown directly and `preventDefault`s,
+    // so `dragstart` never fires for those gestures anyway.
+    new Plugin({
+      props: {
+        handleDOMEvents: {
+          dragstart: (_view, event) => {
+            if (settings.get('enableTextDragDrop')) return false;
+            event.preventDefault();
+            return true;
+          },
+        },
+      },
     }),
   ];
 }

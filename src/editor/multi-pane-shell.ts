@@ -532,6 +532,14 @@ class MultiPaneShell {
     // comment on Slot.syncCardIntrinsicWidth for why.
     window.addEventListener('resize', this.onWindowResize);
 
+    // Mod-1 / Mod-2 / Mod-3 focus the corresponding slot's pane.
+    // Listener is on `window` (not the editor's PM keymap) so the
+    // shortcut works even when no pane currently has keyboard
+    // focus. We `preventDefault` to suppress the browser's
+    // "switch tab" default — these are inside our app shell so
+    // tab-switching wouldn't make sense.
+    window.addEventListener('keydown', this.onSlotShortcutKey);
+
     // Drag-hover focus + post-drop collapse:
     //
     //   - On 'move': the controller's hoverTarget tells us which
@@ -618,6 +626,29 @@ class MultiPaneShell {
 
   private onWindowResize = (): void => {
     this.scheduleSyncAllCardIntrinsicWidths();
+  };
+
+  /** Mod-1 / Mod-2 / Mod-3 → focus slot 1 / 2 / 3. Skips when
+   *  the keystroke also carries Shift / Alt (so chords like
+   *  `Mod-Shift-1` stay available for other purposes) and when
+   *  the target slot has no doc loaded. Calling `focusSlot` does
+   *  the focus dance and routes the shared chrome through the
+   *  slot's visible view; we also call `view.focus()` so the
+   *  keystroke transfers actual keyboard focus into the doc. */
+  private onSlotShortcutKey = (e: KeyboardEvent): void => {
+    if (e.defaultPrevented) return;
+    const modOnly = (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey;
+    if (!modOnly) return;
+    let idx = -1;
+    if (e.key === '1') idx = 0;
+    else if (e.key === '2') idx = 1;
+    else if (e.key === '3') idx = 2;
+    if (idx < 0) return;
+    const slot = this.slots[SLOT_IDS[idx]!];
+    if (slot.stack.length === 0) return;
+    e.preventDefault();
+    this.focusSlot(slot);
+    slot.visible?.view.focus();
   };
 
   /** Mark `slot` as focused. The shared ribbon / chrome will route

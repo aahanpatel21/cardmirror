@@ -127,6 +127,14 @@ export interface Settings {
    *  false-positive squiggles. Users who prefer the safety net can
    *  flip it on. */
   editorSpellcheck: boolean;
+  /** Whether the user can click-and-drag selected text to move it to
+   *  another position. On by default (matches PM / browser default).
+   *  Turning this off suppresses the browser's `dragstart` on the
+   *  editor surface — text selection still works, but the user can't
+   *  initiate a text-move drag. Doesn't affect the card / heading
+   *  pickup-modifier drag (which is its own pointerdown-driven
+   *  system) or paste / typing. */
+  enableTextDragDrop: boolean;
   /** Whether read mode is currently active (dims non-read-aloud content,
    *  blocks editing). Persisted across sessions because some users may
    *  want it to be the default state. */
@@ -451,6 +459,12 @@ const DEFAULTS: Settings = {
   navMaxLevel: 3,
   showCitePreview: true,
   editorSpellcheck: false,
+  // Default OFF — the user reported that PM's native click-and-drag
+  // of arbitrary selected text sometimes produces a doc edit that
+  // can't be cleanly undone, and they'd rather lose the feature
+  // than wrestle with the inconsistency. Flip on in Settings if
+  // you want the drag behavior back.
+  enableTextDragDrop: false,
   readMode: false,
   hideEmphasisBordersInReadMode: false,
   zoomPct: 100,
@@ -577,6 +591,13 @@ export const SETTING_METADATA: SettingMeta[] = [
     label: 'Editor spellcheck',
     description:
       "Show browser spell-check red underlines under typed text. Off by default — on large docs the dictionary lookups + underline overlay add visible per-keystroke cost, and debate evidence (technical jargon, author names, citations) generates a lot of false-positive squiggles.",
+    kind: 'toggle',
+  },
+  {
+    key: 'enableTextDragDrop',
+    label: 'Text drag-and-drop',
+    description:
+      "Allow click-and-drag of selected text to move it to another position. On by default. Disabling stops you (and the browser) from initiating a text-move drag — useful if you keep accidentally dragging selections. Doesn't affect the card / heading pickup-modifier drag.",
     kind: 'toggle',
   },
   {
@@ -835,6 +856,11 @@ function sanitize(s: Settings): Settings {
     navMaxLevel: clamp(Math.round(s.navMaxLevel), 1, 4),
     showCitePreview: !!s.showCitePreview,
     editorSpellcheck: !!s.editorSpellcheck,
+    // Default to `false` when missing — matches the persisted
+    // default. Saved settings from before this option existed
+    // explicitly opt out of text drag, since the inconsistent-undo
+    // behavior the option works around predates the option itself.
+    enableTextDragDrop: s.enableTextDragDrop === true,
     readMode: !!s.readMode,
     hideEmphasisBordersInReadMode: !!s.hideEmphasisBordersInReadMode,
     zoomPct: clamp(Math.round(s.zoomPct / 10) * 10, 50, 200),
