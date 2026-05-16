@@ -66,10 +66,22 @@ launch CardMirror like any other app.
    - **Apple Silicon (M1 / M2 / M3 / M4)**: `CardMirror-x.x.x-arm64.dmg`.
    - **Intel**: `CardMirror-x.x.x.dmg` (or `-x64.dmg`).
 2. Open the `.dmg`, drag **CardMirror** to your Applications folder.
-3. **First launch only.** Gatekeeper refuses to open unsigned apps
-   from a double-click. Open Finder → Applications, **right-click**
-   (or Control-click) **CardMirror** → **Open**. Click **Open** in
-   the confirmation dialog. From then on, normal double-click works.
+3. **First launch only.** Gatekeeper refuses to open unsigned apps.
+   You'll see one of two messages depending on your macOS version:
+
+   - **"can't be opened because Apple cannot check it for malicious
+     software"** → Open Finder → Applications, **right-click** (or
+     Control-click) **CardMirror** → **Open**. Click **Open** in the
+     confirmation dialog. From then on, normal double-click works.
+
+   - **"is damaged and can't be opened"** → macOS has hard-quarantined
+     the app and the right-click workaround doesn't suffice. Open a
+     terminal (Spotlight → "Terminal") and run:
+     ```sh
+     sudo xattr -cr /Applications/CardMirror.app
+     ```
+     You'll be asked for your password. After that, normal
+     double-click works.
 
 ### Windows
 
