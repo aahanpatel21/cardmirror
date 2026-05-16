@@ -46,6 +46,7 @@ import {
   toggleCase,
 } from './condense.js';
 import { togglePlainPaste } from './paste-plugin.js';
+import { getHost } from './host/index.js';
 import {
   selectSimilar,
   getOperatingRanges,
@@ -3072,11 +3073,11 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   deleteTable: '',
   // Chrome won't let JS suppress its `Ctrl-N` (new window) or
   // `Ctrl-Shift-N` (new incognito window) defaults — both keys
-  // are un-preventable in the browser, so we use `Mod-Alt-N`
-  // instead. Users on a future Electron build (or who don't care
-  // about the conflict on their platform) can rebind via Settings
-  // → Keybindings.
-  newDocument: 'Mod-Alt-n',
+  // are un-preventable in the browser, so the web edition has to
+  // use `Mod-Alt-N`. Electron has no such restriction, so its
+  // default is the conventional `Mod-N`. Both can be rebound in
+  // Settings → Keybindings.
+  newDocument: getHost().kind === 'electron' ? 'Mod-n' : 'Mod-Alt-n',
   openFile: 'Mod-o',
   save: 'Mod-s',
   saveAs: 'Mod-Shift-s',

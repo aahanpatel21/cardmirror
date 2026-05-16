@@ -329,11 +329,12 @@ class SettingsModal {
       row.appendChild(buildKeybindingsEditor());
       return row;
     } else if (meta.kind === 'folder') {
-      // Folder path with a Browse… button + Clear. Only ever used
-      // for electronOnly settings, so we can rely on
-      // host.pickDirectory existing at click time. The path is
-      // shown read-only — users edit via the picker, not by
-      // typing, so a stale or mistyped path can't get persisted.
+      // Path display + Browse… / Clear buttons, mounted UNDER the
+      // explainer paragraph (same shape as readers / displaySizes /
+      // etc). The inline-label layout would cram the path next to
+      // the title and clip on anything longer than `~/foo`. Only
+      // ever used for electronOnly settings, so the picker host is
+      // always present at click time.
       const wrap = document.createElement('div');
       wrap.className = 'pmd-settings-folder';
       const pathEl = document.createElement('span');
@@ -376,7 +377,9 @@ class SettingsModal {
       wrap.appendChild(pathEl);
       wrap.appendChild(browseBtn);
       wrap.appendChild(clearBtn);
-      label.appendChild(wrap);
+      row.appendChild(text);
+      row.appendChild(wrap);
+      return row;
     } else if (meta.kind === 'text' || meta.kind === 'password') {
       // Plain string input. Used for comment author / initials,
       // Anthropic API key, etc. Password kind masks the value.
