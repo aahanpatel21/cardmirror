@@ -89,8 +89,9 @@ referenced files.
 - **Send-to-speech is the most architecturally demanding feature** and
   drives the workspace + read-mode + cross-doc-coordinator foundation.
   The backtick / Alt-backtick chord, NewSpeech, mark-as-speech, and a
-  resolver interface for future multi-window are shipped. —
-  `ARCHITECTURE.md` §10.
+  uid-keyed resolver that bridges into Electron main for cross-window
+  routing are shipped. — `ARCHITECTURE.md` §10, `DECISIONS.md`
+  2026-05-15 entry.
 - **Round-trip is the dominant correctness criterion.** Schema, importer,
   and exporter are one tightly-coupled project. The Stylepox normalizer
   is genuinely separable (and the user already maintains a working

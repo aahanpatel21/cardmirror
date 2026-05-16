@@ -20,7 +20,14 @@ import type { Thread } from './comments-plugin.js';
 import { NavigationPanel } from './nav-panel.js';
 import { openSettings } from './settings-ui.js';
 import { openReference } from './reference-ui.js';
-import { getSpeechDocResolver } from './speech-doc-registry.js';
+import {
+  getSpeechDocResolver,
+  installElectronSpeechDocResolver,
+} from './speech-doc-registry.js';
+import {
+  sendToSpeech as runSendToSpeech,
+  installIncomingSpeechSliceHandler,
+} from './speech-doc-send.js';
 import { openDocMenu } from './doc-menu-ui.js';
 import { createReference } from './create-reference.js';
 import { showToast } from './toast.js';
@@ -106,19 +113,57 @@ const speechSendEndBtn = document.getElementById('speech-send-end-btn') as HTMLB
  *  bottom-of-file declarations execute — a TDZ access otherwise. */
 let readModeStateForActive: () => boolean = () => settings.get('readMode');
 
+// Install the Electron-aware speech-doc resolver before any
+// subscribers attach. On the browser this is a no-op; on Electron
+// it swaps in the main-process-mirroring resolver so doc
+// registrations and speech-set calls flow through IPC.
+installElectronSpeechDocResolver(getHost());
+
 /** Sync the speech-mark button's aria-pressed with whether the
  *  currently-active view IS the speech doc. Called from
  *  `setActiveView` (focus change) and from the speech-doc
  *  registry subscription installed below. */
 function refreshSpeechMarkBtn(): void {
   if (!speechMarkBtn) return;
-  const speechView = getSpeechDocResolver().getSpeechView();
-  const isPressed = !!view && speechView === view;
+  const resolver = getSpeechDocResolver();
+  const isPressed =
+    !!view && resolver.getSpeechUid() === currentDocUid;
   speechMarkBtn.setAttribute('aria-pressed', isPressed ? 'true' : 'false');
+}
+
+/** Single-doc mark-as-speech toggle. Routes through the resolver,
+ *  which (on Electron) propagates the change to main and broadcasts
+ *  to every window. */
+function toggleMarkSingleDocAsSpeech(): void {
+  const resolver = getSpeechDocResolver();
+  if (resolver.isSpeechByUid(currentDocUid)) {
+    resolver.setSpeechByUid(null);
+  } else {
+    resolver.setSpeechByUid(currentDocUid);
+  }
+}
+
+/** Single-doc send-to-speech. Just hands off to the shared helper,
+ *  which decides whether to insert locally (speech doc is in THIS
+ *  renderer) or route via main (speech doc is in another window). */
+function runSingleDocSendToSpeech(sourceView: EditorView, atEnd: boolean): void {
+  runSendToSpeech(sourceView, atEnd);
+}
+
+/** Single-doc new-speech-document. In multi-window mode (Electron),
+ *  the long-term plan is to spawn a new window pre-loaded with a
+ *  fresh speech doc that auto-registers as the speech designation.
+ *  Until that flow lands, surface a placeholder that points users at
+ *  the manual mark-as-speech path. */
+async function runNewSpeechDocumentSingleDoc(): Promise<void> {
+  window.alert(
+    'New Speech Document is not yet wired for multi-window mode. For now: open or create a new window, then use "Mark active doc as speech" on it.',
+  );
 }
 // Subscribe to the speech-doc registry so the button stays in sync
 // when the designation changes outside of a focus event (e.g., the
-// shell marks a fresh `newSpeech` doc as soon as it lands).
+// shell marks a fresh `newSpeech` doc as soon as it lands, or main
+// broadcasts a speech change made in another window).
 getSpeechDocResolver().subscribe(() => refreshSpeechMarkBtn());
 const wordCountBtn = document.getElementById('word-count-btn') as HTMLButtonElement;
 const commentsToggleBtn = document.getElementById('comments-toggle-btn') as HTMLButtonElement | null;
@@ -421,19 +466,32 @@ const ribbonContext: RibbonContext = {
     settings.set('autosaveEnabled', !settings.get('autosaveEnabled'));
   },
   newSpeechDocument: () => {
-    // Multi-doc owns the speech-doc lifecycle (creates the doc,
-    // marks it). Single-doc would have no second doc to send TO
-    // anyway, so we just no-op there.
-    multiDocNewSpeechDocument?.();
+    if (multiDocNewSpeechDocument) {
+      multiDocNewSpeechDocument();
+      return;
+    }
+    void runNewSpeechDocumentSingleDoc();
   },
   markActiveAsSpeech: () => {
-    multiDocMarkActiveAsSpeech?.();
+    if (multiDocMarkActiveAsSpeech) {
+      multiDocMarkActiveAsSpeech();
+      return;
+    }
+    toggleMarkSingleDocAsSpeech();
   },
   sendToSpeechAtCursor: () => {
-    multiDocSendToSpeechAtCursor?.();
+    if (multiDocSendToSpeechAtCursor) {
+      multiDocSendToSpeechAtCursor();
+      return;
+    }
+    if (view) runSingleDocSendToSpeech(view, false);
   },
   sendToSpeechAtEnd: () => {
-    multiDocSendToSpeechAtEnd?.();
+    if (multiDocSendToSpeechAtEnd) {
+      multiDocSendToSpeechAtEnd();
+      return;
+    }
+    if (view) runSingleDocSendToSpeech(view, true);
   },
   insertImage: () => {
     if (!view) return;
@@ -500,6 +558,7 @@ async function onNewDocClicked(): Promise<void> {
   currentDocHandle = null;
   currentDocFormat = null;
   currentDocUid = newSessionDocUid();
+  syncSingleDocSpeechRegistration();
   // The fresh starter is conceptually still pristine, but the
   // user just demonstrated they're done with whatever was here
   // before. Treat as non-pristine so subsequent Opens spawn.
@@ -2069,6 +2128,31 @@ function newSessionDocUid(): string {
   return `single-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
 }
 
+/** Tracks the uid currently registered with the speech-doc resolver
+ *  on behalf of this renderer's single view. `null` when no doc is
+ *  mounted yet. Used by `syncSingleDocSpeechRegistration` to know
+ *  what to unregister before re-registering. */
+let registeredSingleDocUid: string | null = null;
+
+/** Reconcile the speech-doc resolver with the current `view` +
+ *  `currentDocUid`. Call after any `mountView(...)` followed by a
+ *  `currentDocUid = ...` reassignment. Idempotent: registering the
+ *  same uid/view pair is a no-op; switching uids unregisters the
+ *  old before registering the new. In Electron mode this also
+ *  drives the main-process registry via IPC. */
+function syncSingleDocSpeechRegistration(): void {
+  if (!view) return;
+  const resolver = getSpeechDocResolver();
+  if (
+    registeredSingleDocUid !== null &&
+    registeredSingleDocUid !== currentDocUid
+  ) {
+    resolver.unregisterView(registeredSingleDocUid);
+  }
+  resolver.registerView(currentDocUid, view);
+  registeredSingleDocUid = currentDocUid;
+}
+
 /** Filename-to-format inference. Used when opening files and when
  *  defaulting the Save-As dialog's format radio. */
 function formatFromFilename(name: string | null | undefined): 'cmir' | 'docx' | null {
@@ -2163,6 +2247,7 @@ async function runOpenFlow(): Promise<void> {
     currentDocHandle = opened.handle ?? null;
     currentDocFormat = format;
     currentDocUid = newSessionDocUid();
+    syncSingleDocSpeechRegistration();
     markNonPristineStarter();
     updateWindowTitle();
     console.log(`Loaded ${opened.name}: ${countSummary(docNode)}`);
@@ -2575,6 +2660,16 @@ function countSummary(doc: PMNode): string {
 // Crash recovery runs after the editor is up (so the recovery modal
 // has somewhere to mount over).
 const BOOT_MULTI_DOC_WORKSPACE = settings.get('multiDocWorkspace');
+// Multi-window mode = single-doc + a host that can spawn windows
+// (Electron). Gates the speech-stack ribbon cluster's visibility
+// via CSS (single-doc-without-spawn has nothing to send TO).
+if (!BOOT_MULTI_DOC_WORKSPACE && getHost().canSpawnWindow) {
+  document.body.classList.add('pmd-multi-window');
+}
+// Install the cross-window send-to-speech receiver. No-op when not
+// on Electron; safe to install in both single-doc and (will-be)
+// multi-pane paths since the resolver filters by uid.
+installIncomingSpeechSliceHandler();
 if (BOOT_MULTI_DOC_WORKSPACE) {
   void import('./multi-pane-shell.js').then(async (m) => {
     m.mountMultiPaneShell();
@@ -2610,6 +2705,7 @@ async function initSingleDocBoot(): Promise<void> {
   // onboarding starter and surface any leftover recovery
   // journals.
   mountView(currentDoc);
+  syncSingleDocSpeechRegistration();
   await runStartupRecovery();
 }
 
@@ -2638,6 +2734,7 @@ async function mountFromSpawnPayload(
     currentDocHandle = payload.handle;
     currentDocFormat = format;
     currentDocUid = payload.uid ?? newSessionDocUid();
+    syncSingleDocSpeechRegistration();
     markNonPristineStarter();
     updateWindowTitle();
     console.log(`Spawned with ${payload.filename}: ${countSummary(docNode)}`);
@@ -2841,6 +2938,7 @@ async function applyRecovery(entry: JournalEntry): Promise<void> {
   // Reuse the original uid so a re-crash overwrites the same
   // journal slot (rather than accumulating new ones).
   currentDocUid = entry.uid;
+  syncSingleDocSpeechRegistration();
   markNonPristineStarter();
   updateWindowTitle();
 }

@@ -81,6 +81,50 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('mode-switch:please-close', listener);
   },
 
+  /** Doc-lifecycle reporting for the main-process speech-doc
+   *  registry. Renderers call register on mount and unregister on
+   *  close, so main knows where each uid lives. */
+  docRegister: (uid: string) => ipcRenderer.invoke('host:doc-register', uid),
+  docUnregister: (uid: string) =>
+    ipcRenderer.invoke('host:doc-unregister', uid),
+
+  /** Set / clear / read the current speech-doc designation. Main
+   *  broadcasts `speech:changed` to every window after any state
+   *  change so UIs stay in sync. */
+  speechSet: (uid: string | null) =>
+    ipcRenderer.invoke('host:speech-set', uid),
+  speechGet: () => ipcRenderer.invoke('host:speech-get'),
+
+  /** Subscribe to speech-state broadcasts. The handler receives the
+   *  current `{ uid }` (uid is null when no speech doc is flagged). */
+  onSpeechChanged(handler: (state: { uid: string | null }) => void): () => void {
+    const listener = (_evt: unknown, state: { uid: string | null }): void =>
+      handler(state);
+    ipcRenderer.on('speech:changed', listener);
+    return () => ipcRenderer.removeListener('speech:changed', listener);
+  },
+
+  /** Send a serialized PM slice to whatever window owns the speech
+   *  doc. Returns whether the slice was delivered (`delivered:
+   *  true`) or why not (`delivered: false, reason: ...`). */
+  speechSendSlice: (payload: { sliceJson: unknown; atEnd: boolean }) =>
+    ipcRenderer.invoke('host:speech-send-slice', payload),
+
+  /** Subscribe to incoming speech-doc slices. The handler receives
+   *  `{ uid, sliceJson, atEnd }` and is responsible for applying
+   *  the slice to its local view that matches uid. */
+  onIncomingSpeechSlice(
+    handler: (payload: { uid: string; sliceJson: unknown; atEnd: boolean }) => void,
+  ): () => void {
+    const listener = (
+      _evt: unknown,
+      payload: { uid: string; sliceJson: unknown; atEnd: boolean },
+    ): void => handler(payload);
+    ipcRenderer.on('speech:incoming-slice', listener);
+    return () =>
+      ipcRenderer.removeListener('speech:incoming-slice', listener);
+  },
+
   /** Subscribe to native-menu commands. Main process broadcasts
    *  `'menu-command'` events to the focused window's webContents
    *  whenever the user picks File → Open / Save / etc. The

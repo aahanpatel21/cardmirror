@@ -325,6 +325,125 @@ ipcMain.handle('host:close-self', async (event) => {
   if (sender && !sender.isDestroyed()) sender.close();
 });
 
+// ─── Speech-doc registry ──────────────────────────────────────────
+// Cross-window state for "which open doc is the current send-to-
+// speech destination." Tracked by uid so it survives windows
+// coming and going (and so renderers, which can't share EditorView
+// refs, can compare locally). Main also keeps a map of which docs
+// live in which windows, so send-to-speech knows where to route
+// the slice. Each renderer reports its own docs via host:doc-
+// register / host:doc-unregister at mount / close.
+
+interface SpeechRegistration {
+  uid: string;
+  windowId: number;
+}
+let speechRegistration: SpeechRegistration | null = null;
+const docOwners = new Map<string, number>(); // uid → windowId
+const windowDocs = new Map<number, Set<string>>(); // windowId → uid set
+
+/** Broadcast the current speech state to every window's renderer.
+ *  Renderers reflect it in their UI (speech-mark button, etc.). */
+function broadcastSpeechState(): void {
+  const payload = speechRegistration
+    ? { uid: speechRegistration.uid }
+    : { uid: null };
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send('speech:changed', payload);
+  }
+}
+
+ipcMain.handle('host:doc-register', async (event, uid: string) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || typeof uid !== 'string' || !uid) return;
+  docOwners.set(uid, win.id);
+  let set = windowDocs.get(win.id);
+  if (!set) {
+    set = new Set();
+    windowDocs.set(win.id, set);
+  }
+  set.add(uid);
+});
+
+ipcMain.handle('host:doc-unregister', async (event, uid: string) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || typeof uid !== 'string' || !uid) return;
+  docOwners.delete(uid);
+  windowDocs.get(win.id)?.delete(uid);
+  // If the speech doc just got unregistered, clear the global flag
+  // and notify everyone.
+  if (speechRegistration?.uid === uid) {
+    speechRegistration = null;
+    broadcastSpeechState();
+  }
+});
+
+ipcMain.handle('host:speech-set', async (event, uid: string | null) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return;
+  if (uid === null) {
+    speechRegistration = null;
+    broadcastSpeechState();
+    return;
+  }
+  if (typeof uid !== 'string' || !uid) return;
+  speechRegistration = { uid, windowId: win.id };
+  broadcastSpeechState();
+});
+
+ipcMain.handle('host:speech-get', async () => {
+  return speechRegistration ? { uid: speechRegistration.uid } : { uid: null };
+});
+
+/** Route a send-to-speech slice to whatever window owns the speech
+ *  doc. Returns the result of the routing — caller cares whether
+ *  the slice actually got applied vs. there's no speech doc / the
+ *  speech doc's window has gone away. */
+ipcMain.handle(
+  'host:speech-send-slice',
+  async (
+    event,
+    payload: { sliceJson: unknown; atEnd: boolean },
+  ) => {
+    const sender = BrowserWindow.fromWebContents(event.sender);
+    if (!speechRegistration) return { delivered: false, reason: 'no-speech-doc' };
+    const targetWin = BrowserWindow.fromId(speechRegistration.windowId);
+    if (!targetWin || targetWin.isDestroyed()) {
+      // Speech-doc's window vanished — drop the registration.
+      speechRegistration = null;
+      broadcastSpeechState();
+      return { delivered: false, reason: 'speech-window-gone' };
+    }
+    // Same-window: tell the sender to handle it locally (cheaper +
+    // avoids a round-trip).
+    if (sender && targetWin === sender) {
+      return { delivered: false, reason: 'same-window' };
+    }
+    targetWin.webContents.send('speech:incoming-slice', {
+      uid: speechRegistration.uid,
+      sliceJson: payload.sliceJson,
+      atEnd: payload.atEnd,
+    });
+    return { delivered: true };
+  },
+);
+
+// Clean up registrations when windows die without unregistering
+// (force-close, crash, etc.).
+app.on('browser-window-created', (_event, win) => {
+  win.on('closed', () => {
+    const docs = windowDocs.get(win.id);
+    if (docs) {
+      for (const uid of docs) docOwners.delete(uid);
+      windowDocs.delete(win.id);
+    }
+    if (speechRegistration?.windowId === win.id) {
+      speechRegistration = null;
+      broadcastSpeechState();
+    }
+  });
+});
+
 // ─── Native menu bar ───────────────────────────────────────────────
 
 /** Send a menu-command IPC event to the currently focused window. */

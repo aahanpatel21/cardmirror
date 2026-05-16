@@ -3,6 +3,84 @@
 Append-only log of implementation decisions and their rationale. Each
 entry has a date, a one-line summary, and the reasoning.
 
+## 2026-05-15: Multi-window send-to-speech (Electron)
+
+Cross-window send-to-speech for the single-doc-per-window workspace
+mode. The workspace setting is now a binary toggle: "single window
+with panes" (multi-pane shell) vs "multiple windows, one doc each"
+(single-doc renderer, Electron spawning new windows for each Open /
+New). Both modes share the same speech-doc machinery; multi-pane
+keeps the local path it always had, multi-window routes through the
+main process.
+
+### Speech-doc registry — uid is the source of truth
+
+The renderer-side resolver (`src/editor/speech-doc-registry.ts`) is
+keyed by per-doc `uid` instead of `EditorView` reference. Per-view
+APIs (`setSpeech(view)`, `getSpeechView()`) still exist as compat
+wrappers but map through a local `Map<uid, view>` that each renderer
+maintains via `registerView` / `unregisterView`. Uids are the only
+identifier that survives an IPC hop.
+
+On Electron, the resolver swaps in an `ElectronSpeechDocResolver`
+subclass that subscribes to `host.onSpeechChanged` (broadcast from
+main) and forwards every local mutation back to main:
+
+  - `registerView` → `host.docRegister(uid)` so main learns which
+    window owns each uid (`docOwners: Map<uid, windowId>`).
+  - `unregisterView` → `host.docUnregister(uid)`; main also auto-
+    cleans on `BrowserWindow.closed` (covers crashes / hard kills
+    where the renderer never gets to send unregister).
+  - `setSpeechByUid` → `host.speechSet(uid)`; main updates its single
+    `speechRegistration: { uid, windowId } | null` and broadcasts
+    `speech:changed` to every window so all UIs stay in sync.
+
+The browser path falls through to the default in-memory resolver —
+there's only one window, so no IPC is needed.
+
+### Send-to-speech routing
+
+Extracted into `src/editor/speech-doc-send.ts` (`sendToSpeech`,
+`insertSpeechSlice`, `resolveSendSlice`,
+`installIncomingSpeechSliceHandler`) so single-doc and multi-pane
+share the exact same logic — and so the cross-window receive path
+inserts via the identical helper a local send would use.
+
+  - If the speech doc's view lives in THIS renderer (`viewForUid`
+    returns non-null), dispatch locally. Same blank-line replace,
+    mid-text confirm, `setTimeout`-deferred dispatch, `closeHistory`
+    boundary, trailing paragraph, and heading-ID rewrite as before.
+  - Otherwise serialize the slice via `Slice.toJSON()` and call
+    `host.speechSendSlice({ sliceJson, atEnd })`. Main looks up the
+    speech window by id and sends `speech:incoming-slice` to it. The
+    target renderer's incoming handler deserializes via
+    `Slice.fromJSON(schema, ...)` and runs `insertSpeechSlice` on
+    the local view that matches the uid.
+
+Same-window guard runs locally (renderer never sends to itself); main
+has the same guard as belt-and-suspenders. Stale designations
+(window closed mid-send) come back as `{ delivered: false, reason:
+'speech-window-gone' }` and surface a user-visible alert; main has
+already cleared the designation and the `speech:changed` broadcast
+will resync the originating window's UI.
+
+### UI gating
+
+A new `body.pmd-multi-window` class is set when the workspace is in
+single-doc mode AND the host can spawn windows. The existing CSS
+gate that hid the speech-stack ribbon cluster outside multi-pane
+mode now permits both: `body:not(.pmd-multi-doc):not(.pmd-multi-window)
+#speech-stack { display: none }`. Single-doc on browser still hides
+it (nowhere to send TO).
+
+### Known scope gap
+
+`newSpeechDocument` (the F-key that creates a fresh speech doc AND
+auto-marks it) is wired for multi-pane today but stubbed in single-
+doc multi-window with a placeholder alert. The full flow needs a
+`SpawnWindowPayload.markAsSpeech` flag and a small bootstrap branch
+in the spawned window — separate session.
+
 ## 2026-05-14: Multi-pane workspace (prototype)
 
 First-cut implementation of SPEC-multi-pane.md. Lives on the

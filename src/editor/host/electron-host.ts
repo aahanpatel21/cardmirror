@@ -42,6 +42,18 @@ interface ElectronAPI {
   journalAndCloseOtherWindows(): Promise<void>;
   closeSelf(): Promise<void>;
   onPleaseCloseForModeSwitch(handler: () => void): () => void;
+  docRegister(uid: string): Promise<void>;
+  docUnregister(uid: string): Promise<void>;
+  speechSet(uid: string | null): Promise<void>;
+  speechGet(): Promise<{ uid: string | null }>;
+  onSpeechChanged(handler: (state: { uid: string | null }) => void): () => void;
+  speechSendSlice(payload: {
+    sliceJson: unknown;
+    atEnd: boolean;
+  }): Promise<{ delivered: boolean; reason?: string }>;
+  onIncomingSpeechSlice(
+    handler: (payload: { uid: string; sliceJson: unknown; atEnd: boolean }) => void,
+  ): () => void;
   /** Subscribe to menu-driven commands from the native menu bar.
    *  Returns an unsubscribe handle. */
   onMenuCommand(handler: (command: string) => void): () => void;
@@ -144,6 +156,49 @@ export class ElectronHost implements Host {
   /** Subscribe to mode-switch please-close broadcasts. */
   onPleaseCloseForModeSwitch(handler: () => void): () => void {
     return api().onPleaseCloseForModeSwitch(handler);
+  }
+
+  /** Doc-lifecycle reporting for the main-process speech-doc
+   *  registry. Renderers call this on mount and unregister on close
+   *  so main knows which window owns each uid. */
+  async docRegister(uid: string): Promise<void> {
+    await api().docRegister(uid);
+  }
+
+  async docUnregister(uid: string): Promise<void> {
+    await api().docUnregister(uid);
+  }
+
+  /** Set / clear the current speech-doc designation. Main broadcasts
+   *  `speech:changed` to every window after any state change. */
+  async speechSet(uid: string | null): Promise<void> {
+    await api().speechSet(uid);
+  }
+
+  async speechGet(): Promise<{ uid: string | null }> {
+    return api().speechGet();
+  }
+
+  /** Subscribe to speech-state broadcasts. Handler receives the
+   *  current `{ uid }` — uid is null when no speech doc is flagged. */
+  onSpeechChanged(handler: (state: { uid: string | null }) => void): () => void {
+    return api().onSpeechChanged(handler);
+  }
+
+  /** Send a serialized PM slice to whichever window owns the speech
+   *  doc. Returns `{ delivered, reason? }`. */
+  async speechSendSlice(payload: {
+    sliceJson: unknown;
+    atEnd: boolean;
+  }): Promise<{ delivered: boolean; reason?: string }> {
+    return api().speechSendSlice(payload);
+  }
+
+  /** Subscribe to incoming speech-doc slices from other windows. */
+  onIncomingSpeechSlice(
+    handler: (payload: { uid: string; sliceJson: unknown; atEnd: boolean }) => void,
+  ): () => void {
+    return api().onIncomingSpeechSlice(handler);
   }
 
   /** Subscribe to menu-driven commands from the native menu bar.

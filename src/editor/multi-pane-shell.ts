@@ -23,7 +23,6 @@
  */
 
 import { EditorState, TextSelection } from 'prosemirror-state';
-import { closeHistory } from 'prosemirror-history';
 import { EditorView } from 'prosemirror-view';
 import { Node as PMNode } from 'prosemirror-model';
 import { schema, newHeadingId } from '../schema/index.js';
@@ -50,6 +49,7 @@ import { dragController, rewriteHeadingIds } from './drag-controller.js';
 import { countReadAloudWords, formatReadTime, formatNumber } from './word-count.js';
 import { scheduleIdle, cancelIdle, type IdleHandle } from './idle-scheduler.js';
 import { getSpeechDocResolver } from './speech-doc-registry.js';
+import { sendToSpeech as runSendToSpeech } from './speech-doc-send.js';
 import {
   buildEditorPlugins,
   enableMultiDocMode,
@@ -413,9 +413,10 @@ class Slot {
     // matches Verbatim's `AutoClose` which clears
     // `Globals.ActiveSpeechDoc` when the speech doc is closed.
     const speechResolver = getSpeechDocResolver();
-    if (speechResolver.getSpeechView() === closing.view) {
-      speechResolver.setSpeech(null);
+    if (speechResolver.isSpeechByUid(closing.uid)) {
+      speechResolver.setSpeechByUid(null);
     }
+    speechResolver.unregisterView(closing.uid);
     closing.view.destroy();
     closing.dragSurface.detach();
     this.stack.splice(idx, 1);
@@ -569,9 +570,10 @@ class Slot {
     }
     // Clear speech-doc designation if the closing record was it.
     const speechResolver = getSpeechDocResolver();
-    if (speechResolver.getSpeechView() === rec.view) {
-      speechResolver.setSpeech(null);
+    if (speechResolver.isSpeechByUid(rec.uid)) {
+      speechResolver.setSpeechByUid(null);
     }
+    speechResolver.unregisterView(rec.uid);
     rec.view.destroy();
     rec.dragSurface.detach();
     this.stack.splice(idx, 1);
@@ -1284,165 +1286,31 @@ class MultiPaneShell {
   sendToSpeech(atEnd: boolean): void {
     const sourceRec = this.focusedSlot?.visible;
     if (!sourceRec) return;
-    const speechView = getSpeechDocResolver().getSpeechView();
-    if (!speechView) {
-      window.alert(
-        'No speech document yet. Use "New speech document" to create one or "Mark active doc as speech" to designate an existing pane.',
-      );
-      return;
-    }
-    // If the user is sending FROM the speech doc itself, no-op for
-    // now — Verbatim inserts a `~ Marked HH:MM ~` card-marker here,
-    // which we agreed to skip until the schema gains a font_color
-    // mark to render the red marker text.
-    if (sourceRec.view === speechView) return;
-
-    const sliceFromSource = resolveSendSlice(sourceRec.view);
-    if (!sliceFromSource) return;
-
-    // Locate the speech doc's slot + record. The view might be
-    // BACKGROUND in its slot's stack (user swapped to another
-    // record); dispatching on a detached view leaves the changes
-    // invisible AND uncatchable by Ctrl-Z because focus never
-    // transfers off the source pane. Make the speech record
-    // visible before doing anything else so the user lands in
-    // a doc whose history actually has the new event.
-    const located = this.findRecordForView(speechView);
-    if (!located) return;
-    if (located.slot.visible?.view !== speechView) {
+    const resolver = getSpeechDocResolver();
+    const speechUid = resolver.getSpeechUid();
+    // Locate the speech doc's slot + record so we can show it
+    // BEFORE dispatching — the view might be BACKGROUND in its
+    // slot's stack (user swapped to another record); dispatching
+    // on a detached view leaves the changes invisible AND
+    // uncatchable by Ctrl-Z because focus never transfers off the
+    // source pane.
+    const speechView = speechUid ? resolver.viewForUid(speechUid) : null;
+    const located = speechView ? this.findRecordForView(speechView) : null;
+    if (located && located.slot.visible?.view !== located.record.view) {
       located.slot.showRecord(located.record);
     }
-
-    const state = speechView.state;
-
-    // Resolve the destination range. Two refinements over a naive
-    // `tr.insert(pos, content)`:
-    //   1. At-end picks the literal end-of-doc.
-    //   2. If the cursor (or doc tail in at-end mode) sits in an
-    //      empty top-level textblock, we REPLACE that block with
-    //      the slice rather than splitting it — otherwise the
-    //      placeholder paragraph that `makeBlankDoc` seeds the
-    //      speech doc with would leave a stray empty line above
-    //      every sent card. Verbatim's flow has Word's paste fill
-    //      the empty paragraph naturally; we get the same UX by
-    //      collapsing the empty block into the insertion range.
-    let from: number;
-    let to: number;
-    let inBlankLine = false;
-    let midText = false;
-    if (atEnd) {
-      const lastChild = state.doc.lastChild;
-      if (lastChild && lastChild.isTextblock && lastChild.content.size === 0) {
-        to = state.doc.content.size;
-        from = to - lastChild.nodeSize;
-        inBlankLine = true;
-      } else {
-        from = state.doc.content.size;
-        to = from;
-      }
-    } else {
-      const $from = state.selection.$from;
-      const isEmpty = state.selection.empty;
-      inBlankLine =
-        isEmpty &&
-        $from.depth >= 1 &&
-        $from.parent.isTextblock &&
-        $from.parent.content.size === 0;
-      if (inBlankLine) {
-        from = $from.before($from.depth);
-        to = $from.after($from.depth);
-      } else {
-        from = state.selection.from;
-        to = state.selection.from;
-        // Mid-text warning: Verbatim asks for confirmation when
-        // the user sends to a position that isn't at the start of
-        // a paragraph. Empty-selection cursor strictly inside a
-        // textblock (parentOffset > 0) is the same condition. The
-        // blank-line-replace branch doesn't need to warn — it's
-        // BY DEFINITION at the start of an empty block.
-        if (isEmpty && $from.parentOffset > 0) midText = true;
-      }
-    }
-
-    if (midText) {
-      const ok = window.confirm(
-        'Sending to the middle of text in the speech doc. Are you sure?',
-      );
-      if (!ok) return;
-    }
-
-    // Defer the actual dispatch to the next tick so the source
-    // pane's keydown handler unwinds first. Dispatching on
-    // speechView synchronously inside the source's PM keymap
-    // dispatch chain was causing the speech view's history to
-    // record the new event but Ctrl-Z still not undo — best guess
-    // is the cross-view dispatch was getting marked as appended
-    // / non-event by PM's history logic because of the
-    // surrounding keydown context. Breaking out of that context
-    // with a setTimeout gives speechView's history a clean event
-    // boundary.
-    const sourceSlice = sliceFromSource;
-    setTimeout(() => {
-      const liveState = speechView.state;
-      // Re-resolve `from` / `to` against the LIVE state — the
-      // values we computed above were against `state` (captured
-      // before the setTimeout); nothing should have changed in
-      // practice but recomputing keeps the math honest. The
-      // mid-text confirmation already happened synchronously
-      // above so the user can't have re-positioned the cursor.
-      let liveFrom: number;
-      let liveTo: number;
-      if (atEnd) {
-        const lastChild = liveState.doc.lastChild;
-        if (lastChild && lastChild.isTextblock && lastChild.content.size === 0) {
-          liveTo = liveState.doc.content.size;
-          liveFrom = liveTo - lastChild.nodeSize;
-        } else {
-          liveFrom = liveState.doc.content.size;
-          liveTo = liveFrom;
-        }
-      } else {
-        const $from = liveState.selection.$from;
-        const isEmpty = liveState.selection.empty;
-        const inBlank =
-          isEmpty &&
-          $from.depth >= 1 &&
-          $from.parent.isTextblock &&
-          $from.parent.content.size === 0;
-        if (inBlank) {
-          liveFrom = $from.before($from.depth);
-          liveTo = $from.after($from.depth);
-        } else {
-          liveFrom = liveState.selection.from;
-          liveTo = liveState.selection.from;
-        }
-      }
-      const rewritten = rewriteHeadingIds(sourceSlice);
-      let tr = liveState.tr;
-      tr.replaceRange(liveFrom, liveTo, rewritten);
-      const sliceEndPos = tr.mapping.map(liveTo);
-      const trailer = schema.nodes['paragraph']!.create();
-      tr.insert(sliceEndPos, trailer);
-      tr.setSelection(TextSelection.create(tr.doc, sliceEndPos + 1));
-      // `closeHistory` forces a fresh history event boundary for
-      // this transaction — defends against PM's time-based
-      // grouping logic merging the send into some adjacent
-      // event (or refusing to count it as a new event entirely).
-      tr = closeHistory(tr);
-      // Belt-and-suspenders: spell out that this IS a history
-      // event, in case some upstream meta has set
-      // `addToHistory: false`.
-      tr.setMeta('addToHistory', true);
-
-      speechView.dispatch(tr.scrollIntoView());
-      speechView.focus();
+    runSendToSpeech(sourceRec.view, atEnd, () => {
+      // Post-insert: focus the destination slot and clear its
+      // debounced heavy-update timer so nav rebuilds reflect the
+      // freshly-arrived headings on the very next tick.
+      if (!located) return;
       this.focusSlot(located.slot);
       if (located.record.heavyUpdateTimer !== null) {
         cancelIdle(located.record.heavyUpdateTimer);
         located.record.heavyUpdateTimer = null;
       }
       located.record.navPanel.applyMaxLevelToNewHeadings();
-    }, 0);
+    });
   }
 
   /** Sync the visual speech indicator on every slot's chip with
@@ -1473,56 +1341,6 @@ function formatSpeechFilename(round: string): string {
   else if (hour > 12) hour -= 12;
   const m = String(minute).padStart(2, '0');
   return `Speech ${round} ${month}-${day} ${hour}-${m}${ampm}.docx`;
-}
-
-/** Decide what slice to send from the source view:
- *    - Non-empty selection → exactly that range.
- *    - Empty selection → the smallest enclosing heading-and-content
- *      range (card / analytic_unit / pocket / hat / block), found
- *      by walking up `$pos.depth` and applying the same
- *      heading-range semantics `headings.computeHeadingRange`
- *      uses for nav-pane drops.
- *  Returns null when no slice could be resolved (e.g., cursor in
- *  a position with no enclosing heading container). */
-function resolveSendSlice(view: EditorView): import('prosemirror-model').Slice | null {
-  const state = view.state;
-  const sel = state.selection;
-  if (!sel.empty) {
-    return state.doc.slice(sel.from, sel.to);
-  }
-  const $pos = sel.$from;
-  const doc = state.doc;
-  for (let depth = $pos.depth; depth >= 0; depth--) {
-    const node = $pos.node(depth);
-    const t = node.type.name;
-    if (t === 'card' || t === 'analytic_unit') {
-      const from = $pos.before(depth);
-      return doc.slice(from, from + node.nodeSize);
-    }
-    if (t === 'pocket' || t === 'hat' || t === 'block') {
-      // Heading + everything until the next equal-or-shallower
-      // heading. Same semantics computeHeadingRange uses.
-      const from = $pos.before(depth);
-      const headingLevel = t === 'pocket' ? 1 : t === 'hat' ? 2 : 3;
-      let to = doc.content.size;
-      doc.nodesBetween(from + node.nodeSize, doc.content.size, (n, p) => {
-        if (to !== doc.content.size) return false;
-        const nt = n.type.name;
-        const nLevel =
-          nt === 'pocket' ? 1
-          : nt === 'hat' ? 2
-          : nt === 'block' ? 3
-          : null;
-        if (nLevel !== null && nLevel <= headingLevel) {
-          to = p;
-          return false;
-        }
-        return true;
-      });
-      return doc.slice(from, to);
-    }
-  }
-  return null;
 }
 
 /** Minimal valid doc — one empty paragraph. Used by `createNewDoc`
@@ -1640,6 +1458,10 @@ function buildDocRecord(
     // it per-pane via the ribbon command after opening.
     readMode: false,
   };
+  // Publish (uid, view) so the speech-doc resolver can resolve uids
+  // back to live views and (on Electron) so main learns which
+  // window owns this uid.
+  getSpeechDocResolver().registerView(record.uid, record.view);
   return record;
 }
 

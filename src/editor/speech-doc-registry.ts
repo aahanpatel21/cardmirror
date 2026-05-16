@@ -1,77 +1,195 @@
 /**
  * Speech-doc registry.
  *
- * Tracks which open EditorView is currently designated as the
- * "speech doc" — the destination for `sendToSpeech` (\` / Alt-\`).
- * Verbatim's equivalent is a single global `ActiveSpeechDoc` string
- * (filename). We use a live view reference instead because there's
- * no filename round-trip pressure here (the designation is
- * session-only) and because resolving by reference avoids any
- * filename-collision pitfalls.
+ * Tracks which open doc is currently designated as the "speech doc"
+ * — the destination for `sendToSpeech` (\` / Alt-\`). Verbatim's
+ * equivalent is a single global `ActiveSpeechDoc` string (filename);
+ * we key off a per-doc uid instead because every CardMirror doc
+ * already carries a stable uid for journal recovery.
  *
- * The registry lives in its own module rather than directly in
- * `editor/index.ts` or `multi-pane-shell.ts` because more than one
- * "host" needs to plug into it: the multi-pane shell registers /
- * unregisters as docs land in its slots, and a future cross-window
- * single-doc broker will do the same for windows in its own
- * window-spanning state.
+ * Two layers:
  *
- * The `SpeechDocResolver` interface is intentionally minimal — only
- * the bits other modules read. Hosts that need richer integration
- * (e.g., the multi-pane shell wanting to find which Slot holds the
- * speech doc) keep that lookup in their own structures and call
- * `setSpeech(view)` to publish.
+ *   1. `speechUid` — the source of truth. In Electron, this lives
+ *      in the main process; the renderer mirrors it and forwards
+ *      every mutation back via the host bridge. In the browser, the
+ *      renderer is the only authority.
+ *
+ *   2. `views: Map<uid, EditorView>` — a local cache of doc views
+ *      that live in THIS renderer. Used to resolve "is the speech
+ *      doc in this window?" and to expose the view to callers that
+ *      want to dispatch a transaction. A speech uid with no matching
+ *      entry here means the speech doc lives in another window
+ *      (Electron multi-window) — `sendToSpeech` routes through main
+ *      instead of dispatching locally.
  */
 
 import type { EditorView } from 'prosemirror-view';
+import type { ElectronHost } from './host/electron-host.js';
+import type { Host } from './host/types.js';
 
 export interface SpeechDocResolver {
-  /** The view currently designated as the speech doc, or null when
-   *  no doc has been marked. */
+  /** The uid currently designated as the speech doc, or `null` when
+   *  no doc has been marked. May reference a uid that lives in
+   *  another window. */
+  getSpeechUid(): string | null;
+  /** True iff `uid` is currently designated as the speech doc. */
+  isSpeechByUid(uid: string): boolean;
+  /** The view for `uid` if it's mounted in THIS renderer, else
+   *  `null`. */
+  viewForUid(uid: string): EditorView | null;
+  /** Convenience: the view for the current speech uid IF it lives
+   *  in this renderer, else `null`. Returns `null` when no speech
+   *  is set OR the speech doc is in another window. */
   getSpeechView(): EditorView | null;
-  /** Designate the given view as the speech doc, clearing any
-   *  previous designation. Passing `null` clears the registry. */
+  /** Designate `uid` as the speech doc. `null` clears. */
+  setSpeechByUid(uid: string | null): void;
+  /** Legacy view-keyed setter. Resolves to a uid via the registered-
+   *  view map; warns and no-ops if the view was never registered. */
   setSpeech(view: EditorView | null): void;
-  /** Subscribe to changes. The callback fires whenever the speech
-   *  view changes (designation set, cleared, or swapped). Returns
-   *  an unsubscribe function. */
+  /** Register a doc's (uid, view) so lookups can resolve it.
+   *  Idempotent. In Electron mode this ALSO reports the doc to the
+   *  main process. */
+  registerView(uid: string, view: EditorView): void;
+  /** Remove a doc's registration. Idempotent. In Electron mode this
+   *  ALSO reports the unregistration to the main process. */
+  unregisterView(uid: string): void;
+  /** Subscribe to changes. Fires whenever the speech uid changes or
+   *  the local view cache changes. */
   subscribe(fn: () => void): () => void;
 }
 
 class DefaultSpeechDocResolver implements SpeechDocResolver {
-  private speechView: EditorView | null = null;
-  private listeners = new Set<() => void>();
+  protected speechUid: string | null = null;
+  protected views = new Map<string, EditorView>();
+  protected viewToUid = new WeakMap<EditorView, string>();
+  protected listeners = new Set<() => void>();
+
+  getSpeechUid(): string | null {
+    return this.speechUid;
+  }
+
+  isSpeechByUid(uid: string): boolean {
+    return this.speechUid === uid;
+  }
+
+  viewForUid(uid: string): EditorView | null {
+    return this.views.get(uid) ?? null;
+  }
 
   getSpeechView(): EditorView | null {
-    return this.speechView;
+    if (!this.speechUid) return null;
+    return this.views.get(this.speechUid) ?? null;
+  }
+
+  setSpeechByUid(uid: string | null): void {
+    if (this.speechUid === uid) return;
+    this.speechUid = uid;
+    this.fire();
   }
 
   setSpeech(view: EditorView | null): void {
-    if (this.speechView === view) return;
-    this.speechView = view;
-    for (const fn of this.listeners) {
-      try { fn(); } catch (err) { console.error('speech-doc listener error', err); }
+    if (view === null) {
+      this.setSpeechByUid(null);
+      return;
     }
+    const uid = this.viewToUid.get(view);
+    if (!uid) {
+      console.warn(
+        'speech-doc-registry: setSpeech called with an unregistered view',
+      );
+      return;
+    }
+    this.setSpeechByUid(uid);
+  }
+
+  registerView(uid: string, view: EditorView): void {
+    if (this.views.get(uid) === view) return;
+    this.views.set(uid, view);
+    this.viewToUid.set(view, uid);
+    this.fire();
+  }
+
+  unregisterView(uid: string): void {
+    if (!this.views.has(uid)) return;
+    this.views.delete(uid);
+    this.fire();
   }
 
   subscribe(fn: () => void): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
   }
+
+  protected fire(): void {
+    for (const fn of this.listeners) {
+      try {
+        fn();
+      } catch (err) {
+        console.error('speech-doc listener error', err);
+      }
+    }
+  }
 }
 
-/** Module singleton. Multi-pane mounts this directly; a future
- *  multi-window broker can replace it via `setSpeechDocResolver`
- *  to coordinate state across windows. */
+/** Electron-aware resolver. Mirrors main's `speech:changed`
+ *  broadcasts into this renderer's state, and forwards every local
+ *  mutation back into main via the host bridge. Main is the source
+ *  of truth across all windows. */
+class ElectronSpeechDocResolver extends DefaultSpeechDocResolver {
+  constructor(private host: ElectronHost) {
+    super();
+    this.host.onSpeechChanged((state) => {
+      if (this.speechUid === state.uid) return;
+      this.speechUid = state.uid;
+      this.fire();
+    });
+    void this.host.speechGet().then((state) => {
+      if (this.speechUid === state.uid) return;
+      this.speechUid = state.uid;
+      this.fire();
+    });
+  }
+
+  override setSpeechByUid(uid: string | null): void {
+    // Optimistic local update — main echoes back via onSpeechChanged,
+    // which our handler treats as idempotent.
+    if (this.speechUid !== uid) {
+      this.speechUid = uid;
+      this.fire();
+    }
+    void this.host.speechSet(uid);
+  }
+
+  override registerView(uid: string, view: EditorView): void {
+    const wasNew = !this.views.has(uid);
+    super.registerView(uid, view);
+    if (wasNew) void this.host.docRegister(uid);
+  }
+
+  override unregisterView(uid: string): void {
+    const wasRegistered = this.views.has(uid);
+    super.unregisterView(uid);
+    if (wasRegistered) void this.host.docUnregister(uid);
+  }
+}
+
 let resolver: SpeechDocResolver = new DefaultSpeechDocResolver();
 
 export function getSpeechDocResolver(): SpeechDocResolver {
   return resolver;
 }
 
-/** Swap in a custom resolver (e.g., a multi-window broker). Hosts
- *  that call this are responsible for forwarding any prior
- *  designation forward. */
+/** Install an Electron-aware resolver bridged to the host's
+ *  speech-doc IPC. Call once at boot after the host is established.
+ *  No-op when the host isn't Electron. */
+export function installElectronSpeechDocResolver(host: Host): void {
+  if (host.kind !== 'electron') return;
+  resolver = new ElectronSpeechDocResolver(host as ElectronHost);
+}
+
+/** Swap in a custom resolver. Mainly an escape hatch for tests; in
+ *  normal use, `installElectronSpeechDocResolver` is what callers
+ *  reach for. */
 export function setSpeechDocResolver(next: SpeechDocResolver): void {
   resolver = next;
 }

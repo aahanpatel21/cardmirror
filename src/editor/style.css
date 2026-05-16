@@ -225,7 +225,7 @@ body {
   padding-left: 0.4rem;
   margin-left: 0.2rem;
 }
-body:not(.pmd-multi-doc) #speech-stack { display: none; }
+body:not(.pmd-multi-doc):not(.pmd-multi-window) #speech-stack { display: none; }
 /* `mark active as speech` is a toggle — when this button is the
    active doc's speech designation, it stays pressed-down so the
    user can see at a glance which slot holds the speech doc. */
