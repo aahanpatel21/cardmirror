@@ -7,7 +7,7 @@
  * navigation panel, send-to-speech, drag-and-drop, etc.) is later work.
  */
 
-import { EditorState, Plugin, Selection } from 'prosemirror-state';
+import { EditorState, Plugin, Selection, TextSelection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { keymap } from 'prosemirror-keymap';
 import { history, undo, redo } from 'prosemirror-history';
@@ -2967,6 +2967,21 @@ async function mountFromSpawnPayload(
       // originator, so the per-window banner + ribbon button
       // reflect the new state.
       getSpeechDocResolver().setSpeechByUid(currentDocUid);
+      // Position the cursor inside the empty paragraph below the
+      // Pocket header (when the speech doc was created WITH a
+      // header) so the user can start typing / receiving sends
+      // immediately. Without a header — `includeSpeechDocPocket`
+      // off — the doc is just one paragraph and the default
+      // selection lands inside it, no adjustment needed.
+      if (view && docNode.firstChild?.type.name === 'pocket' && docNode.childCount > 1) {
+        const pocketSize = docNode.firstChild.nodeSize;
+        const cursorPos = pocketSize + 1;
+        view.dispatch(
+          view.state.tr.setSelection(
+            TextSelection.create(view.state.doc, cursorPos),
+          ),
+        );
+      }
     }
     markNonPristineStarter();
     updateWindowTitle();
