@@ -144,6 +144,104 @@ ipcMain.handle('host:save-existing', async (_event, handle: string, bytes: unkno
   await fs.writeFile(handle, bytesToBuffer(bytes));
 });
 
+// ─── Crash-recovery journals ───────────────────────────────────────
+// Each open doc gets one journal file at
+//   {userData}/journals/{uid}.cmir-journal
+// containing a small JSON envelope plus the doc bytes as base64.
+// Written debounced after every doc-changing edit; cleared on save
+// or explicit close; scanned at startup so a crash gets surfaced
+// to the user as a recovery offer.
+
+interface JournalEntryIpc {
+  uid: string;
+  filename: string;
+  handle: string | null;
+  format: 'cmir' | 'docx' | null;
+  savedAt: string;
+  bytes: unknown;
+}
+
+function journalsDir(): string {
+  return path.join(app.getPath('userData'), 'journals');
+}
+
+function journalPathFor(uid: string): string {
+  // Sanitize uid → filename. UIDs are app-generated so they're
+  // already safe (alphanumeric + dashes), but a strict filter
+  // defends against future formats.
+  const safe = uid.replace(/[^a-zA-Z0-9_-]/g, '_');
+  return path.join(journalsDir(), `${safe}.cmir-journal`);
+}
+
+async function ensureJournalsDir(): Promise<void> {
+  await fs.mkdir(journalsDir(), { recursive: true });
+}
+
+ipcMain.handle('host:write-journal', async (_event, entry: JournalEntryIpc) => {
+  if (!entry || typeof entry.uid !== 'string' || !entry.uid) {
+    throw new Error('host:write-journal: entry.uid is required.');
+  }
+  await ensureJournalsDir();
+  const buf = bytesToBuffer(entry.bytes);
+  // Wrap the doc bytes in a small JSON envelope so the file is
+  // self-describing. base64 the doc bytes (cmir JSON text → b64 →
+  // ASCII string we can stick inside the outer JSON). Slight size
+  // overhead but keeps the file fully readable / inspectable.
+  const envelope = {
+    uid: entry.uid,
+    filename: entry.filename,
+    handle: entry.handle,
+    format: entry.format,
+    savedAt: entry.savedAt,
+    bytesB64: buf.toString('base64'),
+  };
+  await fs.writeFile(journalPathFor(entry.uid), JSON.stringify(envelope));
+});
+
+ipcMain.handle('host:read-journals', async () => {
+  let entries: string[];
+  try {
+    entries = await fs.readdir(journalsDir());
+  } catch (err) {
+    // Dir doesn't exist yet → no journals to read.
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw err;
+  }
+  const results: JournalEntryIpc[] = [];
+  for (const name of entries) {
+    if (!name.endsWith('.cmir-journal')) continue;
+    const fullPath = path.join(journalsDir(), name);
+    try {
+      const text = await fs.readFile(fullPath, 'utf8');
+      const parsed = JSON.parse(text);
+      if (typeof parsed?.uid !== 'string' || typeof parsed?.bytesB64 !== 'string') continue;
+      results.push({
+        uid: parsed.uid,
+        filename: typeof parsed.filename === 'string' ? parsed.filename : 'Untitled',
+        handle: typeof parsed.handle === 'string' ? parsed.handle : null,
+        format: parsed.format === 'cmir' || parsed.format === 'docx' ? parsed.format : null,
+        savedAt: typeof parsed.savedAt === 'string' ? parsed.savedAt : new Date(0).toISOString(),
+        bytes: new Uint8Array(Buffer.from(parsed.bytesB64, 'base64')),
+      });
+    } catch (err) {
+      // Skip corrupt journal files rather than blocking startup.
+      console.warn(`Skipping corrupt journal ${name}:`, err);
+    }
+  }
+  return results;
+});
+
+ipcMain.handle('host:delete-journal', async (_event, uid: string) => {
+  if (typeof uid !== 'string' || !uid) return;
+  try {
+    await fs.unlink(journalPathFor(uid));
+  } catch (err) {
+    // Already gone is fine.
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw err;
+  }
+});
+
 // ─── Native menu bar ───────────────────────────────────────────────
 
 /** Send a menu-command IPC event to the currently focused window. */

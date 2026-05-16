@@ -19,6 +19,15 @@ interface FileFilter {
   extensions: string[];
 }
 
+interface JournalEntry {
+  uid: string;
+  filename: string;
+  handle: string | null;
+  format: 'cmir' | 'docx' | null;
+  savedAt: string;
+  bytes: Uint8Array;
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   openFile: (opts: { filters: FileFilter[] }) =>
     ipcRenderer.invoke('host:open-file', opts),
@@ -31,6 +40,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   saveExisting: (handle: string, bytes: Uint8Array) =>
     ipcRenderer.invoke('host:save-existing', handle, bytes),
+
+  /** Crash-recovery journal API. Stores per-doc snapshots under
+   *  `app.getPath('userData')/journals/{uid}.cmir-journal`. */
+  writeJournal: (entry: JournalEntry) =>
+    ipcRenderer.invoke('host:write-journal', entry),
+  readJournals: () => ipcRenderer.invoke('host:read-journals'),
+  deleteJournal: (uid: string) =>
+    ipcRenderer.invoke('host:delete-journal', uid),
 
   /** Subscribe to native-menu commands. Main process broadcasts
    *  `'menu-command'` events to the focused window's webContents

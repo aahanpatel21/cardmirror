@@ -13,6 +13,7 @@
 import type {
   FileFilter,
   Host,
+  JournalEntry,
   OpenFileOptions,
   OpenedFile,
   SaveAsOptions,
@@ -76,8 +77,41 @@ function filtersToSavePickerTypes(filters?: FileFilter[]): ShowSaveFilePickerOpt
   });
 }
 
+/** Opened IndexedDB connection. Lazily created on first journal
+ *  operation; reused for subsequent calls. */
+let dbPromise: Promise<IDBDatabase> | null = null;
+
+const DB_NAME = 'cardmirror';
+const DB_VERSION = 1;
+const STORE_JOURNALS = 'journals';
+
+function openDb(): Promise<IDBDatabase> {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('BrowserHost: IndexedDB unavailable.'));
+      return;
+    }
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (): void => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE_JOURNALS)) {
+        db.createObjectStore(STORE_JOURNALS, { keyPath: 'uid' });
+      }
+    };
+    req.onsuccess = (): void => resolve(req.result);
+    req.onerror = (): void => reject(req.error ?? new Error('IndexedDB open failed.'));
+  });
+  return dbPromise;
+}
+
+function browserJournalsSupported(): boolean {
+  return typeof indexedDB !== 'undefined';
+}
+
 export class BrowserHost implements Host {
   readonly kind = 'browser' as const;
+  readonly journalsSupported = browserJournalsSupported();
 
   get supportsInPlaceSave(): boolean {
     // showSaveFilePicker gives us a writable handle that survives
@@ -212,6 +246,44 @@ export class BrowserHost implements Host {
     const writable = await fh.createWritable();
     await writable.write(blob);
     await writable.close();
+  }
+
+  async writeJournal(entry: JournalEntry): Promise<void> {
+    if (!this.journalsSupported) return;
+    const db = await openDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_JOURNALS, 'readwrite');
+      // IndexedDB structured-clones the value, which supports
+      // Uint8Array natively. The handle field is `null` for browser
+      // — FileSystemFileHandles aren't serializable into the DB.
+      // (We could persist them via the FSA API's permission /
+      // saved-handle features, but that's future work.)
+      tx.objectStore(STORE_JOURNALS).put({ ...entry, handle: null });
+      tx.oncomplete = (): void => resolve();
+      tx.onerror = (): void => reject(tx.error ?? new Error('writeJournal failed.'));
+    });
+  }
+
+  async readJournals(): Promise<JournalEntry[]> {
+    if (!this.journalsSupported) return [];
+    const db = await openDb();
+    return new Promise<JournalEntry[]>((resolve, reject) => {
+      const tx = db.transaction(STORE_JOURNALS, 'readonly');
+      const req = tx.objectStore(STORE_JOURNALS).getAll();
+      req.onsuccess = (): void => resolve((req.result as JournalEntry[]) ?? []);
+      req.onerror = (): void => reject(req.error ?? new Error('readJournals failed.'));
+    });
+  }
+
+  async deleteJournal(uid: string): Promise<void> {
+    if (!this.journalsSupported) return;
+    const db = await openDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_JOURNALS, 'readwrite');
+      tx.objectStore(STORE_JOURNALS).delete(uid);
+      tx.oncomplete = (): void => resolve();
+      tx.onerror = (): void => reject(tx.error ?? new Error('deleteJournal failed.'));
+    });
   }
 
   private ensureFileInput(): HTMLInputElement {

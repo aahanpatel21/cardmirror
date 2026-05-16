@@ -153,4 +153,59 @@ describe('native format (.cmir)', () => {
     expect(looksLikeNative(new TextEncoder().encode('plain text'))).toBe(false);
     expect(looksLikeNative(new TextEncoder().encode('{"other": true}'))).toBe(false);
   });
+
+  // ── Journal envelope round-trip ───────────────────────────────
+  // Journals store the doc bytes as serializeNative + a small
+  // envelope (uid / filename / handle / format / savedAt). The
+  // envelope is platform-specific (Electron writes a JSON file,
+  // Browser writes to IndexedDB), but the doc-content round-trip
+  // via the native format is the same in both. This test covers
+  // that critical path.
+  it('round-trips a journal-entry-shaped envelope', () => {
+    const original = makeSampleDoc();
+    const threads: Thread[] = [
+      {
+        id: 't-journal',
+        comments: [
+          {
+            id: 't-journal',
+            author: 'Anthony',
+            initials: 'AT',
+            date: '2026-05-15T20:00:00.000Z',
+            text: 'mid-edit',
+            kind: 'human',
+            parentId: null,
+          },
+        ],
+      },
+    ];
+    // Simulate what a host would store: the doc bytes plus the
+    // envelope fields the recovery modal reads.
+    const bytes = serializeNative(original, { threads });
+    const envelope = {
+      uid: 'doc-42',
+      filename: 'Aff - Climate.cmir',
+      handle: '/Users/example/Documents/Aff - Climate.cmir',
+      format: 'cmir' as const,
+      savedAt: '2026-05-15T20:00:00.000Z',
+      bytes,
+    };
+
+    // Pretend the envelope went through a JSON round-trip (Electron
+    // writes it as a JSON file, Browser stores in IndexedDB which
+    // structured-clones — both preserve the Uint8Array bytes).
+    const restored = {
+      ...envelope,
+      bytes: new Uint8Array(envelope.bytes),
+    };
+
+    expect(restored.uid).toBe('doc-42');
+    expect(restored.filename).toBe('Aff - Climate.cmir');
+    expect(restored.handle).toBe('/Users/example/Documents/Aff - Climate.cmir');
+    expect(restored.format).toBe('cmir');
+
+    const parsed = parseNative(restored.bytes);
+    expect(parsed.doc.eq(original)).toBe(true);
+    expect(parsed.threads).toEqual(threads);
+  });
 });

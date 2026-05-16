@@ -27,9 +27,10 @@ import { closeHistory } from 'prosemirror-history';
 import { EditorView } from 'prosemirror-view';
 import { Node as PMNode } from 'prosemirror-model';
 import { schema, newHeadingId } from '../schema/index.js';
-import { fromDocxFull, parseNative, NATIVE_FILE_EXTENSION } from '../index.js';
+import { fromDocxFull, parseNative, serializeNative, NATIVE_FILE_EXTENSION } from '../index.js';
 import { settings } from './settings.js';
 import { getHost, type OpenedFile } from './host/index.js';
+import { getCommentsState } from './comments-plugin.js';
 
 type DocFormat = 'cmir' | 'docx';
 
@@ -65,6 +66,57 @@ const SLOT_IDS: SlotId[] = ['slot1', 'slot2', 'slot3'];
 let nextDocUid = 1;
 function newDocUid(): string {
   return `doc-${nextDocUid++}`;
+}
+
+/** Debounce window for per-DocRecord journal writes. */
+const RECORD_JOURNAL_DELAY_MS = 3000;
+
+/** Re-arm the journal-write timer for `record` after a doc edit.
+ *  No-op when the host doesn't support journaling. */
+function scheduleJournalForRecord(record: DocRecord): void {
+  const host = getHost();
+  if (!host.journalsSupported) return;
+  if (record.journalTimer !== null) window.clearTimeout(record.journalTimer);
+  record.journalTimer = window.setTimeout(() => {
+    record.journalTimer = null;
+    void runJournalForRecord(record);
+  }, RECORD_JOURNAL_DELAY_MS);
+}
+
+/** Actually serialize + write `record`'s current doc as a journal
+ *  entry under its uid. Best-effort — logs failures, doesn't
+ *  surface them to the user. */
+async function runJournalForRecord(record: DocRecord): Promise<void> {
+  const host = getHost();
+  if (!host.journalsSupported) return;
+  try {
+    const state = record.view.state;
+    const bytes = serializeNative(state.doc, {
+      threads: Array.from(getCommentsState(state).threads.values()),
+    });
+    await host.writeJournal({
+      uid: record.uid,
+      filename: record.filename,
+      handle: typeof record.handle === 'string' ? record.handle : null,
+      format: record.format,
+      savedAt: new Date().toISOString(),
+      bytes,
+    });
+  } catch (err) {
+    console.warn('Journal write failed:', err);
+  }
+}
+
+/** Delete the journal entry for `record`. Called on successful
+ *  save and on explicit close. */
+async function clearJournalForRecord(record: DocRecord): Promise<void> {
+  const host = getHost();
+  if (!host.journalsSupported) return;
+  try {
+    await host.deleteJournal(record.uid);
+  } catch (err) {
+    console.warn('Journal delete failed:', err);
+  }
 }
 
 /**
@@ -108,6 +160,10 @@ interface DocRecord {
    *  dblclick in progress unless the rebuild waits for a typing
    *  pause. */
   heavyUpdateTimer: IdleHandle | null;
+  /** Debounce timer for the crash-recovery journal write. Re-armed
+   *  by every doc-changing transaction; fires `~3s` later with a
+   *  cmir snapshot of this record's current doc. */
+  journalTimer: number | null;
   /** Per-doc read-mode state. Multi-doc treats read mode as a
    *  property of an individual open doc — the ribbon toggle flips
    *  this for the focused pane only, leaving other panes untouched. */
@@ -345,6 +401,14 @@ class Slot {
       cancelIdle(closing.heavyUpdateTimer);
       closing.heavyUpdateTimer = null;
     }
+    if (closing.journalTimer !== null) {
+      window.clearTimeout(closing.journalTimer);
+      closing.journalTimer = null;
+    }
+    // Explicit close → drop the journal. Recovery is for crashes,
+    // not "I changed my mind." If the user wanted to keep this
+    // doc, they should have saved.
+    void clearJournalForRecord(closing);
     // Clear speech-doc designation if the closing doc was it —
     // matches Verbatim's `AutoClose` which clears
     // `Globals.ActiveSpeechDoc` when the speech doc is closed.
@@ -939,6 +1003,50 @@ class MultiPaneShell {
     slot.refreshChipFilename();
   }
 
+  /** Clear the journal entry for the focused pane's visible doc.
+   *  Called from the editor's save flow after a successful save —
+   *  the on-disk file is now the latest version, the journal is
+   *  redundant. */
+  async clearFocusedJournal(): Promise<void> {
+    const rec = this.focusedSlot?.visible;
+    if (!rec) return;
+    await clearJournalForRecord(rec);
+  }
+
+  /** Load a recovered doc into the workspace. Picks the first
+   *  empty slot; if all three slots have docs already, stacks the
+   *  recovered doc into the focused (or first) slot. Reuses the
+   *  journal's uid so the recovered doc continues to crash-recover
+   *  under the same slot. */
+  async onRecoveredDoc(entry: {
+    uid: string;
+    filename: string;
+    handle: string | null;
+    format: DocFormat | null;
+    doc: PMNode;
+    threads: import('./comments-plugin.js').Thread[];
+  }): Promise<void> {
+    // Pick the first empty slot; otherwise fall back to the
+    // currently-focused slot or slot1.
+    let target: SlotId = 'slot1';
+    for (const id of SLOT_IDS) {
+      if (this.slots[id].stack.length === 0) {
+        target = id;
+        break;
+      }
+      if (id === SLOT_IDS[SLOT_IDS.length - 1]) {
+        target = this.focusedSlot?.id ?? 'slot1';
+      }
+    }
+    const slot = this.slots[target];
+    const record = buildDocRecord(entry.filename, entry.doc, slot, {
+      handle: entry.handle,
+      format: entry.format,
+      uid: entry.uid,
+    });
+    slot.push(record);
+  }
+
   /** A slot's stack just became empty. If it was the expanded
    *  slot, drop expand mode — no doc to expand any more. */
   notifySlotEmptied(slot: Slot): void {
@@ -1434,7 +1542,7 @@ function buildDocRecord(
   filename: string,
   doc: PMNode,
   slot: Slot,
-  opts: { handle: unknown | null; format: DocFormat | null },
+  opts: { handle: unknown | null; format: DocFormat | null; uid?: string },
 ): DocRecord {
   const editorEl = document.createElement('div');
   editorEl.className = 'pmd-pane-editor';
@@ -1464,7 +1572,10 @@ function buildDocRecord(
       view.updateState(next);
       // Re-arm the autosave debounce on doc-changing transactions.
       // No-ops when autosave is off; cheap to fire unconditionally.
-      if (tx.docChanged) notifyEditForAutosave();
+      if (tx.docChanged) {
+        notifyEditForAutosave();
+        scheduleJournalForRecord(record);
+      }
       // Debounce both O(doc-size) updates into a single timer:
       //   - navPanel.update walks the doc for headings (and
       //     rebuilds every `<li>`, which would invalidate any
@@ -1501,7 +1612,7 @@ function buildDocRecord(
   dragSurface.attach(view, editorEl);
 
   const record: DocRecord = {
-    uid: newDocUid(),
+    uid: opts.uid ?? newDocUid(),
     filename,
     handle: opts.handle,
     format: opts.format,
@@ -1511,6 +1622,7 @@ function buildDocRecord(
     navEl,
     dragSurface,
     heavyUpdateTimer: null,
+    journalTimer: null,
     // New docs always start with read mode OFF. The user toggles
     // it per-pane via the ribbon command after opening.
     readMode: false,
@@ -1536,5 +1648,7 @@ export function mountMultiPaneShell(): void {
     setFocusedFilename: (name) => shell!.setFocusedFilename(name),
     getFocusedFile: () => shell!.getFocusedFile(),
     setFocusedFile: (f) => shell!.setFocusedFile(f),
+    clearFocusedJournal: () => shell!.clearFocusedJournal(),
+    onRecoveredDoc: (entry) => shell!.onRecoveredDoc(entry),
   });
 }

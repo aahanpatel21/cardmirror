@@ -11,6 +11,7 @@
 import type {
   FileFilter,
   Host,
+  JournalEntry,
   OpenFileOptions,
   OpenedFile,
   SaveAsOptions,
@@ -32,6 +33,9 @@ interface ElectronAPI {
     opts: { filters: FileFilter[] },
   ): Promise<{ name: string; handle: string } | null>;
   saveExisting(handle: string, bytes: Uint8Array): Promise<void>;
+  writeJournal(entry: JournalEntry): Promise<void>;
+  readJournals(): Promise<JournalEntry[]>;
+  deleteJournal(uid: string): Promise<void>;
   /** Subscribe to menu-driven commands from the native menu bar.
    *  Returns an unsubscribe handle. */
   onMenuCommand(handler: (command: string) => void): () => void;
@@ -46,6 +50,7 @@ function api(): ElectronAPI {
 export class ElectronHost implements Host {
   readonly kind = 'electron' as const;
   readonly supportsInPlaceSave = true;
+  readonly journalsSupported = true;
 
   async openFile(opts: OpenFileOptions = {}): Promise<OpenedFile | null> {
     const result = await api().openFile({ filters: opts.filters ?? [] });
@@ -80,6 +85,24 @@ export class ElectronHost implements Host {
       );
     }
     await api().saveExisting(handle, bytes);
+  }
+
+  async writeJournal(entry: JournalEntry): Promise<void> {
+    await api().writeJournal(entry);
+  }
+
+  async readJournals(): Promise<JournalEntry[]> {
+    const raw = await api().readJournals();
+    // Normalize bytes — they may arrive as a Buffer-shaped object
+    // after the structured clone. Same defensive wrap as openFile.
+    return raw.map((entry) => ({
+      ...entry,
+      bytes: entry.bytes instanceof Uint8Array ? entry.bytes : new Uint8Array(entry.bytes as ArrayBufferLike),
+    }));
+  }
+
+  async deleteJournal(uid: string): Promise<void> {
+    await api().deleteJournal(uid);
   }
 
   /** Subscribe to menu-driven commands from the native menu bar.

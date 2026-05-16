@@ -3411,6 +3411,160 @@ body.pmd-nav-resize-active {
   z-index: 1000;
 }
 
+/* ─── Crash-recovery modal ───────────────────────────────────────── */
+
+.pmd-recovery-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--pmd-c-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.pmd-recovery-dialog {
+  background: var(--pmd-c-bg);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  width: 90%;
+  max-width: 520px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  font-family: 'Calibri', 'Helvetica Neue', sans-serif;
+}
+
+.pmd-recovery-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid var(--pmd-c-divider);
+}
+
+.pmd-recovery-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.pmd-recovery-close {
+  background: transparent;
+  border: none;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--pmd-c-text-muted);
+  padding: 0 0.4rem;
+}
+.pmd-recovery-close:hover { color: var(--pmd-c-text-strong); }
+
+.pmd-recovery-intro {
+  margin: 0;
+  padding: 0.6rem 1.25rem 0.2rem;
+  font-size: 0.85rem;
+  color: var(--pmd-c-text-muted);
+  line-height: 1.4;
+}
+
+.pmd-recovery-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0.4rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.pmd-recovery-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--pmd-c-divider-faint);
+}
+.pmd-recovery-row:last-child { border-bottom: none; }
+
+.pmd-recovery-row-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pmd-recovery-row-name {
+  font-size: 0.95rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pmd-recovery-row-sub {
+  font-size: 0.78rem;
+  color: var(--pmd-c-text-muted);
+  margin-top: 0.1rem;
+}
+
+.pmd-recovery-row-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.pmd-recovery-row-btn {
+  background: transparent;
+  border: 1px solid var(--pmd-c-border-soft);
+  border-radius: 4px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  color: var(--pmd-c-text);
+}
+.pmd-recovery-row-btn:hover {
+  background: var(--pmd-c-surface-2, var(--pmd-c-surface));
+}
+.pmd-recovery-row-btn-selected {
+  background: var(--pmd-c-accent);
+  border-color: var(--pmd-c-accent);
+  color: #fff;
+}
+.pmd-recovery-row-btn-selected:hover {
+  background: var(--pmd-c-accent-hover, var(--pmd-c-accent));
+}
+
+.pmd-recovery-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--pmd-c-divider);
+}
+
+.pmd-recovery-btn {
+  border-radius: 4px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.88rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.pmd-recovery-btn-secondary {
+  background: transparent;
+  border-color: var(--pmd-c-border-soft);
+  color: var(--pmd-c-text);
+}
+.pmd-recovery-btn-secondary:hover {
+  background: var(--pmd-c-surface-2, var(--pmd-c-surface));
+}
+
+.pmd-recovery-btn-primary {
+  background: var(--pmd-c-accent);
+  color: #fff;
+}
+.pmd-recovery-btn-primary:hover {
+  background: var(--pmd-c-accent-hover, var(--pmd-c-accent));
+}
+
 .pmd-save-as-dialog {
   background: var(--pmd-c-bg);
   border-radius: 8px;

@@ -78,6 +78,40 @@ export interface SaveAsOptions {
   filters?: FileFilter[];
 }
 
+/** A crash-recovery journal entry. Written every few seconds while
+ *  a doc has unsaved edits; cleared on successful save or explicit
+ *  close. On launch the host returns any stragglers from a previous
+ *  session that crashed before they cleared.
+ *
+ *  The doc itself is stored as `bytes` in CardMirror native (`.cmir`)
+ *  serialization — lossless and cheap to (de)serialize. The doc's
+ *  *intended* on-disk format and handle are tracked separately so a
+ *  recovered `.docx` doc can keep targeting Word on its next save. */
+export interface JournalEntry {
+  /** Stable identifier for the doc across the session — multi-doc
+   *  uses its DocRecord uid; single-doc tracks one at module level.
+   *  Recovery reuses the same uid so a recovered doc that crashes
+   *  again overwrites the same journal slot. */
+  uid: string;
+  /** Last-known display name. Used in the recovery modal so the
+   *  user knows what they're recovering. "Untitled" when the doc
+   *  was never named. */
+  filename: string;
+  /** Last-known on-disk handle (Electron: absolute path string;
+   *  Browser: never set — File System Access handles don't survive
+   *  reload). `null` for never-saved docs. */
+  handle: string | null;
+  /** The format the doc was last saved in (or null if never saved).
+   *  Drives whether a recovered + re-saved doc round-trips through
+   *  `toDocx` or stays native. */
+  format: 'cmir' | 'docx' | null;
+  /** ISO 8601 timestamp of when this journal entry was written. */
+  savedAt: string;
+  /** Doc content as CardMirror native (`.cmir`) bytes — the editor
+   *  passes this to `parseNative` on recovery. */
+  bytes: Uint8Array;
+}
+
 /** The interface every platform host implements. New methods land
  *  here when the editor needs a new capability that varies between
  *  web and desktop. */
@@ -115,4 +149,27 @@ export interface Host {
    *  Save As. Browsers without the File System Access API return
    *  false; Electron / Tauri return true. */
   readonly supportsInPlaceSave: boolean;
+
+  /** Persist `entry` to the journal store under `entry.uid`,
+   *  overwriting any previous entry for that uid. Cheap to call —
+   *  the editor fires this debounced after every doc-changing
+   *  edit. */
+  writeJournal(entry: JournalEntry): Promise<void>;
+
+  /** Read every journal entry currently in the store. Called at
+   *  startup to surface anything that didn't get cleared by a
+   *  graceful save (i.e. the previous session crashed / was killed). */
+  readJournals(): Promise<JournalEntry[]>;
+
+  /** Remove the journal entry for `uid`. Called on successful
+   *  save, on explicit close, or after the user discards a
+   *  recovery offer. No-op when no journal exists for that uid. */
+  deleteJournal(uid: string): Promise<void>;
+
+  /** Whether journaling actually persists across sessions on this
+   *  host. Set to false by hosts that can't (e.g. a hypothetical
+   *  browser without IndexedDB). The editor stops writing
+   *  journals when this is false; the recovery modal still works
+   *  on hosts where it's true. */
+  readonly journalsSupported: boolean;
 }

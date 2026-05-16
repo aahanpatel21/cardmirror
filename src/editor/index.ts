@@ -186,6 +186,24 @@ let multiDocGetFocusedFile:
 let multiDocSetFocusedFile:
   | ((file: { filename: string; handle: unknown | null; format: 'cmir' | 'docx' | null }) => void)
   | null = null;
+/** Crash-recovery hook: clear the focused pane's journal after a
+ *  successful save in multi-doc mode. The shell knows the
+ *  DocRecord's uid; the editor only knows it has a focused doc. */
+let multiDocClearFocusedJournal: (() => Promise<void>) | null = null;
+/** Crash-recovery hook: load a recovered journal entry into the
+ *  multi-pane workspace. The shell picks a slot (first empty, or
+ *  prompts the user) and pushes a DocRecord built from the
+ *  recovered doc + threads + handle + format. */
+let multiDocOnRecoveredDoc:
+  | ((entry: {
+      uid: string;
+      filename: string;
+      handle: string | null;
+      format: 'cmir' | 'docx' | null;
+      doc: import('prosemirror-model').Node;
+      threads: Thread[];
+    }) => Promise<void>)
+  | null = null;
 
 /** Multi-pane shell hooks. Called by `multi-pane-shell.ts` at boot
  *  to install the overrides that redirect the single-doc open /
@@ -202,6 +220,15 @@ export function enableMultiDocMode(opts: {
   setFocusedFilename?: (name: string) => void;
   getFocusedFile?: () => { filename: string; handle: unknown | null; format: 'cmir' | 'docx' | null } | null;
   setFocusedFile?: (file: { filename: string; handle: unknown | null; format: 'cmir' | 'docx' | null }) => void;
+  clearFocusedJournal?: () => Promise<void>;
+  onRecoveredDoc?: (entry: {
+    uid: string;
+    filename: string;
+    handle: string | null;
+    format: 'cmir' | 'docx' | null;
+    doc: import('prosemirror-model').Node;
+    threads: Thread[];
+  }) => Promise<void>;
 }): void {
   multiDocActive = true;
   multiDocOnFileOpen = opts.onFileOpen;
@@ -215,6 +242,8 @@ export function enableMultiDocMode(opts: {
   multiDocSetFocusedFilename = opts.setFocusedFilename ?? null;
   multiDocGetFocusedFile = opts.getFocusedFile ?? null;
   multiDocSetFocusedFile = opts.setFocusedFile ?? null;
+  multiDocClearFocusedJournal = opts.clearFocusedJournal ?? null;
+  multiDocOnRecoveredDoc = opts.onRecoveredDoc ?? null;
   // Hide the single-doc surfaces. The multi-pane shell mounts its
   // own DOM into #app, alongside #editor + #comments-column which
   // we hide here.
@@ -438,10 +467,17 @@ async function onNewDocClicked(): Promise<void> {
     const saved = await runSaveAsFlow();
     if (!saved) return;
   }
+  // Drop the old session's journal before swapping in a new doc —
+  // the user's choice (save or discard) above is the authoritative
+  // signal that they're done with the previous content. New doc
+  // gets a fresh uid so future journals key against the new
+  // session.
+  void clearCurrentJournal();
   mountView(makeStarterDoc());
   currentDocFilename = null;
   currentDocHandle = null;
   currentDocFormat = null;
+  currentDocUid = newSessionDocUid();
   updateWindowTitle();
 }
 
@@ -1974,6 +2010,20 @@ let currentDocHandle: unknown | null = null;
  *  "Save" routes through `toDocx` or `serializeNative`. `null` for
  *  brand-new docs that have never been saved. */
 let currentDocFormat: 'cmir' | 'docx' | null = null;
+/** Stable identifier for the active single-doc session. Keys the
+ *  crash-recovery journal entry so a doc that's been edited but
+ *  not saved is still recoverable after a hard kill. Regenerated
+ *  whenever a fresh doc replaces the current one (New, Open,
+ *  recovery from a different journal). */
+let currentDocUid: string = newSessionDocUid();
+
+/** Generate a fresh session-scoped doc UID. Used by the single-doc
+ *  edit path; multi-doc DocRecords have their own newDocUid pool.
+ *  Keeping the namespaces separate avoids accidental collisions
+ *  even though both keys are local-scope. */
+function newSessionDocUid(): string {
+  return `single-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
+}
 
 /** Filename-to-format inference. Used when opening files and when
  *  defaulting the Save-As dialog's format radio. */
@@ -2042,10 +2092,14 @@ async function runOpenFlow(): Promise<void> {
       docNode = result.doc;
       docThreads = result.threads;
     }
+    // Opening replaces the current doc; clear its journal and
+    // mint a fresh uid for the new session.
+    void clearCurrentJournal();
     mountView(docNode, docThreads);
     currentDocFilename = opened.name;
     currentDocHandle = opened.handle ?? null;
     currentDocFormat = format;
+    currentDocUid = newSessionDocUid();
     updateWindowTitle();
     console.log(`Loaded ${opened.name}: ${countSummary(docNode)}`);
   } catch (err) {
@@ -2151,6 +2205,9 @@ async function runSaveAsFlow(): Promise<boolean> {
     if (!result) return false;
     commitSaveResult(result.name, result.handle ?? null, choice.format);
     flashSaveSuccess();
+    // Successful save — the on-disk file IS the latest version, the
+    // journal is redundant. Best-effort delete.
+    void clearJournalForActiveDoc();
     return true;
   } catch (err) {
     console.error('Save failed:', err);
@@ -2181,6 +2238,7 @@ async function runSaveFlow(): Promise<boolean> {
     });
     await getHost().saveExisting(file.handle, bytes);
     flashSaveSuccess();
+    void clearJournalForActiveDoc();
     return true;
   } catch (err) {
     console.error('Save failed:', err);
@@ -2236,27 +2294,97 @@ function flashSaveSuccess(): void {
   }
 }
 
-// ─── Autosave ──────────────────────────────────────────────────────
-// Debounced ~5s after the last doc-changing edit. Only fires for
-// `.cmir` files with an existing on-disk handle and a host that
-// supports in-place saves. `.docx` is skipped because `toDocx` is
-// expensive enough that per-edit autosaves would visibly stutter
+// ─── Autosave + crash-recovery journal ────────────────────────────
+// Autosave: debounced ~5s after the last doc-changing edit. Only
+// fires for `.cmir` files with an existing on-disk handle and a host
+// that supports in-place saves. `.docx` is skipped because `toDocx`
+// is expensive enough that per-edit autosaves would visibly stutter
 // the editor on large debate files.
+//
+// Journaling: debounced ~3s after the last doc-changing edit.
+// Always fires (regardless of autosave) when the host supports it.
+// Writes a recoverable cmir snapshot under the doc's UID; cleared
+// on successful save / explicit close. Drives the recovery modal
+// on startup.
 
 const AUTOSAVE_DELAY_MS = 5000;
+const JOURNAL_DELAY_MS = 3000;
 let autosaveTimer: number | null = null;
+let journalTimer: number | null = null;
 
 /** Called from every view's `dispatchTransaction` when `tx.docChanged`
- *  is true. Re-arms the debounce timer if autosave is enabled.
- *  Cheap; no-ops when the setting is off so the call site can fire
- *  unconditionally. */
+ *  is true. Re-arms both the autosave debounce (when the setting is
+ *  on) and the journal debounce (always, when supported). Cheap to
+ *  fire unconditionally — each branch no-ops when its trigger
+ *  condition isn't met. */
 export function notifyEditForAutosave(): void {
+  scheduleJournalWrite();
   if (!settings.get('autosaveEnabled')) return;
   if (autosaveTimer !== null) window.clearTimeout(autosaveTimer);
   autosaveTimer = window.setTimeout(() => {
     autosaveTimer = null;
     void runAutosaveAttempt();
   }, AUTOSAVE_DELAY_MS);
+}
+
+/** Schedule a debounced journal write for the SINGLE-DOC session.
+ *  Multi-doc records run their own per-pane journal scheduling
+ *  through the shell, since each DocRecord has its own uid +
+ *  filename + handle. */
+function scheduleJournalWrite(): void {
+  if (!getHost().journalsSupported) return;
+  if (multiDocActive) return;
+  if (journalTimer !== null) window.clearTimeout(journalTimer);
+  journalTimer = window.setTimeout(() => {
+    journalTimer = null;
+    void runJournalWrite();
+  }, JOURNAL_DELAY_MS);
+}
+
+async function runJournalWrite(): Promise<void> {
+  if (!view) return;
+  const host = getHost();
+  if (!host.journalsSupported) return;
+  try {
+    const bytes = serializeNative(view.state.doc, {
+      threads: Array.from(getCommentsState(view.state).threads.values()),
+    });
+    await host.writeJournal({
+      uid: currentDocUid,
+      filename: currentDocFilename ?? 'Untitled',
+      handle:
+        typeof currentDocHandle === 'string' ? currentDocHandle : null,
+      format: currentDocFormat,
+      savedAt: new Date().toISOString(),
+      bytes,
+    });
+  } catch (err) {
+    console.warn('Journal write failed:', err);
+  }
+}
+
+/** Clear the journal for the current single-doc session — called
+ *  after a successful save and on New / Open (which replace the
+ *  doc). Best-effort; logs failures silently. */
+async function clearCurrentJournal(): Promise<void> {
+  const host = getHost();
+  if (!host.journalsSupported) return;
+  try {
+    await host.deleteJournal(currentDocUid);
+  } catch (err) {
+    console.warn('Journal delete failed:', err);
+  }
+}
+
+/** Clear the journal for whatever doc is "active" — focused
+ *  DocRecord in multi-doc, or the single-doc currentDocUid. The
+ *  shell exposes the right uid through `multiDocClearFocusedJournal`. */
+async function clearJournalForActiveDoc(): Promise<void> {
+  if (multiDocActive && multiDocClearFocusedJournal) {
+    await multiDocClearFocusedJournal();
+    return;
+  }
+  await clearCurrentJournal();
 }
 
 async function runAutosaveAttempt(): Promise<void> {
@@ -2276,6 +2404,7 @@ async function runAutosaveAttempt(): Promise<void> {
     });
     await getHost().saveExisting(file.handle, bytes);
     flashSaveSuccess();
+    void clearJournalForActiveDoc();
   } catch (err) {
     // Autosave failures are noisy if we alert(); the user will
     // notice manual saves failing if anything's actually broken.
@@ -2362,8 +2491,78 @@ function countSummary(doc: PMNode): string {
 
 // Boot: if multi-doc workspace is enabled, hand off to the multi-pane
 // shell. Otherwise mount the starter doc in the single-doc shell.
+// Crash recovery runs after the editor is up (so the recovery modal
+// has somewhere to mount over).
 if (settings.get('multiDocWorkspace')) {
-  void import('./multi-pane-shell.js').then((m) => m.mountMultiPaneShell());
+  void import('./multi-pane-shell.js').then(async (m) => {
+    m.mountMultiPaneShell();
+    await runStartupRecovery();
+  });
 } else {
   mountView(currentDoc);
+  void runStartupRecovery();
+}
+
+/** Startup recovery — read any unsaved journals from the previous
+ *  session and surface the recovery modal if there are any. The
+ *  user's per-entry decisions drive what gets loaded back / dropped
+ *  / kept for next launch. */
+async function runStartupRecovery(): Promise<void> {
+  const host = getHost();
+  if (!host.journalsSupported) return;
+  let entries: Awaited<ReturnType<typeof host.readJournals>>;
+  try {
+    entries = await host.readJournals();
+  } catch (err) {
+    console.warn('Failed to read recovery journals:', err);
+    return;
+  }
+  if (entries.length === 0) return;
+  // Lazy-load the modal so its CSS / JS isn't paid for in the
+  // common (no-recovery) case.
+  const { openRecoveryModal } = await import('./recovery-ui.js');
+  const result = await openRecoveryModal(entries);
+  for (const entry of entries) {
+    const decision = result.decisions.get(entry.uid) ?? 'keep';
+    if (decision === 'discard') {
+      void host.deleteJournal(entry.uid).catch((err) =>
+        console.warn('Failed to discard journal:', err),
+      );
+    } else if (decision === 'recover') {
+      await applyRecovery(entry);
+    }
+    // 'keep' = leave the journal in place for next launch.
+  }
+}
+
+/** Load a recovered doc into the editor. Routes through multi-doc
+ *  or single-doc paths depending on the current shell. */
+async function applyRecovery(entry: Awaited<ReturnType<typeof getHost>>['readJournals'] extends () => Promise<infer A> ? (A extends readonly (infer E)[] ? E : never) : never): Promise<void> {
+  let parsed: ReturnType<typeof parseNative>;
+  try {
+    parsed = parseNative(entry.bytes);
+  } catch (err) {
+    console.warn(`Failed to parse recovery journal for ${entry.uid}:`, err);
+    return;
+  }
+  if (multiDocActive && multiDocOnRecoveredDoc) {
+    await multiDocOnRecoveredDoc({
+      uid: entry.uid,
+      filename: entry.filename,
+      handle: entry.handle,
+      format: entry.format,
+      doc: parsed.doc,
+      threads: parsed.threads,
+    });
+    return;
+  }
+  // Single-doc: the recovered doc replaces the starter doc.
+  mountView(parsed.doc, parsed.threads.length > 0 ? parsed.threads : undefined);
+  currentDocFilename = entry.filename;
+  currentDocHandle = entry.handle;
+  currentDocFormat = entry.format;
+  // Reuse the original uid so a re-crash overwrites the same
+  // journal slot (rather than accumulating new ones).
+  currentDocUid = entry.uid;
+  updateWindowTitle();
 }

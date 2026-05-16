@@ -20,6 +20,7 @@ export type {
   FileFilter,
   OpenFileOptions,
   SaveAsOptions,
+  JournalEntry,
 } from './types.js';
 
 declare global {
