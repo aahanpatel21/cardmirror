@@ -23,6 +23,7 @@ import type {
  *  (and not imported from the desktop workspace) so the editor
  *  doesn't take a build-time dependency on Electron-specific code. */
 interface ElectronAPI {
+  clipboardReadText(): Promise<string>;
   pickDirectory(opts?: {
     defaultPath?: string;
     title?: string;
@@ -74,6 +75,10 @@ export class ElectronHost implements Host {
   readonly supportsInPlaceSave = true;
   readonly journalsSupported = true;
   readonly canSpawnWindow = true;
+
+  async clipboardReadText(): Promise<string> {
+    return api().clipboardReadText();
+  }
 
   async pickDirectory(opts?: {
     defaultPath?: string;

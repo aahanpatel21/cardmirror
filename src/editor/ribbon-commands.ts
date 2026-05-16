@@ -35,6 +35,7 @@
 
 import { Fragment, type Mark, type MarkType, type Node as PMNode, type ResolvedPos } from 'prosemirror-model';
 import { Selection, TextSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state';
+import type { EditorView } from 'prosemirror-view';
 import { toggleMark } from 'prosemirror-commands';
 import { schema } from '../schema/index.js';
 import { newHeadingId } from '../schema/ids.js';
@@ -45,8 +46,8 @@ import {
   uncondense,
   toggleCase,
 } from './condense.js';
-import { togglePlainPaste } from './paste-plugin.js';
-import { getHost } from './host/index.js';
+import { applyPlainPasteFromText, togglePlainPaste } from './paste-plugin.js';
+import { getElectronHost, getHost } from './host/index.js';
 import {
   selectSimilar,
   getOperatingRanges,
@@ -2136,12 +2137,45 @@ export function copyPreviousCite(): Command {
  * the flag, strips formatting, and disarms. See
  * `src/editor/paste-plugin.ts` for the consumer side.
  *
- * The Command here is purely the flag-toggle. All the actual paste
- * work happens in the plugin's `handlePaste` prop where the browser
- * has already produced clipboard data via the user's Ctrl+V.
+ * On Electron we have full clipboard read access, so F2 instead
+ * fires an immediate paste of the clipboard's plain-text content —
+ * matching Verbatim's one-keystroke behavior. The browser keeps
+ * the toggle workflow because Chromium's clipboard-permission UI
+ * forbids a programmatic synchronous read.
  */
-export function pasteAsText(): Command {
-  return togglePlainPaste();
+export function pasteAsText(
+  ctx: Pick<
+    RibbonContext,
+    'condenseOnPaste' | 'paragraphIntegrity' | 'usePilcrows' | 'headingMode'
+  >,
+): Command {
+  return (state, dispatch, view) => {
+    if (!dispatch) return true;
+    const electron = getElectronHost();
+    if (electron && view) {
+      void runElectronPlainPaste(electron, view, ctx);
+      return true;
+    }
+    return togglePlainPaste()(state, dispatch);
+  };
+}
+
+async function runElectronPlainPaste(
+  electron: { clipboardReadText: () => Promise<string> },
+  view: EditorView,
+  ctx: Pick<
+    RibbonContext,
+    'condenseOnPaste' | 'paragraphIntegrity' | 'usePilcrows' | 'headingMode'
+  >,
+): Promise<void> {
+  let text: string;
+  try {
+    text = await electron.clipboardReadText();
+  } catch (err) {
+    console.warn('F2 plain paste — clipboard read failed:', err);
+    return;
+  }
+  applyPlainPasteFromText(view, text, ctx);
 }
 
 /**
@@ -2966,7 +3000,7 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   uncondense: 'Uncondense',
   toggleCase: 'Toggle case',
   copyPreviousCite: 'Copy previous cite',
-  pasteAsText: 'Toggle plain-paste mode',
+  pasteAsText: 'Paste plain text',
   clearToNormal: 'Clear',
   shrink: 'Shrink card text',
   createReference: 'Create Reference',
@@ -3259,7 +3293,7 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
     case 'toggleCase': return toggleCase();
     case 'copyPreviousCite': return copyPreviousCite();
     case 'pasteAsText':
-      return pasteAsText();
+      return pasteAsText(ctx);
     case 'clearToNormal':
       return clearToNormal();
     case 'shrink':

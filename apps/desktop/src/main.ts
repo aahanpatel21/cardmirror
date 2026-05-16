@@ -20,6 +20,7 @@ import {
   BrowserWindow,
   Menu,
   MenuItemConstructorOptions,
+  clipboard,
   dialog,
   ipcMain,
 } from 'electron';
@@ -117,6 +118,13 @@ function bytesToBuffer(bytes: unknown): Buffer {
 }
 
 // ─── IPC handlers ──────────────────────────────────────────────────
+
+/** F2 (Paste Plain Text) on Electron: the renderer asks main for
+ *  the clipboard's plain-text content and pastes it immediately
+ *  (no Ctrl/Cmd+V required, no sticky toggle). Web edition keeps
+ *  its arm-then-paste flow because navigator.clipboard.readText
+ *  needs a per-press permission grant under Chromium's web policy. */
+ipcMain.handle('host:clipboard-read-text', () => clipboard.readText());
 
 ipcMain.handle(
   'host:pick-directory',

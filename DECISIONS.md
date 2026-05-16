@@ -3,6 +3,42 @@
 Append-only log of implementation decisions and their rationale. Each
 entry has a date, a one-line summary, and the reasoning.
 
+## 2026-05-15: F2 on Electron is a one-keystroke plain paste
+
+Restored Verbatim-parity F2 behavior on Electron: pressing F2
+immediately reads the system clipboard and pastes it as plain
+text, with the same condense-after-paste logic the existing
+armed-mode path uses. No sticky toggle, no follow-up Ctrl/Cmd+V.
+
+The browser edition keeps the sticky-toggle workaround — Chromium
+won't allow a synchronous programmatic clipboard read without
+the per-call permission UI (Mozilla doesn't even offer a
+persistent grant), so a one-keystroke paste isn't possible there.
+
+Mechanism:
+
+  - New `host:clipboard-read-text` IPC. Main runs
+    `clipboard.readText()` (the Electron module, not the web
+    API — bypasses the sandbox renderer's Chromium-style
+    permission gating). Preload + ElectronHost expose
+    `clipboardReadText()`.
+  - `paste-plugin.ts` gets a new `applyPlainPasteFromText(view,
+    text, ctx)` helper that does the same selection-replace +
+    optional condense the armed-mode `handlePaste` already
+    does. Single source of truth for the paste body.
+  - `pasteAsText(ctx)` (the ribbon command) branches on host. On
+    Electron it fires `clipboardReadText()` and calls
+    `applyPlainPasteFromText` with the result; on browser it
+    falls back to `togglePlainPaste()`. The plain-paste ribbon
+    button (the `T` in the doc-ops cluster) now routes through
+    `runRibbon('pasteAsText')` so its click path matches the F2
+    key path — no separate Electron-vs-browser logic inside
+    `editor/index.ts`.
+  - Label updated from "Toggle plain-paste mode" to "Paste plain
+    text" so it reads cleanly under both behaviors. Browser
+    keeps the `aria-pressed` armed-state mirroring via the
+    plugin's `onArmedChange` callback.
+
 ## 2026-05-15: Read mode is window-local (transient setting)
 
 Read mode now belongs to the window that toggled it. Previously,

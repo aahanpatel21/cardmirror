@@ -53,7 +53,7 @@ import { namedStyleNormalizerPlugin } from './named-style-normalizer-plugin.js';
 import { fontSizeClassPlugin } from './font-size-class-plugin.js';
 import { buildSimilarSelectionPlugin } from './similar-selection-plugin.js';
 import { tableEditing, columnResizing } from 'prosemirror-tables';
-import { buildPastePlugin, togglePlainPaste } from './paste-plugin.js';
+import { buildPastePlugin } from './paste-plugin.js';
 import { buildImageNodeFromBlob, insertImageNode } from './image-insert.js';
 import { imageContextMenuPlugin } from './image-context-menu-plugin.js';
 import { editorDragSurface } from './drag-editor-surface.js';
@@ -1305,15 +1305,17 @@ function syncParagraphIntegrityBtn(): void {
 }
 syncParagraphIntegrityBtn();
 
-// Plain Paste toggle — clicking flips the paste-plugin's armed flag,
-// same as pressing F2. The plugin's `onArmedChange` callback mirrors
-// the new state back into `aria-pressed` (via updatePlainPasteIndicator).
+// Plain Paste button — routes through `runRibbon('pasteAsText')` so
+// it follows the same host-aware path the F2 keymap uses. Browser:
+// flips the paste-plugin's armed flag (aria-pressed mirrors that
+// state via `onArmedChange`); Electron: fires an immediate plain
+// paste from the system clipboard.
 if (plainPasteToggleBtn) {
   plainPasteToggleBtn.addEventListener('mousedown', (e) => e.preventDefault());
-  plainPasteToggleBtn.addEventListener('click', () => {
-    if (!view) return;
-    togglePlainPaste()(view.state, view.dispatch.bind(view));
-  });
+  plainPasteToggleBtn.addEventListener('click', () => runRibbon('pasteAsText'));
+  if (getHost().kind === 'electron') {
+    plainPasteToggleBtn.title = 'Paste plain text (F2)';
+  }
 }
 
 // ---- Font-size input + dropdown ----

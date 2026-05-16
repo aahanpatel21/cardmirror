@@ -36,6 +36,7 @@
 
 import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from 'prosemirror-state';
 import { DOMParser as PMDOMParser, Fragment, Slice, type Node as PMNode } from 'prosemirror-model';
+import type { EditorView } from 'prosemirror-view';
 import { schema } from '../schema/index.js';
 import { condenseBranchC, condenseMerge } from './condense.js';
 import { buildImageNodeFromBlob, insertImageNode } from './image-insert.js';
@@ -93,7 +94,10 @@ export function isPlainPasteArmed(state: EditorState): boolean {
   return plainPasteKey.getState(state)?.plainPasteArmed ?? false;
 }
 
-/** Toggle the plain-paste flag. Used by F2. */
+/** Toggle the plain-paste flag. Used by F2 in the browser edition,
+ *  where Chromium's clipboard-permission UI forbids a synchronous
+ *  one-keystroke paste. Electron's F2 path uses
+ *  `applyPlainPasteFromText` directly instead. */
 export function togglePlainPaste(): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean {
   return (state, dispatch) => {
     if (!dispatch) return true;
@@ -101,6 +105,38 @@ export function togglePlainPaste(): (state: EditorState, dispatch?: (tr: Transac
     dispatch(state.tr.setMeta(plainPasteKey, { plainPasteArmed: !armed }));
     return true;
   };
+}
+
+/** Replace the current selection with `text` as plain inline
+ *  content, with the same condense-after-paste behavior the armed-
+ *  mode `handlePaste` path uses. Exported for Electron's F2 flow,
+ *  which fetches the clipboard via IPC and pastes directly without
+ *  the browser-only "arm then Ctrl/Cmd+V" dance. No-op when `text`
+ *  is empty. */
+export function applyPlainPasteFromText(
+  view: EditorView,
+  text: string,
+  ctx: {
+    condenseOnPaste: () => boolean;
+    paragraphIntegrity: () => boolean;
+    usePilcrows: () => boolean;
+    headingMode: () => 'strict' | 'respect' | 'demolish';
+  },
+): void {
+  if (!text) return;
+  const slice = buildPlainTextSlice(text);
+  let tr = view.state.tr.replaceSelection(slice);
+  tr.setStoredMarks([]);
+  view.dispatch(tr.scrollIntoView());
+  if (ctx.condenseOnPaste()) {
+    const cmd = ctx.paragraphIntegrity()
+      ? condenseBranchC()
+      : condenseMerge({
+          withPilcrows: ctx.usePilcrows(),
+          headingMode: ctx.headingMode(),
+        });
+    cmd(view.state, view.dispatch.bind(view));
+  }
 }
 
 export function buildPastePlugin(ctx: PastePluginCtx): Plugin<PluginState> {

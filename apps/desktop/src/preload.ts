@@ -29,6 +29,12 @@ interface JournalEntry {
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  /** Read the system clipboard's plain-text content. Used by the
+   *  F2 (Paste Plain) command on Electron — bypasses the Chromium
+   *  web clipboard-permission UI that forces the web edition into
+   *  a sticky-toggle workaround. */
+  clipboardReadText: () => ipcRenderer.invoke('host:clipboard-read-text'),
+
   /** Open the native directory-picker dialog. Used by the
    *  settings UI for the "default folder" rows. Returns the
    *  chosen absolute path or null if the user cancelled. */
