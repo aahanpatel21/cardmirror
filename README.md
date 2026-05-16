@@ -62,16 +62,26 @@ is installed.
    folder. Double-click it to unzip.
 5. You'll get a folder called **`cardmirror-main`**. Move it
    somewhere you can find later — your **Desktop** is fine, or
-   **Documents**. So the path to it ends up looking like:
-   - macOS: `/Users/yourname/Desktop/cardmirror-main`
-   - Windows: `C:\Users\yourname\Desktop\cardmirror-main`
-   - Linux: `/home/yourname/Desktop/cardmirror-main`
-6. **Open the `cardmirror-main` folder** so you can see what's
-   inside. You should see files like `README.md`, `package.json`,
-   `index.html`, and folders like `src/` and `apps/`. **This is
-   the folder you'll point your terminal at in step 3** — not the
-   outer Desktop folder, not the `cardmirror-main.zip` archive,
-   but the unzipped `cardmirror-main` folder itself.
+   **Documents**.
+6. **Open the `cardmirror-main` folder you just unzipped, and look
+   inside.** Two possibilities:
+   - You see `README.md`, `package.json`, `index.html`, and folders
+     like `src/` and `apps/` → this is the right folder. The path
+     looks like:
+     - macOS: `/Users/yourname/Desktop/cardmirror-main`
+     - Windows: `C:\Users\yourname\Desktop\cardmirror-main`
+     - Linux: `/home/yourname/Desktop/cardmirror-main`
+   - You see *another* folder called `cardmirror-main` and nothing
+     else → some unzippers double-wrap. **Open that inner folder.**
+     *It* contains the files (`README.md`, `package.json`, etc.)
+     and *it* is the one you want. The path looks like:
+     - macOS: `/Users/yourname/Desktop/cardmirror-main/cardmirror-main`
+     - Windows: `C:\Users\yourname\Desktop\cardmirror-main\cardmirror-main`
+     - Linux: `/home/yourname/Desktop/cardmirror-main/cardmirror-main`
+
+   Either way, **the folder that directly contains `package.json`
+   is the one your terminal needs to be in** for step 3 — not the
+   parent folder, not the `.zip` archive.
 
 ### 3. Open a "terminal" inside that folder
 
@@ -113,21 +123,20 @@ CardMirror folder*, so you don't have to navigate anywhere.
   file manager onto the terminal window — the path gets pasted in
   — then press **Enter**.
 
-You should now have a terminal window open, "inside" the
-`cardmirror-main` folder.
+You should now have a terminal window open, "inside" the folder
+that holds `package.json`.
 
-**Quick sanity check before continuing.** The terminal prompt
-typically shows the current folder. You're in the right place if
-it shows a path ending in `cardmirror-main`, e.g.:
+**Quick sanity check before continuing.** Type this and press
+Enter:
 
-- macOS / Linux: prompt ends with `…/cardmirror-main %` or
-  `…/cardmirror-main $`
-- Windows Command Prompt: prompt shows `…\cardmirror-main>`
+- macOS / Linux: `ls`
+- Windows: `dir`
 
-If the prompt shows something else (like `…/Desktop>` or just
-your home folder), the terminal isn't inside the right folder
-yet — go back to step 3 and make sure you're opening it from
-*inside* `cardmirror-main`, not from the folder that contains it.
+You should see `package.json`, `README.md`, `index.html`, plus
+folders like `src` and `apps`. If you don't see those (or you see
+just a single `cardmirror-main` folder), your terminal is one
+folder too high up — close it and reopen from inside the folder
+that *directly contains* `package.json` (see step 2.6).
 
 The next two steps are just two commands you type into that
 window.
