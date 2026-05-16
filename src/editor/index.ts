@@ -7,7 +7,7 @@
  * navigation panel, send-to-speech, drag-and-drop, etc.) is later work.
  */
 
-import { EditorState, Plugin } from 'prosemirror-state';
+import { EditorState, Plugin, Selection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { keymap } from 'prosemirror-keymap';
 import { history, undo, redo } from 'prosemirror-history';
@@ -89,6 +89,39 @@ import { countReadAloudWords, formatReadTime, formatNumber } from './word-count.
 import { getHost, getElectronHost, type OpenedFile, type JournalEntry } from './host/index.js';
 
 const editorEl = document.getElementById('editor')!;
+
+/** Mousedown handler: when the user clicks below the rendered
+ *  content of `view.dom` but still inside the editor wrapper, drop
+ *  the cursor at the doc's end and focus the view. PM's built-in
+ *  click handling only fires for clicks that land inside the
+ *  contenteditable surface; on a near-empty doc (a single empty
+ *  paragraph) `view.dom`'s rendered height is ~20px, so clicks in
+ *  the editor's empty whitespace below it do nothing — the user
+ *  has to aim at the tiny rendered paragraph. This handler closes
+ *  that gap. Wired once per editor surface (single-doc + each
+ *  multi-pane DocRecord). Restrict to clicks OUTSIDE `view.dom`
+ *  AND vertically below its bottom so we never hijack a click PM
+ *  would handle naturally. */
+export function attachClickBelowToEnd(
+  wrapperEl: HTMLElement,
+  getView: () => EditorView | null,
+): void {
+  wrapperEl.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    const v = getView();
+    if (!v) return;
+    if (e.target instanceof Node && v.dom.contains(e.target)) return;
+    const rect = v.dom.getBoundingClientRect();
+    if (e.clientY <= rect.bottom) return;
+    e.preventDefault();
+    const tr = v.state.tr.setSelection(Selection.atEnd(v.state.doc));
+    v.dispatch(tr.scrollIntoView());
+    v.focus();
+  });
+}
+// Wire it for the single-doc editor surface. Multi-pane wires its
+// own per-record surface in `buildDocRecord`.
+attachClickBelowToEnd(editorEl, () => view);
 const navEl = document.getElementById('nav-panel')!;
 const openBtn = document.getElementById('open-btn') as HTMLButtonElement;
 const newBtn = document.getElementById('new-btn') as HTMLButtonElement | null;
@@ -197,10 +230,12 @@ async function runNewSpeechDocumentSingleDoc(): Promise<void> {
 
   const format = settings.get('defaultSpeechDocFormat');
   const filename = formatSpeechFilename(trimmed, format);
-  // Pocket heading is the filename minus its extension — matches
-  // multi-pane's `createNewSpeechDocument` shape.
-  const pocketTitle = filename.replace(/\.(cmir|docx)$/i, '');
-  const docNode = makeSpeechBlankDoc(pocketTitle);
+  // Pocket heading is the filename minus its extension when the
+  // user has opted in; otherwise start fully blank. Off case lets
+  // users title their speeches inline rather than via the chip.
+  const docNode = settings.get('includeSpeechDocPocket')
+    ? makeSpeechBlankDoc(filename.replace(/\.(cmir|docx)$/i, ''))
+    : makeBlankNewDoc();
 
   let docBytes: Uint8Array;
   try {

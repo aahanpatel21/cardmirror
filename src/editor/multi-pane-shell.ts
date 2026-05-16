@@ -59,6 +59,7 @@ import {
   applyReadModeToTarget,
   setReadModeStateResolver,
   setAutosaveStateResolver,
+  attachClickBelowToEnd,
 } from './index.js';
 
 type SlotId = 'slot1' | 'slot2' | 'slot3';
@@ -1308,14 +1309,15 @@ class MultiPaneShell {
     if (!target) return;
     const format = settings.get('defaultSpeechDocFormat');
     const filename = formatSpeechFilename(trimmed, format);
-    // Title the Pocket heading with the filename (sans extension) —
-    // matches what shows in the slot chip at the top of the pane,
-    // so the F4 row reads e.g. "Speech 2AC 5-15 12-30AM" instead
-    // of the generic "Untitled" the New-doc path uses. Below the
-    // pocket sits a trailing empty paragraph the cursor lands in,
-    // ready to receive ` sends.
-    const pocketTitle = filename.replace(/\.(cmir|docx)$/i, '');
-    const doc = makeSpeechBlankDoc(pocketTitle);
+    const includePocket = settings.get('includeSpeechDocPocket');
+    // With pocket: Pocket heading carrying the filename (sans
+    // extension) + trailing paragraph — Verbatim parity, the F4
+    // row reads e.g. "Speech 2AC 5-15 12-30AM". Without: a fully
+    // blank doc (one paragraph) for users who'd rather title
+    // inline.
+    const doc = includePocket
+      ? makeSpeechBlankDoc(filename.replace(/\.(cmir|docx)$/i, ''))
+      : makeBlankDoc();
     const slot = this.slots[target];
     // Format follows the user's `defaultSpeechDocFormat` setting —
     // `.docx` (Verbatim parity) by default, `.cmir` for autosave-
@@ -1326,16 +1328,17 @@ class MultiPaneShell {
       format,
     });
     slot.push(record);
-    // `slot.push` focused the new view; place the cursor in the
-    // trailing paragraph so the first ` press inserts BELOW the
-    // pocket rather than inside it. Position math: pocket node
-    // occupies [0, pocket.nodeSize), the next paragraph starts at
-    // pocket.nodeSize, and the inside-the-paragraph cursor sits at
-    // pocket.nodeSize + 1 (just past the paragraph's opening
-    // boundary token).
-    const pocketSize = doc.firstChild!.nodeSize;
+    // `slot.push` focused the new view. Cursor placement:
+    //   - With pocket: drop into the trailing paragraph so the
+    //     first ` press inserts BELOW the pocket rather than
+    //     inside it. Position math: pocket node occupies
+    //     [0, pocket.nodeSize); paragraph cursor lives at
+    //     pocket.nodeSize + 1.
+    //   - Without pocket: position 1 (inside the only paragraph)
+    //     is the natural cursor spot.
+    const cursorPos = includePocket ? doc.firstChild!.nodeSize + 1 : 1;
     const tr = record.view.state.tr.setSelection(
-      TextSelection.create(record.view.state.doc, pocketSize + 1),
+      TextSelection.create(record.view.state.doc, cursorPos),
     );
     record.view.dispatch(tr);
     record.view.focus();
@@ -1527,6 +1530,11 @@ function buildDocRecord(
 
   const dragSurface = new EditorDragSurface();
   dragSurface.attach(view, editorEl);
+  // Click below all content → drop the cursor at the doc's end +
+  // focus. Matches the single-doc behavior; closes the "I can't
+  // tap into an empty doc unless I aim at its tiny rendered line"
+  // gap for per-pane editors too.
+  attachClickBelowToEnd(editorEl, () => view);
 
   const record: DocRecord = {
     uid: opts.uid ?? newDocUid(),

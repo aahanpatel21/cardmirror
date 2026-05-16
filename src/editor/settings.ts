@@ -162,6 +162,12 @@ export interface Settings {
    *  background save path skips .docx because `toDocx` is too
    *  expensive to run on a debounce). */
   defaultSpeechDocFormat: 'cmir' | 'docx';
+  /** Whether "New Speech Document" seeds the doc with a Pocket
+   *  heading carrying the speech's name. On (default) matches
+   *  Verbatim's `NewSpeech`. Off creates a fully blank doc — one
+   *  empty paragraph — for users who'd rather title their speeches
+   *  inline. */
+  includeSpeechDocPocket: boolean;
   /** Whether to show the cite preview on hover in the nav pane. */
   showCitePreview: boolean;
   /** Browser-level spellcheck on the editor surface. Off by default
@@ -511,6 +517,7 @@ const DEFAULTS: Settings = {
   showOnboardingStarter: true,
   defaultSpeechDocFolder: '',
   defaultSpeechDocFormat: 'docx',
+  includeSpeechDocPocket: true,
   showCitePreview: true,
   editorSpellcheck: false,
   // Default OFF — autosave is meaningful only when the user has
@@ -700,6 +707,14 @@ export const SETTING_METADATA: SettingMeta[] = [
     description:
       'Docx is the Verbatim-compatible default — best when you\'re sharing speech docs with teammates who use Verbatim. Picking .cmir enables autosave on the new doc (autosave only fires for .cmir files; the Docx serializer is too expensive to run on a debounce).',
     kind: 'speechDocFormat',
+    category: 'general',
+  },
+  {
+    key: 'includeSpeechDocPocket',
+    label: 'Seed new speech docs with a Pocket heading',
+    description:
+      'When on (default), New Speech Document opens with a Pocket carrying the speech\'s name (e.g. "Speech 1NC 5-15 9-30AM") at the top, matching Verbatim. Turn off to start with a fully blank doc — one empty paragraph.',
+    kind: 'toggle',
     category: 'general',
   },
   {
@@ -1056,6 +1071,8 @@ function sanitize(s: Settings): Settings {
         : '',
     defaultSpeechDocFormat:
       s.defaultSpeechDocFormat === 'cmir' ? 'cmir' : 'docx',
+    includeSpeechDocPocket:
+      s.includeSpeechDocPocket === false ? false : true,
     showCitePreview: !!s.showCitePreview,
     editorSpellcheck: !!s.editorSpellcheck,
     autosaveEnabled: !!s.autosaveEnabled,
