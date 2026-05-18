@@ -25,6 +25,11 @@ internal refactors live in commit messages, not here.
   status-bar reset button remains the discoverable affordance).
 - Keyboard-shortcut command labels (Settings → Keybindings) now
   use consistent title casing across the board.
+- Re-pressing a heading shortcut (F4 / F5 / F6 / F7 / Mod-F7 /
+  Mod-F8) on a paragraph that already has that heading style now
+  strips the paragraph's indentation while keeping the heading
+  style and all other formatting intact, instead of being a
+  no-op.
 - Opening a doc now starts both the editor and the nav pane
   scrolled to the top, instead of inheriting the previous doc's
   scroll position.

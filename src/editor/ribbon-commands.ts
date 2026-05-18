@@ -202,6 +202,32 @@ function stripPromotionMarksOnFragment(fragment: Fragment): Fragment {
 }
 
 /**
+ * Same-type re-press helper: strip the `indent` attr off the node at
+ * `depth` while preserving its type and every other attr. Returns
+ * true unconditionally — the keystroke is consumed either way.
+ * Used by every heading shortcut command's already-this-type branch
+ * so re-pressing the shortcut clears indentation while leaving the
+ * heading style itself intact.
+ */
+function stripIndentAtDepth(
+  state: EditorState,
+  dispatch: ((tr: Transaction) => void) | undefined,
+  depth: number,
+): boolean {
+  const $from = state.selection.$from;
+  const node = $from.node(depth);
+  if ((node.attrs['indent'] ?? 0) === 0) return true;
+  if (!dispatch) return true;
+  const tr = state.tr.setNodeMarkup(
+    $from.before(depth),
+    null,
+    { ...node.attrs, indent: 0 },
+  );
+  dispatch(tr);
+  return true;
+}
+
+/**
  * F4 / F5 / F6 — convert the current paragraph or heading to the target
  * doc-level heading type.
  */
@@ -218,7 +244,7 @@ export function setHeading(typeName: HeadingTypeName): Command {
     if ($from.depth === 1) {
       const parent = $from.parent;
       const pname = parent.type.name;
-      if (pname === typeName) return true;
+      if (pname === typeName) return stripIndentAtDepth(state, dispatch, 1);
       if (!DOC_LEVEL_CONVERTIBLE.has(pname)) return false;
       if (!dispatch) return true;
       // Preserve the existing id when converting between heading
@@ -294,7 +320,7 @@ export function setTag(): Command {
     }
 
     if ($from.depth === 2 && $from.parent.type.name === 'tag') {
-      return true;
+      return stripIndentAtDepth(state, dispatch, 2);
     }
 
     if (
@@ -354,7 +380,7 @@ export function setAnalytic(): Command {
       $from.node(1).type.name === 'analytic_unit' &&
       $from.node(1).firstChild === $from.parent
     ) {
-      return true;
+      return stripIndentAtDepth(state, dispatch, 2);
     }
 
     if (
@@ -395,7 +421,7 @@ export function setUndertag(): Command {
     if ($from.depth === 1) {
       const parent = $from.parent;
       const pname = parent.type.name;
-      if (pname === 'undertag') return true;
+      if (pname === 'undertag') return stripIndentAtDepth(state, dispatch, 1);
       if (!DOC_LEVEL_CONVERTIBLE.has(pname)) return false;
       if (!dispatch) return true;
       const tr = state.tr.setNodeMarkup(
@@ -412,7 +438,7 @@ export function setUndertag(): Command {
 
     if ($from.depth === 2) {
       const pname = $from.parent.type.name;
-      if (pname === 'undertag') return true;
+      if (pname === 'undertag') return stripIndentAtDepth(state, dispatch, 2);
       if (pname === 'card_body' || pname === 'cite_paragraph') {
         if (!dispatch) return true;
         const parent = $from.parent;

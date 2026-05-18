@@ -126,12 +126,29 @@ describe('setHeading (F4/F5/F6)', () => {
     expect(next!.doc.firstChild!.attrs['id']).toBe('fixed-id');
   });
 
-  it('accepts a no-op when target type matches current', () => {
+  it('accepts a no-op when target type matches current (zero indent)', () => {
     const doc = makeDoc([pocket('hello', 'same-id')]);
     const state = cursorIn(doc, (n) => n.type.name === 'pocket');
     const next = apply(state, setHeading('pocket'));
     // Command returns true but doesn't dispatch (or dispatches a no-op).
     expect(next === null || next.doc.eq(doc)).toBe(true);
+  });
+
+  it('strips indent when re-applying the same heading shortcut', () => {
+    const doc = makeDoc([
+      schema.nodes['pocket']!.create(
+        { id: 'p1', indent: 720 },
+        schema.text('hello'),
+      ),
+    ]);
+    const state = cursorIn(doc, (n) => n.type.name === 'pocket');
+    const next = apply(state, setHeading('pocket'));
+    expect(next).not.toBeNull();
+    // Type and id preserved; indent zeroed out.
+    expect(next!.doc.firstChild!.type.name).toBe('pocket');
+    expect(next!.doc.firstChild!.attrs['id']).toBe('p1');
+    expect(next!.doc.firstChild!.attrs['indent']).toBe(0);
+    expect(next!.doc.firstChild!.textContent).toBe('hello');
   });
 
   it('dissolves a card-with-only-tag to a single pocket', () => {
