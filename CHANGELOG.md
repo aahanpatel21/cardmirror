@@ -57,6 +57,10 @@ internal refactors live in commit messages, not here.
   running no longer offers to "recover" the docs you have open
   in other windows. Only the first window of an app session
   surfaces the startup-recovery sidebar.
+- Triple-click + drag now extends the selection paragraph-by-
+  paragraph (instead of switching back to character-level on the
+  first move). Matches Word and most browsers' contenteditable
+  default.
 - Right-clicking a link now opens a context menu (Open Link /
   Copy Link Address / Edit Link… / Remove Link). Open routes
   through the OS default browser via `shell.openExternal` on
