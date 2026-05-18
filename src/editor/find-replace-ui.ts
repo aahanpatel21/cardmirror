@@ -26,9 +26,12 @@ import {
   runReplaceAll,
   scrollToCurrentMatch,
   type FindReplaceState,
+  type FindSortMode,
 } from './find-replace-plugin.js';
+import { settings } from './settings.js';
 
 type Mode = 'find' | 'replace';
+export type FindBarOpenOptions = { mode: Mode; sortMode: FindSortMode };
 
 export class FindReplaceBar {
   private root: HTMLElement;
@@ -45,8 +48,14 @@ export class FindReplaceBar {
   private closeBtn: HTMLButtonElement;
   private getView: () => EditorView | null;
   private mode: Mode = 'find';
+  private sortMode: FindSortMode = 'categorized';
+  /** Cursor position captured at `open()` time. Used as the
+   *  proximity anchor so navigating through matches doesn't
+   *  shuffle the order under the user's feet. */
+  private anchor = 0;
   private setQueryTimer: ReturnType<typeof setTimeout> | null = null;
   private unsubscribeView: (() => void) | null = null;
+  private sortLabel: HTMLElement;
 
   constructor(getView: () => EditorView | null) {
     this.getView = getView;
@@ -76,6 +85,11 @@ export class FindReplaceBar {
       'W',
       'Whole word',
     );
+
+    this.sortLabel = document.createElement('span');
+    this.sortLabel.className = 'pmd-find-sort-label';
+    this.sortLabel.textContent = '';
+    findRow.appendChild(this.sortLabel);
 
     this.countLabel = document.createElement('span');
     this.countLabel.className = 'pmd-find-count';
@@ -180,14 +194,28 @@ export class FindReplaceBar {
     this.replaceAllBtn.addEventListener('click', () => this.doReplaceAll());
   }
 
-  open(mode: Mode): void {
-    this.mode = mode;
+  open(opts: FindBarOpenOptions): void {
+    this.mode = opts.mode;
+    this.sortMode = opts.sortMode;
     this.root.hidden = false;
-    this.replaceRow.hidden = mode === 'find';
+    this.replaceRow.hidden = opts.mode === 'find';
+    this.sortLabel.textContent =
+      opts.sortMode === 'proximity' ? 'proximity' : 'categorized';
+    this.sortLabel.title =
+      opts.sortMode === 'proximity'
+        ? 'Alt-F: matches ordered by proximity to the cursor only'
+        : 'Ctrl-F: matches ordered by category, then proximity. Configure category order in Settings.';
+
+    // Capture the cursor position as the proximity anchor. Stays
+    // fixed for the lifetime of this open — navigating through
+    // matches doesn't re-anchor (otherwise hopping to match 1
+    // would make match 2 the new "closest" and the order would
+    // shift under the user's feet).
+    const view = this.getView();
+    this.anchor = view ? view.state.selection.head : 0;
 
     // Seed the input with the current selection (if non-empty + within
     // a single textblock), matching the Word / VS Code pattern.
-    const view = this.getView();
     if (view && this.findInput.value === '') {
       const sel = view.state.selection;
       if (!sel.empty) {
@@ -237,6 +265,9 @@ export class FindReplaceBar {
         query,
         caseSensitive: this.caseSensitiveCheckbox.checked,
         wholeWord: this.wholeWordCheckbox.checked,
+        anchor: this.anchor,
+        sortMode: this.sortMode,
+        categoryOrder: settings.get('findCategoryOrder'),
       }),
     );
     scrollToCurrentMatch(view);

@@ -706,11 +706,15 @@ const ribbonContext: RibbonContext = {
   },
   openFind: () => {
     if (!view) return;
-    ensureFindReplaceBar().open('find');
+    ensureFindReplaceBar().open({ mode: 'find', sortMode: 'categorized' });
   },
   openFindReplace: () => {
     if (!view) return;
-    ensureFindReplaceBar().open('replace');
+    ensureFindReplaceBar().open({ mode: 'replace', sortMode: 'categorized' });
+  },
+  openFindByProximity: () => {
+    if (!view) return;
+    ensureFindReplaceBar().open({ mode: 'find', sortMode: 'proximity' });
   },
 };
 

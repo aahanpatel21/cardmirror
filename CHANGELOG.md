@@ -25,15 +25,26 @@ internal refactors live in commit messages, not here.
   status-bar reset button remains the discoverable affordance).
 - Keyboard-shortcut command labels (Settings → Keybindings) now
   use consistent title casing across the board.
-- **Find and Replace** (Ctrl-F / Ctrl-H). Floating bar in the
-  upper-right with case-sensitive and whole-word toggles, next /
-  prev navigation, a match count, Replace, and Replace All. Every
-  match is highlighted in light yellow in the doc; the
-  currently-active one gets a stronger orange band so you can
-  see what Replace will touch. Escape closes the bar and
-  restores focus to the editor. (Nav-pane integration and
-  categorized vs proximity result ordering are still on the
-  wishlist for a future release.)
+- **Find and Replace** (Ctrl-F / Ctrl-H / Alt-F). Floating bar in
+  the upper-right with case-sensitive and whole-word toggles,
+  next / prev navigation, a match count, Replace, and Replace
+  All. Every match is highlighted in light yellow; the
+  currently-active one gets a stronger orange band. Escape
+  closes and restores editor focus.
+
+  Result ordering:
+  - **Ctrl-F** (categorized): hits in headings come first, then
+    tags, then cites, then everything else. Within each group,
+    the closest match to your cursor ranks first (cursor counts
+    as the top — matches after wrap around to matches before).
+    The category priority is reorderable in Settings → General.
+  - **Alt-F** (proximity-only): ignores categories — just orders
+    by proximity to the cursor.
+  - **Ctrl-H** opens the find+replace bar with the same
+    categorized ordering as Ctrl-F.
+
+  (Nav-pane-integrated find UI is still on the wishlist; the
+  floating bar is the current shape.)
 - Re-pressing a heading shortcut (F4 / F5 / F6 / F7 / Mod-F7 /
   Mod-F8) on a paragraph that already has that heading style now
   strips the paragraph's indentation while keeping the heading

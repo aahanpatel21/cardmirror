@@ -35,7 +35,13 @@ function freshState(text: string): EditorState {
 function setQuery(
   state: EditorState,
   query: string,
-  opts: { caseSensitive?: boolean; wholeWord?: boolean } = {},
+  opts: {
+    caseSensitive?: boolean;
+    wholeWord?: boolean;
+    sortMode?: 'categorized' | 'proximity';
+    anchor?: number;
+    categoryOrder?: ('heading' | 'tag' | 'cite' | 'other')[];
+  } = {},
 ): EditorState {
   return state.apply(
     state.tr.setMeta(findReplaceKey, {
@@ -43,6 +49,12 @@ function setQuery(
       query,
       caseSensitive: !!opts.caseSensitive,
       wholeWord: !!opts.wholeWord,
+      // Tests default to proximity sort anchored at position 0 so
+      // matches stay in document order (matches the pre-sort scan
+      // order) — that's what most legacy expectations assume.
+      sortMode: opts.sortMode ?? 'proximity',
+      anchor: opts.anchor ?? 0,
+      categoryOrder: opts.categoryOrder ?? ['heading', 'tag', 'cite', 'other'],
     }),
   );
 }
@@ -160,5 +172,127 @@ describe('find-replace plugin', () => {
     });
     const next = setQuery(state, 'hello');
     expect(findReplaceKey.getState(next)!.matches.length).toBe(2);
+  });
+});
+
+describe('find ordering', () => {
+  function hat(text: string) {
+    return schema.nodes['hat']!.create({ id: null }, schema.text(text));
+  }
+  function tag(text: string) {
+    return schema.nodes['tag']!.create({ id: null }, schema.text(text));
+  }
+  function citePara(text: string) {
+    return schema.nodes['cite_paragraph']!.create(null, schema.text(text));
+  }
+  function cardBody(text: string) {
+    return schema.nodes['card_body']!.create(null, schema.text(text));
+  }
+  function cardWith(...children: import('prosemirror-model').Node[]) {
+    return schema.nodes['card']!.createChecked(null, children);
+  }
+
+  it('categorized: heading hits come before tag, cite, and body hits', () => {
+    const doc = makeDoc([
+      paragraph('foo before card'),
+      hat('foo in hat'),
+      cardWith(
+        tag('foo in tag'),
+        citePara('foo in cite'),
+        cardBody('foo in body'),
+      ),
+    ]);
+    const state = EditorState.create({
+      doc,
+      schema,
+      plugins: [findReplacePlugin()],
+    });
+    const next = setQuery(state, 'foo', {
+      sortMode: 'categorized',
+      anchor: 0,
+      categoryOrder: ['heading', 'tag', 'cite', 'other'],
+    });
+    const cats = findReplaceKey.getState(next)!.matches.map((m) => m.category);
+    expect(cats).toEqual(['heading', 'tag', 'cite', 'other', 'other']);
+  });
+
+  it('proximity: matches after the anchor come before matches before it', () => {
+    // 5 matches in order: 'foo' at positions p1 < p2 < p3 < p4 < p5.
+    // With anchor between p2 and p3, the result order should be
+    // p3, p4, p5 (after-anchor, closest-first), then p2, p1
+    // (before-anchor, closest-first).
+    const doc = makeDoc([
+      paragraph('foo one'),
+      paragraph('foo two'),
+      paragraph('foo three'),
+      paragraph('foo four'),
+      paragraph('foo five'),
+    ]);
+    const state = EditorState.create({
+      doc,
+      schema,
+      plugins: [findReplacePlugin()],
+    });
+    // First scan with proximity-from-zero so we can grab the raw
+    // match positions in doc order without sort interference.
+    const scout = setQuery(state, 'foo', { sortMode: 'proximity', anchor: 0 });
+    const docOrderFroms = findReplaceKey.getState(scout)!.matches.map((m) => m.from);
+    // Anchor between match 2 and match 3.
+    const anchor = (docOrderFroms[1]! + docOrderFroms[2]!) / 2;
+    const next = setQuery(state, 'foo', { sortMode: 'proximity', anchor });
+    const orderedFroms = findReplaceKey.getState(next)!.matches.map((m) => m.from);
+    // After-anchor first: m3, m4, m5; then before-anchor closest-first: m2, m1.
+    expect(orderedFroms).toEqual([
+      docOrderFroms[2],
+      docOrderFroms[3],
+      docOrderFroms[4],
+      docOrderFroms[1],
+      docOrderFroms[0],
+    ]);
+  });
+
+  it('categorized: within a category, ranking falls back to proximity', () => {
+    // Two paragraphs both 'other'. Anchor closer to the SECOND one
+    // → second should come first within the 'other' bucket.
+    const doc = makeDoc([
+      paragraph('foo one'),
+      paragraph('foo two'),
+    ]);
+    const state = EditorState.create({
+      doc,
+      schema,
+      plugins: [findReplacePlugin()],
+    });
+    const scout = setQuery(state, 'foo', { sortMode: 'proximity', anchor: 0 });
+    const fromsDocOrder = findReplaceKey.getState(scout)!.matches.map((m) => m.from);
+    const anchor = fromsDocOrder[1]!;
+    const next = setQuery(state, 'foo', {
+      sortMode: 'categorized',
+      anchor,
+      categoryOrder: ['heading', 'tag', 'cite', 'other'],
+    });
+    const orderedFroms = findReplaceKey.getState(next)!.matches.map((m) => m.from);
+    // The match AT or AFTER the anchor (the second one) ranks first.
+    expect(orderedFroms[0]).toBe(fromsDocOrder[1]);
+    expect(orderedFroms[1]).toBe(fromsDocOrder[0]);
+  });
+
+  it('categorized: user-defined order reshuffles categories', () => {
+    const doc = makeDoc([
+      hat('foo in hat'),
+      cardWith(tag('foo in tag')),
+    ]);
+    const state = EditorState.create({
+      doc,
+      schema,
+      plugins: [findReplacePlugin()],
+    });
+    const next = setQuery(state, 'foo', {
+      sortMode: 'categorized',
+      anchor: 0,
+      categoryOrder: ['tag', 'heading', 'cite', 'other'],
+    });
+    const cats = findReplaceKey.getState(next)!.matches.map((m) => m.category);
+    expect(cats).toEqual(['tag', 'heading']);
   });
 });

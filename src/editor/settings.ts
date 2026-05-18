@@ -172,6 +172,14 @@ export interface Settings {
    *  the start. Default off — toggling read mode keeps the
    *  viewport / cursor where they were. */
   jumpToDocTopOnReadModeToggle: boolean;
+  /** Priority order for the categorized find sort (Ctrl-F). Each
+   *  match falls into one of four categories — `heading` (pocket /
+   *  hat / block), `tag`, `cite`, `other` — and the find bar's
+   *  Next steps through matches in this order, with cursor-as-top
+   *  proximity within each category. Must be a permutation of the
+   *  four category names. Alt-F ignores this setting (proximity
+   *  only). */
+  findCategoryOrder: ('heading' | 'tag' | 'cite' | 'other')[];
   /** Whether "New Speech Document" seeds the doc with a Pocket
    *  heading carrying the speech's name. On (default) matches
    *  Verbatim's `NewSpeech`. Off creates a fully blank doc — one
@@ -529,6 +537,7 @@ const DEFAULTS: Settings = {
   defaultSpeechDocFormat: 'docx',
   defaultSaveFormat: 'docx',
   jumpToDocTopOnReadModeToggle: false,
+  findCategoryOrder: ['heading', 'tag', 'cite', 'other'],
   includeSpeechDocPocket: true,
   showCitePreview: true,
   editorSpellcheck: false,
@@ -654,6 +663,7 @@ export interface SettingMeta {
     | 'folder'
     | 'speechDocFormat'
     | 'saveFormat'
+    | 'findCategoryOrder'
     | 'password'
     | 'clod'
     | 'aiCitePrompt'
@@ -768,6 +778,14 @@ export const SETTING_METADATA: SettingMeta[] = [
     description:
       'When on, toggling read mode (in either direction) scrolls to the top of the doc and places the cursor at the start. Off by default — the viewport stays where it was.',
     kind: 'toggle',
+    category: 'general',
+  },
+  {
+    key: 'findCategoryOrder',
+    label: 'Find: category priority order',
+    description:
+      'Ctrl-F groups search results by which kind of paragraph they appear in, and Next steps through groups in this order. Within each group, the first match is whichever is closest to your cursor (the cursor counts as the top — matches AFTER it come first, then matches before, like wrap-around). Drag-style reorder via the up / down buttons. Alt-F ignores this and goes purely by proximity.',
+    kind: 'findCategoryOrder',
     category: 'general',
   },
 
@@ -1103,6 +1121,7 @@ function sanitize(s: Settings): Settings {
     defaultSaveFormat:
       s.defaultSaveFormat === 'cmir' ? 'cmir' : 'docx',
     jumpToDocTopOnReadModeToggle: !!s.jumpToDocTopOnReadModeToggle,
+    findCategoryOrder: sanitizeFindCategoryOrder(s.findCategoryOrder),
     includeSpeechDocPocket:
       s.includeSpeechDocPocket === false ? false : true,
     showCitePreview: !!s.showCitePreview,
@@ -1225,6 +1244,28 @@ function sanitize(s: Settings): Settings {
         ? s.multiDocLayoutMode
         : DEFAULTS.multiDocLayoutMode,
   };
+}
+
+function sanitizeFindCategoryOrder(
+  raw: unknown,
+): Settings['findCategoryOrder'] {
+  const valid: Settings['findCategoryOrder'] = ['heading', 'tag', 'cite', 'other'];
+  if (!Array.isArray(raw)) return valid;
+  const seen = new Set<string>();
+  const out: Settings['findCategoryOrder'] = [];
+  for (const v of raw) {
+    if (typeof v !== 'string') continue;
+    if (!valid.includes(v as Settings['findCategoryOrder'][number])) continue;
+    if (seen.has(v)) continue;
+    seen.add(v);
+    out.push(v as Settings['findCategoryOrder'][number]);
+  }
+  // Append any categories missing from `raw` (so legacy / partial
+  // saves still produce a complete permutation).
+  for (const c of valid) {
+    if (!seen.has(c)) out.push(c);
+  }
+  return out;
 }
 
 function sanitizeCustomPronouns(raw: unknown): Settings['aiPersonaCustomPronouns'] {

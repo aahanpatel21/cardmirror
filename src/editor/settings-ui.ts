@@ -320,6 +320,10 @@ class SettingsModal {
       row.appendChild(text);
       row.appendChild(buildSaveFormatEditor());
       return row;
+    } else if (meta.kind === 'findCategoryOrder') {
+      row.appendChild(text);
+      row.appendChild(buildFindCategoryOrderEditor());
+      return row;
     } else if (meta.kind === 'headingMode') {
       row.appendChild(text);
       row.appendChild(buildHeadingModeEditor());
@@ -993,6 +997,64 @@ function buildSpeechDocFormatEditor(): HTMLElement {
     row.appendChild(labelText);
     wrap.appendChild(row);
   }
+  return wrap;
+}
+
+function buildFindCategoryOrderEditor(): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'pmd-find-category-order-editor';
+  const labels: Record<string, string> = {
+    heading: 'Headings (Pocket / Hat / Block)',
+    tag: 'Tags',
+    cite: 'Cites',
+    other: 'Other (body, analytics, undertags, …)',
+  };
+
+  function render(): void {
+    wrap.innerHTML = '';
+    const order = settings.get('findCategoryOrder');
+    for (let i = 0; i < order.length; i++) {
+      const cat = order[i]!;
+      const row = document.createElement('div');
+      row.className = 'pmd-find-category-order-row';
+      const rank = document.createElement('span');
+      rank.className = 'pmd-find-category-order-rank';
+      rank.textContent = String(i + 1);
+      row.appendChild(rank);
+      const labelEl = document.createElement('span');
+      labelEl.className = 'pmd-find-category-order-label';
+      labelEl.textContent = labels[cat] ?? cat;
+      row.appendChild(labelEl);
+      const upBtn = document.createElement('button');
+      upBtn.type = 'button';
+      upBtn.className = 'pmd-find-category-order-btn';
+      upBtn.textContent = '↑';
+      upBtn.title = 'Move up';
+      upBtn.disabled = i === 0;
+      upBtn.addEventListener('click', () => swap(i, i - 1));
+      row.appendChild(upBtn);
+      const downBtn = document.createElement('button');
+      downBtn.type = 'button';
+      downBtn.className = 'pmd-find-category-order-btn';
+      downBtn.textContent = '↓';
+      downBtn.title = 'Move down';
+      downBtn.disabled = i === order.length - 1;
+      downBtn.addEventListener('click', () => swap(i, i + 1));
+      row.appendChild(downBtn);
+      wrap.appendChild(row);
+    }
+  }
+
+  function swap(a: number, b: number): void {
+    const cur = settings.get('findCategoryOrder').slice();
+    const tmp = cur[a]!;
+    cur[a] = cur[b]!;
+    cur[b] = tmp;
+    settings.set('findCategoryOrder', cur);
+    render();
+  }
+
+  render();
   return wrap;
 }
 

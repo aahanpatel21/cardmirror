@@ -41,24 +41,56 @@ import {
 } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
 
+/** Match category, derived from the containing textblock's node type
+ *  at scan time. Used by the `categorized` sort mode to bubble
+ *  structurally-significant matches to the top of the result list. */
+export type FindCategory = 'heading' | 'tag' | 'cite' | 'other';
+
+/** Sort modes the plugin supports:
+ *   - `categorized` (Ctrl-F): order by category priority (see
+ *     `categoryOrder`), then by proximity to the cursor within each
+ *     category. Matches AFTER the anchor come before matches before.
+ *   - `proximity` (Alt-F): pure proximity. Ignore category.
+ */
+export type FindSortMode = 'categorized' | 'proximity';
+
 export interface FindMatch {
   from: number;
   to: number;
+  category: FindCategory;
 }
 
 export interface FindReplaceState {
   query: string;
   caseSensitive: boolean;
   wholeWord: boolean;
+  /** Cursor anchor used for proximity ranking. Captured once at
+   *  `setQuery` time so navigating through matches doesn't shuffle
+   *  the order. Set to -1 when there's no active query. */
+  anchor: number;
+  sortMode: FindSortMode;
+  /** Category priority used by `categorized` sort. Lower index ==
+   *  higher priority. Ignored when sortMode is `proximity`. */
+  categoryOrder: FindCategory[];
   matches: FindMatch[];
   currentIndex: number;
 }
 
 type Meta =
-  | { type: 'setQuery'; query: string; caseSensitive: boolean; wholeWord: boolean }
+  | {
+      type: 'setQuery';
+      query: string;
+      caseSensitive: boolean;
+      wholeWord: boolean;
+      anchor: number;
+      sortMode: FindSortMode;
+      categoryOrder: FindCategory[];
+    }
   | { type: 'navigate'; dir: 1 | -1 }
   | { type: 'setCurrentIndex'; index: number }
   | { type: 'clear' };
+
+const DEFAULT_CATEGORY_ORDER: FindCategory[] = ['heading', 'tag', 'cite', 'other'];
 
 export const findReplaceKey = new PluginKey<FindReplaceState>('find-replace');
 
@@ -76,10 +108,24 @@ function isWordChar(ch: string): boolean {
   );
 }
 
+/** Map a textblock node type name to its match category. The
+ *  three doc-level outline heading types collapse to `heading`;
+ *  card-anchor `tag` and `cite_paragraph` each get their own
+ *  category; everything else (card_body, paragraph, analytic,
+ *  undertag, table_cell, ...) is `other`. */
+function categoryForTextblockType(name: string): FindCategory {
+  if (name === 'pocket' || name === 'hat' || name === 'block') return 'heading';
+  if (name === 'tag') return 'tag';
+  if (name === 'cite_paragraph') return 'cite';
+  return 'other';
+}
+
 /** Scan the doc for every hit of `query`. Walks the plain
  *  `textBetween` representation of each textblock — matches that
  *  span textblock boundaries are intentionally not supported (Word
- *  + VS Code behave the same way for paragraph-spanning text). */
+ *  + VS Code behave the same way for paragraph-spanning text).
+ *  Returns matches in document order (sorting layered on top by
+ *  the caller). */
 function findMatches(
   state: EditorState,
   query: string,
@@ -93,6 +139,7 @@ function findMatches(
     if (!node.isTextblock) return true;
     const text = node.textContent;
     if (!text) return false;
+    const category = categoryForTextblockType(node.type.name);
     const hay = caseSensitive ? text : text.toLowerCase();
     let searchFrom = 0;
     while (searchFrom <= hay.length - needleNorm.length) {
@@ -113,7 +160,11 @@ function findMatches(
       // is the start of its inline content. `idx` is a character
       // offset inside `textContent` — which for plain text-only
       // textblocks equals the inline character offset.
-      out.push({ from: pos + 1 + idx, to: pos + 1 + idx + needleNorm.length });
+      out.push({
+        from: pos + 1 + idx,
+        to: pos + 1 + idx + needleNorm.length,
+        category,
+      });
       searchFrom = idx + needleNorm.length;
     }
     // Don't descend into the textblock's inline content — we already
@@ -123,7 +174,62 @@ function findMatches(
   return out;
 }
 
+/** Proximity comparator: matches AFTER the anchor come before
+ *  matches before the anchor (so the first hit on Next is the next
+ *  hit downstream of the cursor); within each side, the closer
+ *  match wins. Equal-distance ties fall back to absolute position
+ *  order for a stable sort. */
+function compareByProximity(
+  a: FindMatch,
+  b: FindMatch,
+  anchor: number,
+): number {
+  const da = a.from - anchor;
+  const db = b.from - anchor;
+  const aAfter = da >= 0;
+  const bAfter = db >= 0;
+  if (aAfter && !bAfter) return -1;
+  if (!aAfter && bAfter) return 1;
+  const diff = Math.abs(da) - Math.abs(db);
+  if (diff !== 0) return diff;
+  return a.from - b.from;
+}
+
+/** Apply the chosen sort mode in place. Categorized: by category
+ *  index in `order`, then proximity. Proximity: just proximity. */
+function sortMatches(
+  matches: FindMatch[],
+  sortMode: FindSortMode,
+  anchor: number,
+  order: FindCategory[],
+): void {
+  if (sortMode === 'proximity') {
+    matches.sort((a, b) => compareByProximity(a, b, anchor));
+    return;
+  }
+  // Look up category priority once per match (small set, but cheap
+  // to memoize anyway).
+  const prio: Record<FindCategory, number> = {
+    heading: order.indexOf('heading'),
+    tag: order.indexOf('tag'),
+    cite: order.indexOf('cite'),
+    other: order.indexOf('other'),
+  };
+  // Any category absent from a user-mangled order falls back to
+  // last position so it's still searchable.
+  for (const k of ['heading', 'tag', 'cite', 'other'] as FindCategory[]) {
+    if (prio[k] < 0) prio[k] = order.length;
+  }
+  matches.sort((a, b) => {
+    const cmp = prio[a.category] - prio[b.category];
+    if (cmp !== 0) return cmp;
+    return compareByProximity(a, b, anchor);
+  });
+}
+
 /** Recompute matches for the new doc when the query is non-empty.
+ *  Sorts via the saved `sortMode` + `anchor` + `categoryOrder` so
+ *  doc edits don't shuffle the ranking the user is navigating.
  *  `currentIndex` is preserved if the current match still exists in
  *  the new match set (matched by from-position); otherwise it's
  *  clamped to the nearest valid index, or -1 if there are no
@@ -137,6 +243,7 @@ function rescanAfterDocChange(
   }
   const matches = findMatches(state, prev.query, prev.caseSensitive, prev.wholeWord);
   if (matches.length === 0) return { ...prev, matches, currentIndex: -1 };
+  sortMatches(matches, prev.sortMode, prev.anchor, prev.categoryOrder);
   // Try to keep the active index pointing at "the same match" by
   // looking up the previous match's from-position in the new list.
   let nextIndex = 0;
@@ -156,6 +263,9 @@ export function findReplacePlugin(): Plugin<FindReplaceState> {
         query: '',
         caseSensitive: false,
         wholeWord: false,
+        anchor: -1,
+        sortMode: 'categorized',
+        categoryOrder: DEFAULT_CATEGORY_ORDER.slice(),
         matches: [],
         currentIndex: -1,
       }),
@@ -166,6 +276,9 @@ export function findReplacePlugin(): Plugin<FindReplaceState> {
             query: '',
             caseSensitive: prev.caseSensitive,
             wholeWord: prev.wholeWord,
+            anchor: -1,
+            sortMode: prev.sortMode,
+            categoryOrder: prev.categoryOrder,
             matches: [],
             currentIndex: -1,
           };
@@ -177,10 +290,14 @@ export function findReplacePlugin(): Plugin<FindReplaceState> {
             meta.caseSensitive,
             meta.wholeWord,
           );
+          sortMatches(matches, meta.sortMode, meta.anchor, meta.categoryOrder);
           return {
             query: meta.query,
             caseSensitive: meta.caseSensitive,
             wholeWord: meta.wholeWord,
+            anchor: meta.anchor,
+            sortMode: meta.sortMode,
+            categoryOrder: meta.categoryOrder,
             matches,
             currentIndex: matches.length > 0 ? 0 : -1,
           };

@@ -2837,6 +2837,52 @@ body.pmd-nav-resize-active {
   background-color: rgba(255, 196, 102, 0.32);
 }
 
+/* ---------------------------------------------- Find: category-order editor */
+
+.pmd-find-category-order-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+}
+.pmd-find-category-order-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.4rem;
+  background: var(--pmd-c-bg-soft, #f7f7f8);
+  border: 1px solid var(--pmd-c-border-soft);
+  border-radius: 3px;
+}
+.pmd-find-category-order-rank {
+  flex: 0 0 1.4em;
+  text-align: right;
+  color: var(--pmd-c-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.pmd-find-category-order-label {
+  flex: 1 1 auto;
+}
+.pmd-find-category-order-btn {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: var(--pmd-c-bg);
+  border: 1px solid var(--pmd-c-border-soft);
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+.pmd-find-category-order-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.pmd-find-category-order-btn:hover:not(:disabled) {
+  background: var(--pmd-c-hover);
+}
+
 /* ---------------------------------------------- Find / Replace bar */
 
 /* Floating bar pinned to the top-right of the viewport, under the
@@ -2902,6 +2948,17 @@ body.pmd-nav-resize-active {
   text-align: right;
   color: var(--pmd-c-text-muted);
   font-variant-numeric: tabular-nums;
+}
+.pmd-find-sort-label {
+  flex: 0 0 auto;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--pmd-c-border-soft);
+  border-radius: 10px;
+  background: var(--pmd-c-bg-soft, var(--pmd-c-bg));
+  color: var(--pmd-c-text-muted);
+  font-size: 0.75rem;
+  user-select: none;
+  cursor: default;
 }
 .pmd-find-icon-btn,
 .pmd-find-action {

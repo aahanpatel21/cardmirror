@@ -2938,7 +2938,8 @@ export type RibbonCommandId =
   | 'togglePaintbrushHighlight'
   | 'togglePaintbrushShading'
   | 'openFind'
-  | 'openFindReplace';
+  | 'openFindReplace'
+  | 'openFindByProximity';
 
 export const STRUCTURAL_RIBBON_COMMAND_IDS: StructuralRibbonCommandId[] = [
   'setPocket',
@@ -3014,6 +3015,7 @@ export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
   'togglePaintbrushShading',
   'openFind',
   'openFindReplace',
+  'openFindByProximity',
 ];
 
 export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
@@ -3086,6 +3088,7 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   togglePaintbrushShading: 'Toggle Background-Color Paint Mode',
   openFind: 'Find',
   openFindReplace: 'Find and Replace',
+  openFindByProximity: 'Find by Proximity (No Category Boost)',
 };
 
 /**
@@ -3195,6 +3198,7 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   // browser's UI also pop up. Documented + user-rebindable.
   openFind: 'Mod-f',
   openFindReplace: 'Mod-h',
+  openFindByProximity: 'Alt-f',
 };
 
 /**
@@ -3292,9 +3296,12 @@ export interface RibbonContext {
    *  or Escape). */
   togglePaintbrushHighlight: () => void;
   togglePaintbrushShading: () => void;
-  /** Open the floating Find / Find+Replace bar. */
+  /** Open the floating Find / Find+Replace bar. The proximity
+   *  variant is Alt-F's behavior: no category boost, pure
+   *  closest-match-to-cursor ranking. */
   openFind: () => void;
   openFindReplace: () => void;
+  openFindByProximity: () => void;
 }
 
 const DEFAULT_RIBBON_CONTEXT: RibbonContext = {
@@ -3338,6 +3345,7 @@ const DEFAULT_RIBBON_CONTEXT: RibbonContext = {
   togglePaintbrushShading: () => {},
   openFind: () => {},
   openFindReplace: () => {},
+  openFindByProximity: () => {},
 };
 
 function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
@@ -3599,6 +3607,12 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
       return (_state, dispatch) => {
         if (!dispatch) return true;
         ctx.openFindReplace();
+        return true;
+      };
+    case 'openFindByProximity':
+      return (_state, dispatch) => {
+        if (!dispatch) return true;
+        ctx.openFindByProximity();
         return true;
       };
   }
