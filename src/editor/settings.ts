@@ -172,6 +172,23 @@ export interface Settings {
    *  the start. Default off — toggling read mode keeps the
    *  viewport / cursor where they were. */
   jumpToDocTopOnReadModeToggle: boolean;
+  /** Whether the find bar's "results list" expansion panel (the
+   *  scrollable box of matches-in-context below the bar) starts
+   *  open on the next find session. Mirrors the user's last
+   *  toggle of the chevron button — defaults false so the bar
+   *  opens compact unless the user expanded it last. */
+  findResultsExpanded: boolean;
+  /** Whether the find bar pre-fills its input with the user's
+   *  last search query when reopened. When off, the bar opens
+   *  empty (or with the current selection, if any, as the seed).
+   *  When on (default), a non-empty selection still wins over the
+   *  remembered query — matches Word's behavior. */
+  findRememberLastQuery: boolean;
+  /** The user's last find-bar query — empty string when none has
+   *  been entered yet. Persisted only when `findRememberLastQuery`
+   *  is on; capped to a sane length so the settings blob doesn't
+   *  grow unbounded if a user pastes massive strings. */
+  findLastQuery: string;
   /** Priority order for the categorized find sort (Ctrl-F). Each
    *  match falls into one of four categories — `heading` (pocket /
    *  hat / block), `tag`, `cite`, `other` — and the find bar's
@@ -537,6 +554,9 @@ const DEFAULTS: Settings = {
   defaultSpeechDocFormat: 'docx',
   defaultSaveFormat: 'docx',
   jumpToDocTopOnReadModeToggle: false,
+  findResultsExpanded: false,
+  findRememberLastQuery: false,
+  findLastQuery: '',
   findCategoryOrder: ['heading', 'tag', 'cite', 'other'],
   includeSpeechDocPocket: true,
   showCitePreview: true,
@@ -781,10 +801,18 @@ export const SETTING_METADATA: SettingMeta[] = [
     category: 'general',
   },
   {
+    key: 'findRememberLastQuery',
+    label: 'Find: remember the last search query',
+    description:
+      "When on, reopening the find bar (Ctrl-F / Ctrl-H / Alt-F) pre-fills the input with whatever you last searched for. Off by default — the bar opens empty so each search is a clean slate.",
+    kind: 'toggle',
+    category: 'general',
+  },
+  {
     key: 'findCategoryOrder',
     label: 'Find: category priority order',
     description:
-      'Ctrl-F groups search results by which kind of paragraph they appear in, and Next steps through groups in this order. Within each group, the first match is whichever is closest to your cursor (the cursor counts as the top — matches AFTER it come first, then matches before, like wrap-around). Drag-style reorder via the up / down buttons. Alt-F ignores this and goes purely by proximity.',
+      'Ctrl-F groups search results by which kind of paragraph they appear in, and Next steps through groups in this order. Within each group, the first match is whichever is closest to your cursor (the cursor counts as the top — matches AFTER it come first, then matches before, like wrap-around). Reorder via the up / down buttons. Alt-F ignores this and goes purely by proximity.',
     kind: 'findCategoryOrder',
     category: 'general',
   },
@@ -1121,6 +1149,13 @@ function sanitize(s: Settings): Settings {
     defaultSaveFormat:
       s.defaultSaveFormat === 'cmir' ? 'cmir' : 'docx',
     jumpToDocTopOnReadModeToggle: !!s.jumpToDocTopOnReadModeToggle,
+    findResultsExpanded: !!s.findResultsExpanded,
+    findRememberLastQuery:
+      s.findRememberLastQuery === true ? true : false,
+    findLastQuery:
+      typeof s.findLastQuery === 'string'
+        ? s.findLastQuery.slice(0, 1024)
+        : '',
     findCategoryOrder: sanitizeFindCategoryOrder(s.findCategoryOrder),
     includeSpeechDocPocket:
       s.includeSpeechDocPocket === false ? false : true,

@@ -125,6 +125,55 @@ describe('find-replace plugin', () => {
     expect(s.currentIndex).toBe(0);
   });
 
+  it('replace all is correct when matches are sorted out of doc order (categorized)', () => {
+    // Five paragraphs each ending in "---1AC". Sort with an anchor
+    // between paragraphs 2 and 3 so the proximity rule produces a
+    // matches array NOT in doc order: [p3, p4, p5, p2, p1].
+    // Replace All with a longer string previously corrupted every
+    // match except the last-in-display-order — see the bug fix.
+    const doc = makeDoc([
+      paragraph('one---1AC'),
+      paragraph('two---1AC'),
+      paragraph('three---1AC'),
+      paragraph('four---1AC'),
+      paragraph('five---1AC'),
+    ]);
+    const state = EditorState.create({
+      doc,
+      schema,
+      plugins: [findReplacePlugin()],
+    });
+    // Use a categorized sort to verify the array order is what
+    // would have triggered the bug. All matches are 'other' here,
+    // so the categorized branch falls through to proximity.
+    const scout = setQuery(state, '---1AC', { sortMode: 'proximity', anchor: 0 });
+    const docOrderFroms = findReplaceKey
+      .getState(scout)!.matches.map((m) => m.from);
+    const anchor = (docOrderFroms[1]! + docOrderFroms[2]!) / 2;
+    const armed = setQuery(state, '---1AC', { sortMode: 'categorized', anchor });
+    const cmd = runReplaceAll('---Lalala');
+    let next: EditorState | null = null;
+    cmd(armed, (tr) => { next = armed.apply(tr); });
+    expect(next).not.toBeNull();
+    // Each paragraph should now end in "---Lalala", with no
+    // residual "1AC" suffixes and no truncation of the body text.
+    const paragraphs: string[] = [];
+    next!.doc.descendants((node) => {
+      if (node.type.name === 'paragraph') {
+        paragraphs.push(node.textContent);
+        return false;
+      }
+      return true;
+    });
+    expect(paragraphs).toEqual([
+      'one---Lalala',
+      'two---Lalala',
+      'three---Lalala',
+      'four---Lalala',
+      'five---Lalala',
+    ]);
+  });
+
   it('replace all swaps every match in a single transaction', () => {
     let state = setQuery(freshState('foo bar foo bar foo'), 'foo');
     const cmd = runReplaceAll('Q');
@@ -136,6 +185,84 @@ describe('find-replace plugin', () => {
     const s = findReplaceKey.getState(state)!;
     expect(s.matches.length).toBe(0);
     expect(s.currentIndex).toBe(-1);
+  });
+
+  it('scope restricts matches to within the given range', () => {
+    // Three paragraphs each containing 'foo'. Scope to just the
+    // second paragraph; only that one match should be returned.
+    const doc = makeDoc([
+      paragraph('foo one'),
+      paragraph('foo two'),
+      paragraph('foo three'),
+    ]);
+    const state = EditorState.create({
+      doc,
+      schema,
+      plugins: [findReplacePlugin()],
+    });
+    // Find the second paragraph's position range.
+    let p2From = -1;
+    let p2To = -1;
+    let pIdx = 0;
+    state.doc.descendants((node, pos) => {
+      if (node.type.name === 'paragraph') {
+        if (pIdx === 1) {
+          p2From = pos;
+          p2To = pos + node.nodeSize;
+        }
+        pIdx++;
+        return false;
+      }
+      return true;
+    });
+    // First scan with no scope to confirm there are 3 hits.
+    const unscoped = setQuery(state, 'foo');
+    expect(findReplaceKey.getState(unscoped)!.matches.length).toBe(3);
+    // Now apply scope and re-query.
+    const scoped = unscoped.apply(
+      unscoped.tr.setMeta(findReplaceKey, {
+        type: 'setScope',
+        scope: { from: p2From, to: p2To },
+      }),
+    );
+    const matches = findReplaceKey.getState(scoped)!.matches;
+    expect(matches.length).toBe(1);
+    expect(matches[0]!.from).toBeGreaterThanOrEqual(p2From);
+    expect(matches[0]!.to).toBeLessThanOrEqual(p2To);
+  });
+
+  it('scope tracks position shifts when the doc is edited', () => {
+    const doc = makeDoc([
+      paragraph('one foo'),
+      paragraph('two foo'),
+      paragraph('three foo'),
+    ]);
+    const state = EditorState.create({
+      doc,
+      schema,
+      plugins: [findReplacePlugin()],
+    });
+    // Scope over the second + third paragraphs (skip the first).
+    const scoped = state.apply(
+      state.tr.setMeta(findReplaceKey, {
+        type: 'setScope',
+        scope: { from: 9, to: state.doc.content.size },
+      }),
+    );
+    const queried = setQuery(scoped, 'foo');
+    const before = findReplaceKey.getState(queried)!;
+    expect(before.matches.length).toBe(2);
+    const beforeFroms = before.matches.map((m) => m.from);
+    // Insert text BEFORE the scope. The scope (and matches) should
+    // shift by the insertion's length.
+    const inserted = queried.apply(queried.tr.insertText('PRELUDE ', 1));
+    const after = findReplaceKey.getState(inserted)!;
+    expect(after.scope).not.toBeNull();
+    expect(after.scope!.from).toBe(9 + 'PRELUDE '.length);
+    expect(after.matches.length).toBe(2);
+    for (let i = 0; i < beforeFroms.length; i++) {
+      expect(after.matches[i]!.from).toBe(beforeFroms[i]! + 'PRELUDE '.length);
+    }
   });
 
   it('clear resets the state', () => {
@@ -275,6 +402,47 @@ describe('find ordering', () => {
     // The match AT or AFTER the anchor (the second one) ranks first.
     expect(orderedFroms[0]).toBe(fromsDocOrder[1]);
     expect(orderedFroms[1]).toBe(fromsDocOrder[0]);
+  });
+
+  it('categorized: within cite, cite-marked text outranks unmarked text in a cite_paragraph', () => {
+    const citeMarkType = schema.marks['cite_mark']!;
+    const citeMark = citeMarkType.create();
+    // Two cite paragraphs both containing 'foo'. The SECOND one has
+    // cite_mark applied to the 'foo' run. Even though it's later in
+    // doc order, it should rank above the first when sorted
+    // categorized — the cite-mark sub-priority wins before
+    // proximity.
+    const doc = makeDoc([
+      schema.nodes['cite_paragraph']!.create(
+        null,
+        schema.text('foo plain in cite paragraph'),
+      ),
+      schema.nodes['cite_paragraph']!.create(
+        null,
+        schema.nodes['cite_paragraph']!
+          .createAndFill()!
+          .type.create(null, [
+            schema.text('foo', [citeMark]),
+            schema.text(' marked in cite paragraph'),
+          ]).content,
+      ),
+    ]);
+    const state = EditorState.create({
+      doc,
+      schema,
+      plugins: [findReplacePlugin()],
+    });
+    const next = setQuery(state, 'foo', {
+      sortMode: 'categorized',
+      anchor: 0,
+      categoryOrder: ['heading', 'tag', 'cite', 'other'],
+    });
+    const matches = findReplaceKey.getState(next)!.matches;
+    expect(matches.length).toBe(2);
+    // Both are cite category; the cite-marked one (subcategory 0)
+    // comes before the plain one (subcategory 1).
+    expect(matches.map((m) => m.category)).toEqual(['cite', 'cite']);
+    expect(matches.map((m) => m.subcategory)).toEqual([0, 1]);
   });
 
   it('categorized: user-defined order reshuffles categories', () => {

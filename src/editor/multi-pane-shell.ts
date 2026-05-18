@@ -59,6 +59,7 @@ import {
   applyReadModeToTarget,
   setReadModeStateResolver,
   setAutosaveStateResolver,
+  setActiveNavPanelResolver,
   attachClickBelowToEnd,
   confirmCloseUnsaved,
   runSaveFlow,
@@ -787,6 +788,9 @@ class MultiPaneShell {
     setReadModeStateResolver(() => this.focusedSlot?.visible?.readMode ?? false);
     // Same story for the autosave button — per-pane in multi-doc.
     setAutosaveStateResolver(() => this.focusedSlot?.visible?.autosaveEnabled ?? false);
+    // Find-bar nav highlights land on the focused pane's own nav
+    // panel; other panes don't share the find-bar's state.
+    setActiveNavPanelResolver(() => this.focusedSlot?.visible?.navPanel ?? null);
 
     // Keep the speech chip / button state in sync with the
     // registry — the registry fires on every set/clear, including

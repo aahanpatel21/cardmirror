@@ -380,9 +380,22 @@ let colorPanel: import('./color-panel.js').ColorPanelHandle | null = null;
  *  active view via the `getView` getter so the bar follows the
  *  currently-focused pane in multi-doc mode. */
 let findReplaceBar: FindReplaceBar | null = null;
+/** Resolver for "which nav panel should find-hit decorations land
+ *  on?". Default: the single-doc global nav. Multi-pane shell
+ *  swaps this for a focused-pane resolver via
+ *  `setActiveNavPanelResolver`. */
+let activeNavPanelResolver: () => NavigationPanel | null = () => navPanel;
+export function setActiveNavPanelResolver(
+  resolver: () => NavigationPanel | null,
+): void {
+  activeNavPanelResolver = resolver;
+}
 function ensureFindReplaceBar(): FindReplaceBar {
   if (!findReplaceBar) {
-    findReplaceBar = new FindReplaceBar(() => view);
+    findReplaceBar = new FindReplaceBar(
+      () => view,
+      () => activeNavPanelResolver(),
+    );
   }
   return findReplaceBar;
 }

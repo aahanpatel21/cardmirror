@@ -90,6 +90,13 @@ export class NavigationPanel {
   private autoExpanded: Set<string> = new Set();
   private autoExpandTimer: ReturnType<typeof setTimeout> | null = null;
   private autoExpandTarget: string | null = null;
+
+  /** Find-hit positions to surface as nav decorations. The "hit"
+   *  set is just an unordered list of doc positions; each render
+   *  pass computes which RENDERED heading is the deepest ancestor
+   *  of each hit and marks those headings with a "has-hit"
+   *  class. Empty / null = no decoration. */
+  private findHitPositions: number[] = [];
   /** Per-id pending re-collapse timers — armed when the pointer
    *  leaves an auto-expanded entry's subtree, cleared if it returns
    *  before the timer fires. Mirrors the auto-expand 400ms hover. */
@@ -418,6 +425,17 @@ export class NavigationPanel {
     this.listEl.scrollTop = 0;
   }
 
+  /** Receive the current find-bar hit positions. The nav panel
+   *  marks each heading whose subtree contains at least one hit
+   *  with a "has-hit" indicator — the deepest currently-rendered
+   *  ancestor wins (a hit under a collapsed Pocket lights up the
+   *  Pocket; expanding the Pocket lets a deeper Hat take over).
+   *  Pass `null` or an empty array to clear all decorations. */
+  setFindHitPositions(positions: number[] | null): void {
+    this.findHitPositions = positions ? positions.slice() : [];
+    if (this.currentDoc) this.render(this.currentDoc);
+  }
+
   applyMaxLevelToNewHeadings(): void {
     const view = this.view;
     if (!view) return;
@@ -450,6 +468,14 @@ export class NavigationPanel {
       if (entry.id != null) seen.add(entry.id);
     }
     this.lastSeenIds = seen;
+
+    // Find-hit nav decoration: for each pending hit position, work
+    // out which RENDERED heading entry will be its deepest visible
+    // ancestor (entries hidden under a collapsed parent don't
+    // count, but the collapsed parent itself does). Stored by
+    // entry index so the rendering loop below can light up the
+    // right `<li>` cheaply.
+    const hitEntryIndices = this.computeFindHitAncestorEntries(entries);
 
     // Clear and re-build. For doc sizes we care about (max ~600 headings
     // in the example corpus) this is fine; if profiling shows it's hot,
@@ -490,6 +516,9 @@ export class NavigationPanel {
       li.dataset['pos'] = String(entry.pos);
       if (entry.id != null && this.selectedIds.has(entry.id)) {
         li.classList.add('pmd-nav-item-selected');
+      }
+      if (hitEntryIndices.has(i)) {
+        li.classList.add('pmd-nav-item-find-hit');
       }
 
       const chevron = document.createElement('span');
@@ -539,6 +568,74 @@ export class NavigationPanel {
         skipBelowLevel = entry.level;
       }
     }
+  }
+
+  /** Run the same skip/stack logic the render loop uses, but
+   *  return the set of entry indices that should be marked as
+   *  "contains a find hit somewhere in its rendered subtree".
+   *
+   *  For each hit position, the matching entry is the deepest
+   *  one currently on the render stack at the time the iteration
+   *  reaches the hit's position — i.e., the deepest visible
+   *  ancestor. Entries under a collapsed parent never enter the
+   *  stack so a hit inside them surfaces on the collapsed parent
+   *  instead. */
+  private computeFindHitAncestorEntries(
+    entries: HeadingEntry[],
+  ): Set<number> {
+    const hits = this.findHitPositions;
+    const out = new Set<number>();
+    if (hits.length === 0 || entries.length === 0) return out;
+    const sortedHits = hits.slice().sort((a, b) => a - b);
+
+    // Render stack of CURRENTLY-VISIBLE entries (indices into
+    // `entries`), maintaining strictly-increasing levels — same
+    // shape as the render loop's view of "what ancestors are
+    // currently shown above each line".
+    const stack: number[] = [];
+    let skipBelowLevel: number | null = null;
+    let hitIdx = 0;
+
+    const consumePendingHitsUpTo = (posExclusive: number): void => {
+      while (hitIdx < sortedHits.length && sortedHits[hitIdx]! < posExclusive) {
+        if (stack.length > 0) out.add(stack[stack.length - 1]!);
+        hitIdx++;
+      }
+    };
+
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i]!;
+      // Any hits with position < this entry's position belong to
+      // whichever entry is currently on top of the stack.
+      consumePendingHitsUpTo(entry.pos);
+      if (skipBelowLevel !== null) {
+        if (entry.level > skipBelowLevel) continue;
+        skipBelowLevel = null;
+      }
+      // Pop entries from the stack whose level is at-or-deeper
+      // than this entry's level (this entry will replace them at
+      // its slot in the outline).
+      while (
+        stack.length > 0 &&
+        entries[stack[stack.length - 1]!]!.level >= entry.level
+      ) {
+        stack.pop();
+      }
+      stack.push(i);
+      // If this entry is collapsed AND has children, hide every
+      // deeper entry until a sibling-or-shallower one shows up.
+      const next = entries[i + 1];
+      const hasChildren = next != null && next.level > entry.level;
+      const collapsed = entry.id != null && this.collapsed.has(entry.id);
+      if (hasChildren && collapsed) {
+        skipBelowLevel = entry.level;
+      }
+    }
+    // Hits past the last heading attribute to the deepest stack
+    // entry still in scope.
+    consumePendingHitsUpTo(Infinity);
+
+    return out;
   }
 
   private toggleCollapsed(entry: HeadingEntry): void {

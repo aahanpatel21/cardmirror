@@ -1398,6 +1398,29 @@ body.pmd-nav-resize-active {
   background: var(--pmd-c-drop-mid);
 }
 
+/* Find-hit nav decoration. Yellow band on the right edge of the
+   `<li>` to indicate "a find match lives somewhere in this
+   heading's currently-rendered subtree". The deepest visible
+   ancestor of each hit gets the marker — expand a heading and
+   the marker hops down a level to whichever sub-heading actually
+   contains the hit (computed in nav-panel.ts on every render). */
+.pmd-nav-item.pmd-nav-item-find-hit {
+  position: relative;
+}
+.pmd-nav-item.pmd-nav-item-find-hit::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: rgba(255, 165, 0, 0.85);
+  box-shadow: 0 0 0 1px rgba(180, 100, 0, 0.4);
+  pointer-events: none;
+}
+
 /* Drop indicator: a thin gap between nav entries when a drag is
    active. The hovered slot is highlighted. */
 .pmd-nav-drop-indicator {
@@ -2981,7 +3004,93 @@ body.pmd-nav-resize-active {
   cursor: default;
 }
 .pmd-find-close { font-size: 1.1rem; line-height: 1; padding: 0 0.35rem; }
+.pmd-find-expand[aria-pressed="true"] {
+  background: var(--pmd-c-hover-strong);
+  border-color: var(--pmd-c-accent);
+}
 .pmd-find-replace-row[hidden] { display: none; }
+
+/* Results expansion panel — a visually-separate box that sits
+   directly below the find bar when the chevron is open. Same
+   width as the bar; right-aligned via JS-positioned `right`. */
+.pmd-find-results-panel {
+  position: fixed;
+  z-index: 200;
+  background: var(--pmd-c-bg);
+  border: 1px solid var(--pmd-c-border-soft);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  max-height: 280px;
+  overflow-y: auto;
+  font-size: 0.85rem;
+}
+.pmd-find-results-panel[hidden] { display: none; }
+.pmd-find-results-list {
+  display: flex;
+  flex-direction: column;
+}
+.pmd-find-results-empty {
+  padding: 0.6rem 0.7rem;
+  color: var(--pmd-c-text-muted);
+  font-style: italic;
+}
+.pmd-find-result-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--pmd-c-divider, var(--pmd-c-border-soft));
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: var(--pmd-c-text);
+}
+.pmd-find-result-row:last-child { border-bottom: none; }
+.pmd-find-result-row:hover { background: var(--pmd-c-hover); }
+.pmd-find-result-row[data-active="true"] {
+  background: var(--pmd-c-drop-soft);
+}
+.pmd-find-result-category {
+  flex: 0 0 auto;
+  min-width: 3.5em;
+  padding: 0 0.4rem;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--pmd-c-text-muted);
+  background: var(--pmd-c-bg-soft, var(--pmd-c-surface));
+  text-align: center;
+}
+.pmd-find-result-category-heading {
+  background: rgba(40, 103, 216, 0.12);
+  color: #1d4ed8;
+}
+.pmd-find-result-category-tag {
+  background: rgba(214, 142, 36, 0.18);
+  color: #8a5a14;
+}
+.pmd-find-result-category-cite {
+  background: rgba(120, 80, 40, 0.15);
+  color: #6e4a18;
+}
+.pmd-find-result-snippet {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pmd-find-result-snippet-match {
+  background-color: rgba(255, 235, 59, 0.6);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.pmd-find-result-row[data-active="true"] .pmd-find-result-snippet-match {
+  background-color: rgba(255, 165, 0, 0.6);
+}
 
 /* Match decorations inside the editor. Standard light-yellow band
    for every match; a slightly stronger orange band for the
@@ -2995,6 +3104,15 @@ body.pmd-nav-resize-active {
   background-color: rgba(255, 165, 0, 0.55);
   outline: 1px solid rgba(180, 100, 0, 0.7);
   outline-offset: 0;
+}
+
+/* "Search within selection" scope band. Faint tint under the
+   scoped range so the user can see what's currently in-bounds
+   for find. Matches the visual language `.pmd-similar-scope`
+   uses for its scope variant. */
+.pmd-find-scope {
+  background-color: rgba(40, 103, 216, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(40, 103, 216, 0.25);
 }
 
 /* ---------------------------------------------- Reference (cheat-sheet) modal */
