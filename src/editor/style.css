@@ -5,6 +5,73 @@
    personal preference (large text, accessibility presets, etc.).
 */
 
+/* ---- Bundled readability fonts ----
+ *
+ * Three open-licensed (SIL OFL 1.1) sans-serifs we ship locally so
+ * the body-font picker's "Recommended for readability" group has
+ * options that don't depend on the user's OS having the right
+ * commercial fonts installed.
+ *
+ *  - **Atkinson Hyperlegible** — Braille Institute. Designed for
+ *    low-vision readers; exaggerated terminals + open counters
+ *    disambiguate letter pairs (I/l, O/0, R/B). Safest default.
+ *  - **Lexend** — Bonnie Shaver-Troup + Font Bureau. Reading-tuned
+ *    sans-serif with the strongest published positive evidence
+ *    among "dyslexia fonts" (preference + WCPM gains, small-sample).
+ *  - **OpenDyslexic** — popular among dyslexic readers; weighted-
+ *    bottom shapes meant to resist letter rotation. Independent
+ *    studies have NOT shown reading-speed improvements vs. Arial,
+ *    but many users prefer it. Ship as an option, label honestly
+ *    in the settings dropdown.
+ *
+ * Files live in `src/editor/fonts/` (latin subset only — ~17 KB per
+ * face for Atkinson / Lexend, ~115 KB for OpenDyslexic). Italic
+ * variants are not bundled; the browser synthesizes them. License
+ * + provenance details in `src/editor/fonts/LICENSES.md`. */
+
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/atkinson-hyperlegible-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./fonts/atkinson-hyperlegible-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Lexend';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/lexend-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Lexend';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./fonts/lexend-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'OpenDyslexic';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/opendyslexic-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'OpenDyslexic';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./fonts/opendyslexic-700.woff2') format('woff2');
+}
+
 * {
   box-sizing: border-box;
 }

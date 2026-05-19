@@ -39,14 +39,15 @@ import { getHost, getElectronHost } from './host/index.js';
  * `isFontAvailable`; if every font in a group is unavailable the
  * whole group is suppressed.
  *
- * The "Recommended for readability" group leads — the British
- * Dyslexia Association's 2023 Style Guide endorses wide-x-height
- * sans-serifs with disambiguated letterforms (Verdana, Tahoma,
- * Comic Sans MS) for body text aimed at dyslexic readers. None of
- * these are bundled — they're either Windows / macOS system fonts
- * or shipped with Office. Bundling SIL OFL alternatives
- * (Atkinson Hyperlegible, Lexend, OpenDyslexic) for systems that
- * don't have any of these is queued separately in WISHLIST.
+ * The "Recommended for readability" group leads. The first three
+ * entries (Atkinson Hyperlegible, Lexend, OpenDyslexic) are
+ * SIL OFL fonts bundled with the app so every install has at least
+ * one readability-tuned option regardless of what's on the host OS
+ * — see `style.css`'s @font-face block and `src/editor/fonts/`.
+ * The remaining three (Verdana, Tahoma, Comic Sans MS) are the
+ * British Dyslexia Association's 2023 endorsed system sans-serifs
+ * for body text aimed at dyslexic readers; they appear in the
+ * group when the user's OS has them installed.
  */
 interface FontGroup {
   label: string;
@@ -56,7 +57,16 @@ interface FontGroup {
 const FONT_GROUPS: FontGroup[] = [
   {
     label: 'Recommended for readability',
-    fonts: ['Verdana', 'Tahoma', 'Comic Sans MS'],
+    fonts: [
+      // Bundled (SIL OFL). Always available.
+      'Atkinson Hyperlegible',
+      'Lexend',
+      'OpenDyslexic',
+      // System fonts — BDA-recommended; shown only if installed.
+      'Verdana',
+      'Tahoma',
+      'Comic Sans MS',
+    ],
   },
   {
     label: 'Microsoft Office defaults',

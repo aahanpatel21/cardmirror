@@ -16,14 +16,21 @@ internal refactors live in commit messages, not here.
   always-on but they prefer animations in this app.
 - **Accessibility — Body-font readability presets.** The Settings
   → Appearance → Body font dropdown now groups options by
-  category: "Recommended for readability" (Verdana, Tahoma, Comic
-  Sans MS — the British Dyslexia Association's 2023 endorsed
-  sans-serifs for body text), "Microsoft Office defaults", "Apple
-  defaults", "Open-source / cross-platform", and "Generic".
-  Groups whose fonts aren't installed are hidden. Bundling SIL
-  OFL alternatives (Atkinson Hyperlegible, Lexend, OpenDyslexic)
-  is queued separately so users on systems without any of the
-  readability-tuned fonts above still have an option.
+  category, with "Recommended for readability" leading. Three
+  bundled SIL OFL fonts ship with the app so every install has
+  a readability-tuned choice regardless of what's on the host OS:
+  **Atkinson Hyperlegible** (Braille Institute; designed for low
+  vision, disambiguated letter pairs), **Lexend** (Font Bureau;
+  the readability-tuned sans-serif with the strongest positive
+  reading-speed evidence among "dyslexia fonts"), and
+  **OpenDyslexic** (weighted-bottom shapes; preferred by some
+  dyslexic readers — independent studies have NOT shown
+  reading-speed improvements vs. Arial, but the option is
+  popular). The British Dyslexia Association's 2023 endorsed
+  system sans-serifs (Verdana, Tahoma, Comic Sans MS) follow
+  when installed; remaining groups are "Microsoft Office
+  defaults", "Apple defaults", "Open-source / cross-platform",
+  and "Generic". Groups whose fonts aren't available are hidden.
 - **Fixed: Nav-pane / find-bar jumps land precisely on big docs.**
   Cards use `content-visibility: auto` with a 200 px placeholder
   height, so `scrollIntoView` to a heading far down a long doc

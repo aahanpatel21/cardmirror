@@ -25,6 +25,19 @@ const GENERIC_KEYWORDS = new Set([
   'system-ui',
 ]);
 
+/** Fonts the app bundles via `@font-face` declarations in style.css.
+ *  Always reported as available — the metrics-probe below would
+ *  spuriously report them as unavailable on first paint (the woff2
+ *  file hasn't downloaded yet, so the browser is still rendering the
+ *  fallback). Letting them through unconditionally is correct because
+ *  we KNOW they'll be available once `document.fonts.ready` resolves,
+ *  and showing them in the dropdown immediately is the right UX. */
+const BUNDLED_FONTS = new Set([
+  'Atkinson Hyperlegible',
+  'Lexend',
+  'OpenDyslexic',
+]);
+
 const TEST_STRING = 'mmmmmmmmmmlli';
 const TEST_SIZE = '72px';
 const BASE_FONTS = ['monospace', 'serif', 'sans-serif'] as const;
@@ -38,6 +51,7 @@ const cache = new Map<string, boolean>();
  */
 export function isFontAvailable(font: string): boolean {
   if (GENERIC_KEYWORDS.has(font)) return true;
+  if (BUNDLED_FONTS.has(font)) return true;
   if (typeof document === 'undefined') return false; // SSR / non-DOM
   const cached = cache.get(font);
   if (cached !== undefined) return cached;
