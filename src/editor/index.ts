@@ -423,6 +423,13 @@ let multiDocSendToSpeechAtEnd: (() => void) | null = null;
  *  user's rename back into the chip. */
 let multiDocGetFocusedFilename: (() => string | null) | null = null;
 let multiDocSetFocusedFilename: ((name: string) => void) | null = null;
+/** All-slots filename accessor. Used by `updateWindowTitle` so the
+ *  OS window title in multi-pane mode shows EVERY open slot's
+ *  filename rather than just the focused one — the chip in the
+ *  pane chrome already identifies the focused doc, so the title
+ *  is most useful as a summary of the whole workspace. Returns
+ *  filenames in slot order; empty slots map to null. */
+let multiDocGetAllFilenames: (() => (string | null)[]) | null = null;
 
 /** Full focused-file plumbing for the Save / Save-As flow — reads
  *  the filename plus the on-disk handle and on-disk format. */
@@ -472,6 +479,7 @@ export function enableMultiDocMode(opts: {
   setFocusedFilename?: (name: string) => void;
   getFocusedFile?: () => { filename: string; handle: unknown | null; format: 'cmir' | 'docx' | null } | null;
   setFocusedFile?: (file: { filename: string; handle: unknown | null; format: 'cmir' | 'docx' | null }) => void;
+  getAllFilenames?: () => (string | null)[];
   clearFocusedJournal?: () => Promise<void>;
   /** Called from single-doc save flows after a successful save so
    *  the multi-pane shell can clear the focused DocRecord's dirty
@@ -500,6 +508,7 @@ export function enableMultiDocMode(opts: {
   multiDocSetFocusedFilename = opts.setFocusedFilename ?? null;
   multiDocGetFocusedFile = opts.getFocusedFile ?? null;
   multiDocSetFocusedFile = opts.setFocusedFile ?? null;
+  multiDocGetAllFilenames = opts.getAllFilenames ?? null;
   multiDocClearFocusedJournal = opts.clearFocusedJournal ?? null;
   multiDocNotifyFocusedSaved = opts.notifyFocusedSaved ?? null;
   multiDocOnRecoveredDoc = opts.onRecoveredDoc ?? null;
@@ -2896,12 +2905,56 @@ function commitSaveResult(filename: string, handle: unknown | null, format: 'cmi
   refreshAutosaveBtn();
 }
 
-/** Sync `document.title` with the active filename so Electron's
- *  native title bar reflects which doc is open. Cheap; called on
- *  open / save / multi-doc focus change. */
+/** Sync the active filename into both the OS-level title bar (via
+ *  `document.title`) AND the in-app filename chip in the ribbon.
+ *  The chip is the user-facing source of truth on platforms /
+ *  layouts where the OS title isn't visible (tiling WMs without
+ *  decorations, Electron windows with `frame: false`, hidden
+ *  title-bar themes, etc.). Cheap; called on open / save /
+ *  multi-doc focus change.
+ *
+ *  Title format depends on mode:
+ *  - Single-doc:    `${filename} — CardMirror`  (or 'CardMirror' if untitled).
+ *  - Multi-pane:    `${names joined by middle-dot} — CardMirror`
+ *                   showing every non-empty slot in order — the
+ *                   focused slot is already visually identified
+ *                   inside the app by the per-pane chip, so the
+ *                   title is most useful as a workspace summary. */
+/** Public refresh hook. Multi-pane callers invoke this whenever a
+ *  slot's visible doc changes (open, close, save-as rename) so the
+ *  OS title — which summarizes every open slot — stays in sync
+ *  even when the change doesn't move focus. */
+export function refreshWindowTitle(): void {
+  updateWindowTitle();
+}
+
 function updateWindowTitle(): void {
-  const f = activeFile();
-  document.title = f.filename ? `${f.filename} — CardMirror` : 'CardMirror';
+  const focused = activeFile();
+  if (multiDocActive && multiDocGetAllFilenames) {
+    const names = multiDocGetAllFilenames().filter((n): n is string => !!n);
+    document.title = names.length > 0
+      ? `${names.join(' · ')} — CardMirror`
+      : 'CardMirror';
+  } else {
+    document.title = focused.filename
+      ? `${focused.filename} — CardMirror`
+      : 'CardMirror';
+  }
+  // In-app filename chip. The chip itself is CSS-hidden in
+  // multi-pane mode (each per-pane chip shows the pane's own
+  // filename), so the JS update is a no-op there visually — but
+  // we still write the focused doc's filename so a mode-switch
+  // back to single-doc doesn't surface a stale label. The chip
+  // is `[hidden]`-toggled when there's no filename at all
+  // (untitled / onboarding / fresh doc before Save-As) so the
+  // empty chip doesn't sit in the ribbon as visual noise.
+  const chip = document.getElementById('doc-name-chip');
+  const chipText = document.getElementById('doc-name-chip-text');
+  if (chip && chipText) {
+    chipText.textContent = focused.filename ?? '';
+    chip.setAttribute('title', focused.filename ?? '');
+    chip.toggleAttribute('hidden', !focused.filename);
+  }
 }
 
 /** Serialize the active doc into bytes in the given format. Shared

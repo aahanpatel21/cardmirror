@@ -64,6 +64,7 @@ import {
   confirmCloseUnsaved,
   runSaveFlow,
   runSaveAsFlow,
+  refreshWindowTitle,
 } from './index.js';
 
 type SlotId = 'slot1' | 'slot2' | 'slot3';
@@ -534,6 +535,11 @@ class Slot {
     if (rec.navEl.parentElement === this.navBodyEl) {
       this.navBodyEl.removeChild(rec.navEl);
     }
+    // Closing the last doc in a slot needs to drop that filename
+    // out of the all-slots OS window title. mountVisible refreshes
+    // when a new doc replaces the old one, but detachVisible
+    // covers the close-with-no-replacement case.
+    refreshWindowTitle();
   }
 
   /** Mount the currently-visible record's editor + nav DOM into the
@@ -550,6 +556,10 @@ class Slot {
     // the currently-visible record vs the speech-doc registry;
     // swapping records via the stack switcher needs to refresh.
     this.shell.refreshSpeechChips();
+    // The OS window title summarizes every open slot's filename in
+    // multi-pane mode — refresh it on every mount so opening a new
+    // doc in a non-focused slot still updates the title bar.
+    refreshWindowTitle();
   }
 
   /** Update the chip's stack-dropdown trigger visibility based on
@@ -1106,6 +1116,14 @@ class MultiPaneShell {
     return { filename: rec.filename, handle: rec.handle, format: rec.format };
   }
 
+  /** Filenames in every slot, in slot order. Empty slots map to
+   *  `null` so callers can preserve positional context if they
+   *  want (or filter the nulls out). Used by the OS window-title
+   *  syncer to summarize the whole multi-pane workspace at once. */
+  getAllFilenames(): (string | null)[] {
+    return SLOT_IDS.map((id) => this.slots[id].visible?.filename ?? null);
+  }
+
   /** Replace the focused pane's filename with `name` and refresh
    *  the chip. */
   setFocusedFilename(name: string): void {
@@ -1648,6 +1666,7 @@ export function mountMultiPaneShell(): void {
     setFocusedFilename: (name) => shell!.setFocusedFilename(name),
     getFocusedFile: () => shell!.getFocusedFile(),
     setFocusedFile: (f) => shell!.setFocusedFile(f),
+    getAllFilenames: () => shell!.getAllFilenames(),
     clearFocusedJournal: () => shell!.clearFocusedJournal(),
     onRecoveredDoc: (entry) => shell!.onRecoveredDoc(entry),
     journalAll: () => shell!.journalAll(),

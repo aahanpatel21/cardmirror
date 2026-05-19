@@ -646,6 +646,36 @@ html:has(body.pmd-speech-banner-visible) {
 }
 body:not(.pmd-multi-doc):not(.pmd-multi-window) #speech-stack { display: none; }
 
+/* Active-doc filename chip. Single-doc only — multi-pane has its
+   own per-pane chip in the pane chrome. Caps width so a very long
+   filename doesn't expand the ribbon-left section past the
+   formatting / cite panels; ellipsis-truncates with the full name
+   in the `title` tooltip. */
+.pmd-doc-name-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 14rem;
+  padding: 0.25rem 0.55rem;
+  margin-left: 0.4rem;
+  border: 1px solid var(--pmd-c-border-soft);
+  border-radius: 999px;
+  background: var(--pmd-c-surface);
+  color: var(--pmd-c-text-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  user-select: text;
+  white-space: nowrap;
+}
+.pmd-doc-name-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Hidden when no filename has been set (untitled / fresh doc, or
+   onboarding before save-as). JS toggles via `[hidden]`. */
+.pmd-doc-name-chip[hidden] { display: none; }
+/* Hidden in multi-pane — each pane chip shows its own filename. */
+body.pmd-multi-doc #doc-name-chip { display: none; }
+
 /* Speech-doc banner. Shown in single-doc multi-window mode when THIS
    window holds the speech doc designation — the obvious visual
    counterpart to the per-pane chip indicator the multi-pane shell

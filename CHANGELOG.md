@@ -31,6 +31,22 @@ internal refactors live in commit messages, not here.
   when installed; remaining groups are "Microsoft Office
   defaults", "Apple defaults", "Open-source / cross-platform",
   and "Generic". Groups whose fonts aren't available are hidden.
+- **Active doc filename always visible.** A new chip in the
+  ribbon (right after the file-ops buttons, 📂🆕💾⏱) shows the
+  active doc's filename. Useful on platforms / layouts where
+  the OS title bar isn't visible: tiling window managers without
+  decorations, hidden-title-bar themes, web edition embedded in
+  another page, etc. Long filenames ellipsis-truncate with the
+  full name in the tooltip. The chip hides when there's no
+  filename yet (untitled / fresh doc before Save-As) and in
+  multi-pane mode (each per-pane chip already shows the slot's
+  doc).
+- **Multi-pane window title summarizes all open slots.** The OS
+  window title in multi-pane mode used to show just the focused
+  doc's filename. It now shows every non-empty slot's filename
+  joined by `·` — e.g. "Foo · Bar — CardMirror" — so the title
+  bar conveys the whole workspace at a glance rather than
+  changing with every focus shift. Single-doc mode unchanged.
 - **Fixed: Copy Last Cite now finds cite_mark text you just
   applied.** Adding the cite mark to a word in a body paragraph
   is supposed to promote that paragraph to a `cite_paragraph`
