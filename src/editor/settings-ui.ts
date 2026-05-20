@@ -32,6 +32,7 @@ import { WORD_HIGHLIGHT_COLORS } from './color-palette.js';
 import { buildKeybindingsEditor } from './keybindings-editor.js';
 import { getHost, getElectronHost } from './host/index.js';
 import { getInstallInfo } from './install-info.js';
+import { resetTimer } from './timer-state.js';
 import { showToast } from './toast.js';
 
 /**
@@ -1332,6 +1333,14 @@ function buildTimerProfileEditor(): HTMLElement {
         const p = PRESETS[o.value];
         settings.set('timerSpeechPresets', p.speech as never);
         settings.set('timerPrepMinutes', p.prep);
+        // Re-fill the live prep clocks to the new profile's
+        // total — otherwise the buttons keep showing the
+        // previous profile's remaining (e.g. switching from
+        // College → High School with the buttons still at
+        // "10:00" instead of the new "8:00"). Profile switch
+        // is conceptually a "set up a fresh round," so a full
+        // reset is what the user expects.
+        resetTimer(p.prep * 60 * 1000);
       }
     });
     wrap.appendChild(btn);
