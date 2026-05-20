@@ -1663,6 +1663,14 @@ function initRibbonResizer(): void {
     ['doc-ops-panel'],           // (e) Paragraph integrity
     ['font-size-up-btn',         // (f) Font-size step buttons
      'font-size-down-btn'],
+    ['color-panel'],             // (g) Highlight / shading / font color
+                                 //     / font-size input + picker. Hiding
+                                 //     the whole color-panel also covers
+                                 //     the step buttons in (f), which is
+                                 //     fine — display:none is idempotent.
+    ['comments-ops-panel'],      // (h) Comments toggle + add-comment.
+    ['open-btn', 'new-btn',      // (i) File ops: open, new, save,
+     'export-btn', 'autosave-btn'], //     autosave-toggle.
   ];
   let hideCount = 0;
   function setVisible(idx: number, visible: boolean): void {
