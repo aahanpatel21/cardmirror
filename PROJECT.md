@@ -30,7 +30,11 @@ Microsoft Word add-in used by US policy/LD/PF debaters.
   shape, three-layer rendering model, multi-doc workspace, read
   mode, send-to-speech, search, transclusion, editing-behavior
   rules, integration boundaries.
-- [`CHANGELOG.md`](./CHANGELOG.md) — user-facing release notes.
+- [`CHANGELOG.md`](./CHANGELOG.md) — user-facing release notes,
+  written for editor users.
+- [`DETAILED_CHANGELOG.md`](./DETAILED_CHANGELOG.md) — same
+  releases with implementation context, rationale, and edge-case
+  notes for contributors.
 
 Round-trip fidelity is verified against real `.docx` files via the
 test suite. Point `CARDMIRROR_DOCS_DIR` at a folder of fixtures to
