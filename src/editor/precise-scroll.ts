@@ -49,11 +49,16 @@ import type { EditorView } from 'prosemirror-view';
 
 /** Max iterations for the refine loop. With force-materialize gone,
  *  the initial scroll uses cv:auto placeholder heights and may land
- *  imprecisely; expect 1–3 refine passes in the cold path. The cap
- *  bounds worst-case latency rather than guaranteeing convergence —
- *  if we cap out, the target is on screen, just not perfectly
- *  aligned. */
-const MAX_REFINE_ITERATIONS = 5;
+ *  imprecisely; expect 1–3 refine passes in the warm path, more
+ *  on cold-deep-target paths where each iteration brings only a
+ *  little more layout truth into the system. The cap bounds worst-
+ *  case latency rather than guaranteeing convergence — if we cap
+ *  out, the target is on screen, just not perfectly aligned. The
+ *  number is deliberately generous: iterations that aren't needed
+ *  drop on their own via the tolerance early-exit, so a higher
+ *  cap only costs frames in worst-case paths that already weren't
+ *  converging at the previous cap. */
+const MAX_REFINE_ITERATIONS = 10;
 
 /** Convergence tolerance in CSS pixels. */
 const REFINE_TOLERANCE_PX = 1;
