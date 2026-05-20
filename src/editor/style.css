@@ -1544,29 +1544,6 @@ code {
   contain-intrinsic-height: auto 40px;
 }
 
-/* Force-materialize escape hatch. Applied transiently to the
-   editor's contenteditable surface during a precise scroll
-   (nav-pane jumpTo, find-bar next-match) so every cv:auto card /
-   heading flips to cv:visible and the browser MUST lay out real
-   content. Without this, `scrollIntoView` math uses
-   `contain-intrinsic-size` placeholders for skipped subtrees and
-   the scroll lands tens of pixels off per never-rendered card
-   above the target. Driven from `precise-scroll.ts`; the class
-   is removed once the iterative refine loop converges, so cv:auto
-   resumes skipping off-screen content for the editing hot path.
-   `!important` is needed because the inline-style cv:auto on the
-   `.pmd-card` rule has identical specificity to this descendant
-   rule, and the cascade would otherwise pick whichever came later
-   in source order. */
-.pmd-force-materialize .pmd-card,
-.pmd-force-materialize .pmd-analytic-unit,
-.pmd-force-materialize .pmd-pocket,
-.pmd-force-materialize .pmd-hat,
-.pmd-force-materialize .pmd-block {
-  content-visibility: visible !important;
-}
-
-
 /* Undertag paragraph. Color is settings-driven (--pmd-color-undertag);
    italic / bold are gated on typography-flag classes on #editor. */
 .pmd-undertag {

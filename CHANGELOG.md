@@ -6,7 +6,21 @@ internal refactors live in commit messages, not here.
 
 ## Unreleased
 
-- **Chrome scale — Mod-Alt-= / Mod-Alt-- / Mod-Alt-0.** Three
+- **Nav-pane navigation: dramatically faster on big docs.**
+  Clicking a heading in the nav pane used to pay a full-doc
+  layout pass (the editor's force-materialize escape hatch) on
+  every click — about 2 seconds on a 2000-card debate file, paid
+  regardless of whether the destination was already on screen.
+  The scroll algorithm now does an optimistic `scrollIntoView`
+  against whatever layout state already exists, then iteratively
+  refines (up to 5 frames) when cv:auto's placeholder heights
+  caused the first try to land imprecisely. Result: clicks where
+  the target heading is already visible cost a few ms; clicks
+  into fresh regions of the doc pay only what cv:auto would have
+  charged anyway for materializing the destination, instead of
+  re-laying-out the entire doc each time. The per-keystroke
+  editing-perf win from cv:auto is preserved end-to-end (we no
+  longer flip it off at all). Three
   new keybindable commands (`chromeScaleUp` / `chromeScaleDown`
   / `chromeScaleReset`) that scale the whole window — chrome
   AND doc content together — the same way the browser's built-

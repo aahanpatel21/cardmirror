@@ -1,57 +1,58 @@
 /**
- * `Element.scrollIntoView` with cv:auto-aware corrections.
+ * `Element.scrollIntoView` with cv:auto-aware refinement.
  *
  * Cards (`.pmd-card`, `.pmd-pocket`, `.pmd-hat`, `.pmd-block`,
  * `.pmd-analytic-unit`) carry `content-visibility: auto` with a
- * `contain-intrinsic-size: auto <small length>` fallback. Off-screen
- * subtrees skip layout and the browser substitutes the placeholder
- * height for any scroll-position math. A plain `scrollIntoView` on
- * a deep heading therefore lands tens of pixels off per never-
- * rendered card above the target.
+ * `contain-intrinsic-size` placeholder. Off-screen subtrees skip
+ * layout and the browser substitutes the placeholder height for
+ * any scroll-position math. A plain `scrollIntoView` on a deep
+ * heading therefore lands imprecisely the first time.
  *
- * Fix shape:
- *   1. Add `pmd-force-materialize` to the editor's DOM — a class
- *      whose CSS rule flips every cv:auto card / heading to
- *      `content-visibility: visible !important`. The browser must
- *      now lay out real content for every card rather than using
- *      `contain-intrinsic-size` placeholders.
- *   2. Read `editor.offsetHeight` to force a synchronous layout
- *      flush so the cv:visible override is reflected in the layout
- *      tree before any scroll math runs. This is the expensive
- *      step on big docs — a full-doc layout pass, typically
- *      200–500 ms on a 2000-card Verbatim. The user sees this
- *      as a slight pause on every click.
- *   3. Call `scrollIntoView(block)`. With real heights everywhere,
- *      the browser's alignment math is accurate on the first try.
- *   4. Iterate: re-measure the target's position; if the previous
- *      iteration changed it, call `scrollIntoView` again and check
- *      stability on the next frame. Converges when two consecutive
- *      iterations produce the same position. The class stays on
- *      through the entire iteration so cv:auto can't kick back in
- *      mid-loop and shift things again.
- *   5. Remove the class. cv:auto resumes; cards off-screen at this
- *      point use their placeholder sizes again. The target is
- *      on-screen and its card stays materialized regardless.
+ * Algorithm — optimistic + refine:
+ *   1. Call `scrollIntoView({ block })`. With cv:auto's placeholder
+ *      heights, the browser may land the target imprecisely — but
+ *      the scroll causes Chromium to materialize the cards around
+ *      the new viewport position, including the target.
+ *   2. Wait one frame. Read `target.getBoundingClientRect().top`.
+ *      The target is now materialized, so this returns its real
+ *      on-screen y-position.
+ *   3. If it's within tolerance of the requested alignment, done.
+ *      If not, re-issue `scrollIntoView` — this time using the
+ *      target's real position (it's materialized now) and any
+ *      newly-materialized neighbors' real heights. Each iteration
+ *      brings more layout truth into the system.
+ *   4. Cap at MAX_REFINE_ITERATIONS to defend against pathological
+ *      cases where late-arriving layout work prevents convergence
+ *      (image / font load mid-iteration, etc.). Worst case: the
+ *      user sees the target within ~one viewport of the requested
+ *      alignment, which is much better than a multi-second pause.
  *
- * This is the "accurate but pause on every click" trade-off. We
- * tried four alternatives to avoid the pause and rolled them all
- * back (see the closed item in WISHLIST.md for the full account).
- * The pause is the price for precision until one of the queued
- * follow-ups (sync-warm path, persist registry to `.cmir`, etc.)
- * lands.
+ * What this used to do (and no longer does): a previous
+ * implementation unconditionally added a force-materialize class
+ * to the editor (cv:visible !important on every card) and read
+ * `editor.offsetHeight` before scrolling. That style-cascade +
+ * full-doc layout pass cost ~2 s on a 2000-card Verbatim — and
+ * crucially, paid that cost on EVERY nav-pane click, even when
+ * the target was already on-screen and didn't need any new
+ * materialization. The optimistic path here trades precision-on-
+ * first-try for never-paying-the-full-doc-layout: clicks where
+ * the target is already visible cost a few ms, and clicks into
+ * fresh regions pay only what cv:auto would have charged anyway
+ * for the destination cards.
  *
- * Editing performance is preserved because the class is removed
- * at the end of the refine loop — every keystroke between scrolls
- * sees cv:auto in effect, which is responsible for a meaningful
- * share of per-keystroke layout cost on long docs (commit
- * `314944a`).
+ * cv:auto's editing-perf benefit (commit `314944a`) is preserved
+ * end-to-end — we never flip cv:auto off, so per-keystroke layout
+ * stays scoped to the cursor's containing card.
  */
 
 import type { EditorView } from 'prosemirror-view';
 
-/** Max iterations for the refine loop. Convergence in 1-2 is
- *  the norm with force-materialize active; this cap defends
- *  against pathological cases where layout never settles. */
+/** Max iterations for the refine loop. With force-materialize gone,
+ *  the initial scroll uses cv:auto placeholder heights and may land
+ *  imprecisely; expect 1–3 refine passes in the cold path. The cap
+ *  bounds worst-case latency rather than guaranteeing convergence —
+ *  if we cap out, the target is on screen, just not perfectly
+ *  aligned. */
 const MAX_REFINE_ITERATIONS = 5;
 
 /** Convergence tolerance in CSS pixels. */
@@ -60,50 +61,48 @@ const REFINE_TOLERANCE_PX = 1;
 export type PreciseScrollBlock = 'start' | 'center';
 
 export function preciseScrollIntoView(
-  view: EditorView,
+  _view: EditorView,
   target: HTMLElement,
   block: PreciseScrollBlock = 'start',
 ): void {
   if (!target.isConnected) return;
 
-  const editor = view.dom as HTMLElement;
-  editor.classList.add('pmd-force-materialize');
-  // Force a synchronous layout pass with the cv:visible override
-  // applied. Without this read, the upcoming scrollIntoView could
-  // see the pre-class-add layout (cv:auto placeholders).
-  void editor.offsetHeight;
-  // Coarse scroll. With cv:visible everywhere, the browser's
-  // alignment math runs against real heights.
+  // Optimistic initial scroll. Browser uses whatever layout it
+  // already has — placeholder heights for cv:auto-skipped cards,
+  // real heights for materialized ones. May land imprecisely on
+  // first call when the target's region was never visited.
   target.scrollIntoView({ behavior: 'auto', block });
 
-  // Refinement: a few frames of "did the target's screen position
-  // stop moving?" If yes, we're done. If not, scrollIntoView again
-  // and check next frame. Converges when two consecutive samples
-  // are equal (within tolerance).
-  let iterations = 0;
-  let prevTop = Number.POSITIVE_INFINITY;
+  // Where the target should be after a precise scroll, in viewport
+  // pixels. `block: 'start'` puts it at the top; `'center'` puts it
+  // at the vertical middle.
+  const desiredTop = block === 'center' ? window.innerHeight / 2 : 0;
 
+  let iterations = 1;
   const refine = (): void => {
-    if (!target.isConnected) {
-      editor.classList.remove('pmd-force-materialize');
-      return;
-    }
+    if (!target.isConnected) return;
     const rect = target.getBoundingClientRect();
-    const stable = Math.abs(rect.top - prevTop) < REFINE_TOLERANCE_PX;
-    if (stable || iterations >= MAX_REFINE_ITERATIONS) {
-      // Done — release the cv:visible override so cv:auto resumes
-      // skipping off-screen content. Preserves the editing-hot-
-      // path layout cost.
-      editor.classList.remove('pmd-force-materialize');
-      return;
-    }
-    prevTop = rect.top;
+    // Converged: target is within tolerance. Exit.
+    if (Math.abs(rect.top - desiredTop) < REFINE_TOLERANCE_PX) return;
+    // Out of budget. The target is on screen but possibly not at
+    // the exact alignment. Better than a multi-second pause; user
+    // sees ~one viewport's worth of misalignment at worst.
+    if (iterations >= MAX_REFINE_ITERATIONS) return;
     iterations++;
-    // Re-issue scrollIntoView with the same alignment. With
-    // cv:visible still in effect, this uses the same real-height
-    // layout as the previous call; any difference in result
-    // reflects late layout work the previous frame, which the
-    // next sample catches.
+    // Re-issue scrollIntoView. Each iteration brings more cards
+    // into materialization (the previous scroll's destination
+    // region is now painted), refining the layout state the
+    // browser's alignment math runs against. Mirrors the "click
+    // the nav-pane entry twice for precision" pattern that works
+    // empirically — except we automate it inside one click.
+    //
+    // No "position didn't change → bail" guard: that was the bug
+    // in an earlier version. When the placeholder-based layout
+    // makes scrollIntoView land at the same wrong spot two frames
+    // in a row, we still need to keep iterating because each scroll
+    // *attempts* further materialization even when its visible
+    // result doesn't shift. The MAX_REFINE_ITERATIONS budget is the
+    // real safety net.
     target.scrollIntoView({ behavior: 'auto', block });
     requestAnimationFrame(refine);
   };
