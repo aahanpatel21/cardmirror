@@ -7,6 +7,8 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+## 0.1.0-alpha.2 — 2026-05-20
+
 - **Nav-pane navigation: dramatically faster on big docs.**
   Clicking a heading in the nav pane used to pay a full-doc
   layout pass on every click — about 2 seconds on a 2000-card

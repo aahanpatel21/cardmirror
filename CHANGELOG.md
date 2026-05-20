@@ -7,6 +7,8 @@ see `DETAILED_CHANGELOG.md`.
 
 ## Unreleased
 
+## 0.1.0-alpha.2 — 2026-05-20
+
 ### Added
 
 - **Built-in countdown timer.** Native replacement for Verbatim's
