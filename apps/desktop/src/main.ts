@@ -32,38 +32,26 @@ import * as path from 'node:path';
 
 const DEV_SERVER_URL = 'http://localhost:5173';
 
-// macOS scroll-perf tuning. Reported symptom: on the same Apple
-// Silicon Mac, the web edition is lightning-fast and the packaged
-// `.dmg` build is materially slower (scrolling especially). The
-// renderer code is identical, so the gap is in the GPU /
-// compositor path Electron negotiates vs. the path the user's
-// Chrome takes for the web edition.
+// macOS scroll-perf tuning. Belt-and-suspenders settings retained
+// from the alpha.2 → alpha.3 perf investigation; the root cause
+// was resolved by bumping Electron 33 → 42 (Chromium 130 → 148)
+// rather than by any one of these switches, but each is cheap,
+// well-understood, and worth keeping in place.
 //
 // `enable-zero-copy` lets the GPU upload raster tiles directly
 // from main memory instead of double-buffering through the CPU —
-// big win on Apple Silicon where the GPU shares system memory.
+// useful on Apple Silicon where the GPU shares system memory.
 // `ignore-gpu-blocklist` overrides Chromium's conservative GPU
 // blocklist so Apple Silicon devices that fall into a denied
-// bucket still get full hardware acceleration. Both are cheap
-// and reversible — flip them off if they regress anyone's machine.
-//
-// MUST run before `app.whenReady()` (and ideally before any
-// `BrowserWindow` is created) — Chromium reads the switches at
-// gpu-process startup.
-//
+// bucket still get full hardware acceleration.
 // `enable-skia-graphite` opts into Chromium's newer Skia GPU
-// backend (Dawn → Metal on macOS), which is the named delta
-// between Electron 33's Chromium 130 (`skia_graphite: disabled_off`
-// per `Help → Copy GPU Info`) and Chrome 148 on the same Mac
-// (`Skia Graphite: Enabled` per `chrome://gpu`). Profile traces
-// showed identical per-event compositor work volume between the
-// two engines but Chrome producing visible frames ~6x more
-// smoothly — consistent with Graphite's better main-thread /
-// compositor decoupling. Caveat: M130's Graphite is two
-// pre-Apple-default-on cycles older than M148's, so we may see
-// partial-but-not-full improvement. Graceful fallback to Ganesh
-// if device support gates fail; no expected stability risk on
-// M-series + ANGLE Metal.
+// backend (Dawn → Metal on macOS). On Chromium 148 (Electron 42)
+// this is default-on for Apple platforms — the switch is now a
+// no-op, but kept explicit to defend against any future default
+// flip and to document the path we depend on.
+//
+// MUST run before `app.whenReady()` — Chromium reads switches at
+// gpu-process startup.
 if (process.platform === 'darwin') {
   app.commandLine.appendSwitch('enable-zero-copy');
   app.commandLine.appendSwitch('ignore-gpu-blocklist');
@@ -854,17 +842,15 @@ function buildMenu(): Menu {
           },
         },
         {
-          // Temporary diagnostic for the macOS scroll-perf
-          // investigation. `chrome://gpu` is blocked in Electron
-          // renderers, so we expose the underlying APIs the page
-          // would render from. The clipboard payload is the same
-          // shape as Chrome's `chrome://gpu` "Graphics Feature
-          // Status" block + the raw GPU info — enough to diff
-          // against an installed Chrome's output and find any
-          // feature that's accelerated there but disabled / falling
-          // back here. Remove this menu item once the
-          // investigation lands.
-          label: 'Copy GPU Info (debug)',
+          // GPU diagnostics for bug reports. `chrome://gpu` is
+          // blocked in Electron renderers; this exposes the same
+          // data via `app.getGPUFeatureStatus()` + `app.getGPUInfo()`
+          // and copies it to the clipboard so users can paste it
+          // into an issue. Originally added for the alpha.2 →
+          // alpha.3 macOS scroll-perf investigation; kept because
+          // it's a one-click bug-report aid with effectively zero
+          // runtime cost.
+          label: 'Copy GPU Info',
           click: () => {
             void (async () => {
               const feature = app.getGPUFeatureStatus();

@@ -59,6 +59,62 @@ in each release, see `CHANGELOG.md`.
   does the same; `drag-editor-surface.ts`'s host-relative math
   was already 0 in single-doc and stays so.
 
+  Standalone, this fix narrowed but didn't close the macOS gap
+  (see Electron bump entry below for the second half of the
+  story).
+
+- **Electron bumped from 33 (Chromium 130) to 42 (Chromium 148).**
+  Second half of the macOS scroll-perf fix. The path A
+  architectural change above eliminated the doc-as-rootScroller
+  giant layer in single-doc, but the residual gap to the same
+  content rendered in the user's installed Chrome 148 remained —
+  measured most acutely as click-jump tail latency
+  (electron-multi p99 frame interval 974ms vs chrome-multi 343ms
+  on identical content + hardware) and per-event `UpdateLayer`
+  cost magnitude (electron-single avg 472ms vs chrome-single
+  78ms). Trace data attributed the gap to Chromium 130's
+  compositor pipeline being more tightly coupled to main-thread
+  work than 148's — Chrome did similar total work per scroll but
+  produced frames smoothly through it, while Electron 130
+  blocked frame production on the heavy work.
+
+  GPU-feature-status diff between the two builds on the same Mac
+  landed cleanly on one line:
+  `skia_graphite: disabled_off` (Electron 33) vs `Enabled`
+  (Chrome 148). Skia Graphite is the newer Dawn-on-Metal Skia
+  backend that ships the relevant compositor decoupling. The
+  `--enable-skia-graphite` switch we added to `main.ts` engaged
+  the feature in Electron 33 (verified by re-running the GPU diff
+  post-switch) but the M130 iteration of Graphite is two cycles
+  pre-default-on; engaging the flag helped substantially but
+  didn't reach Chrome 148's behavior. The actual cure was
+  upgrading to a Chromium build that ships the mature Graphite
+  implementation.
+
+  Electron 42's bundled Chromium is `148.0.7778.96`, effectively
+  matching the user's installed Chrome 148.0.7778.168 — maximum
+  apples-to-apples perf parity. Bumps:
+  - `electron`: `^33.2.0` → `^42.2.0` (9 major version jump)
+  - `electron-builder`: `^25.1.8` → `^26.8.1`
+  - `electron-updater`: `^6.3.9` → `^6.8.3`
+  - `electronVersion` in build config: `33.2.0` → `42.2.0`
+
+  Migration was uneventful: full `rm -rf node_modules
+  package-lock.json && npm install`, `npm run build:main` clean
+  against Electron 42 types (no main-process API breakages
+  caught by tsc against the 9-major delta), renderer typecheck +
+  683 vitest tests still pass. End-user verification on the Mac
+  confirmed the perf gap closed — scrolling, typing, and
+  nav-pane click latency now feel parity with the in-browser
+  experience.
+
+  The `--enable-skia-graphite` switch we added during the
+  investigation is now a no-op on Electron 42 (Graphite is
+  default-on for Apple in Chromium 148) but stays in place as
+  belt-and-suspenders. The "Copy GPU Info" menu item that was
+  added as a temporary diagnostic stays as a permanent
+  bug-report aid — one click, zero runtime cost.
+
 - **Keyboard Shortcuts cheat sheet caught up with the keybindings
   registry.** The `GROUPS` array in `src/editor/reference-ui.ts`
   was hand-maintained and had drifted behind the registry — alpha.2

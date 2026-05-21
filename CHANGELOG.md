@@ -17,13 +17,19 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Fixed
 
-- **Single-doc scrolling is materially smoother on macOS.** The
-  editor's scroll container changed from the document itself to
-  an inner bounded container (`#app`). The old layout meant
-  scrolling re-composited a doc-height layer (measured at ~5 GB
-  nominal on a long debate doc); the new layout bounds the
-  scroll-content layer to the viewport. Most pronounced on Mac;
-  smaller measurable improvement on Linux / Windows.
+- **macOS scrolling, typing, and nav-pane click latency now
+  match the in-browser feel.** alpha.2 on macOS was materially
+  slower than the web edition on the same machine. Two
+  coordinated fixes close that gap: the editor's scroll
+  container migrated from the document itself to an inner
+  bounded container (`#app`), which eliminated a doc-height
+  composited layer Chromium was re-compositing on every scroll;
+  and the bundled Electron version was upgraded from 33
+  (Chromium 130) to 42 (Chromium 148), which lands the newer
+  Skia Graphite compositor backend and the per-event decoupling
+  improvements that make Chrome on macOS feel smooth on the
+  same content. Linux and Windows builds also benefit but the
+  gap was smaller there to begin with.
 - **Keyboard Shortcuts cheat sheet now lists every bindable
   action.** The reference modal was hand-maintained and had
   fallen behind the keybindings registry — twenty-plus
