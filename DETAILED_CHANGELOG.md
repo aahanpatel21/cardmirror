@@ -7,6 +7,48 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Multi-pane: Ctrl+Tab / Ctrl+Shift+Tab cycle docs within the
+  focused slot.** New `Slot.cycleVisible(delta)` advances the
+  visible doc index in a slot's stack with wrap-around. Wired
+  via a new `onDocCycleKey` window keydown listener (mounted
+  alongside the existing `onSlotShortcutKey` for Mod-N slot
+  focus). Routes through the existing `showRecord` so the
+  shared-chrome / focusSlot dance fires the same way as a
+  click on the stack-dropdown menu would.
+
+  Desktop (Electron) accepts plain Mod+Tab — Electron windows
+  have no native tabs to cycle, so the keydown passes through
+  to the renderer's JS unmodified. Web reserves the plain
+  Mod+Tab chord for the browser's own tab cycling, so the
+  renderer never sees the keydown there. The handler also
+  accepts Mod+Alt+Tab as the web-edition fallback (and on
+  desktop, which makes Mod+Alt+Tab a universal alias).
+  Shift toggles direction.
+
+- **Multi-pane: Ctrl+Shift+1 / 2 / 3 send the focused slot's
+  visible doc to slot N.** Mirror of the Mod-N slot-focus
+  chord. New `Slot.releaseVisible()` is closeVisible without
+  the view destroy / journal drop: detaches the visible
+  record's DOM, removes it from the stack, mounts the next
+  visible doc (or empties the slot), and returns the released
+  `DocRecord` so the shell can re-push it into the target
+  slot's stack. The view stays live across the move, so the
+  doc keeps its cursor, selection, undo history, autosave
+  state, and any other view-attached state.
+
+  Extended `onSlotShortcutKey` to differentiate the Mod-only
+  chord (focus) from the Mod-Shift chord (send-to). The
+  digit-match uses `e.code === 'Digit1'/'Digit2'/'Digit3'`
+  rather than `e.key === '1'/'2'/'3'` because Shift-modified
+  digits render as `!`/`@`/`#` (or layout-specific characters)
+  in `e.key`; `e.code` is the physical-key identifier and
+  works for both shifted and unshifted chords.
+
+  Expand-mode edges handled via the existing notification
+  callbacks: source emptying in expand mode drops expand
+  mode; target receiving a doc while a different slot is
+  expanded keeps the doc hidden until expand mode exits.
+
 - **Exported .docx is Verbatim-recognized on open.** Verbatim's
   per-doc ribbon-visibility callback
   (`Ribbon.GetRibbonVisibility`, registered on every `<group>`

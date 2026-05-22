@@ -9,6 +9,17 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Added
 
+- **Ctrl+Tab / Ctrl+Shift+Tab — cycle docs within the focused
+  multi-pane slot** (when the slot holds 2+ docs). Wraps around
+  at both ends. Web users without the chord (browsers reserve
+  it for tab cycling): use Ctrl+Alt+Tab — same handler accepts
+  both shapes, so it also works on desktop.
+- **Ctrl+Shift+1 / 2 / 3 — send the focused slot's visible doc
+  to slot 1 / 2 / 3.** Mirrors the existing Ctrl+1 / 2 / 3
+  focus chord. Source slot collapses to its next-visible doc
+  or empties; the moved doc keeps its cursor, selection, undo
+  history, and unsaved-edits state. No-op when the focused
+  slot is empty or when the target is the source slot itself.
 - **Exported .docx files now open as Verbatim-ready.** When a
   Verbatim user opens a CardMirror-saved .docx in Word, the
   Debate ribbon activates immediately — no need to click the
