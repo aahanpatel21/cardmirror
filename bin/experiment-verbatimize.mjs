@@ -117,68 +117,55 @@ async function makeVariant(label, docVars) {
   return outPath;
 }
 
-/** Build a settings.xml that adds an `<w:attachedTemplate>` (and
- *  optionally docVars). The relationship for the template is
- *  injected separately into document.xml.rels. */
-function buildSettingsWithAttachedTemplate(docVars, attachedTemplateRelId) {
-  const docVarBlock = docVars
-    ? `  <w:docVars>
-${Object.entries(docVars)
-  .map(([n, v]) => `    <w:docVar w:name="${n}" w:val="${v}"/>`)
-  .join('\n')}
-  </w:docVars>
-`
-    : '';
+/** Build settings.xml with `<w:attachedTemplate>`. The
+ *  relationship for the template MUST live in
+ *  word/_rels/settings.xml.rels — NOT document.xml.rels — because
+ *  the `<w:attachedTemplate>` element lives in the settings part
+ *  and its r:id resolves against the settings part's own rels
+ *  file. This was the bug in v6/v7. */
+function buildSettingsWithAttachedTemplate(attachedTemplateRelId) {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <w:attachedTemplate r:id="${attachedTemplateRelId}"/>
-${docVarBlock}</w:settings>
+</w:settings>
 `;
 }
 
-/** Produce a variant with `<w:attachedTemplate>` set. `templatePath`
- *  is whatever string we want Word to store as the attached
- *  template — typically "Debate.dotm" (bare; relies on Word's
- *  template-search path) or a full path like
- *  "file:///C:/Users/.../Debate.dotm". `TargetMode="External"` is
- *  what tells Word this is a file-system path rather than an
- *  in-package part reference. */
-async function makeTemplateVariant(label, templatePath, extraDocVars = null) {
+/** Build the settings part's own rels file with the
+ *  attachedTemplate relationship. `TargetMode="External"` tells
+ *  Word the Target is a file-system path. The Target can be:
+ *   - a bare filename ("Debate.dotm") — Word resolves via its
+ *     template search path
+ *   - a full path ("file:///C:\\Users\\...\\Debate.dotm") — used
+ *     by Verbatim's own Verbatimize macro
+ *   - a URI ("file:///path") — both forms accepted */
+function buildSettingsRels(attachedTemplateRelId, target) {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="${attachedTemplateRelId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/attachedTemplate" Target="${target}" TargetMode="External"/></Relationships>
+`;
+}
+
+async function makeTemplateVariant(label, templatePath) {
   const zip = await JSZip.loadAsync(baseBytes);
+  const relId = 'rId1';
+  zip.file(SETTINGS_PART, buildSettingsWithAttachedTemplate(relId));
+  zip.file('word/_rels/settings.xml.rels', buildSettingsRels(relId, templatePath));
 
-  // Pick a relationship ID not already used in document.xml.rels.
-  const rels = await zip.file(DOCUMENT_RELS_PART).async('string');
-  const ids = [...rels.matchAll(/Id="rId(\d+)"/g)].map((m) => parseInt(m[1], 10));
-  const next = (ids.length === 0 ? 0 : Math.max(...ids)) + 1;
-  const relId = `rId${next}`;
-
-  zip.file(
-    SETTINGS_PART,
-    buildSettingsWithAttachedTemplate(extraDocVars, relId),
-  );
-
-  // Inject the attached-template relationship. Use TargetMode=External
-  // so Word interprets the Target as a file-system path.
-  const updatedRels = rels.replace(
-    '</Relationships>',
-    `<Relationship Id="${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/attachedTemplate" Target="${templatePath}" TargetMode="External"/></Relationships>`,
-  );
-  zip.file(DOCUMENT_RELS_PART, updatedRels);
-
-  // Settings.xml content-type + relationship (same as the docVar
-  // variants).
+  // [Content_Types].xml override for the new settings part.
   const ct = await zip.file(CONTENT_TYPES_PART).async('string');
   zip.file(
     CONTENT_TYPES_PART,
     injectContentType(ct, `/${SETTINGS_PART}`, SETTINGS_CONTENT_TYPE),
   );
+
+  // Relationship in document.xml.rels pointing at settings.xml
+  // (separate from the attached-template rel above — this one is
+  // the document → settings.xml link, the other is the settings
+  // → template link).
+  const docRels = await zip.file(DOCUMENT_RELS_PART).async('string');
   zip.file(
     DOCUMENT_RELS_PART,
-    injectRelationship(
-      await zip.file(DOCUMENT_RELS_PART).async('string'),
-      SETTINGS_REL_TYPE,
-      'settings.xml',
-    ),
+    injectRelationship(docRels, SETTINGS_REL_TYPE, 'settings.xml'),
   );
 
   const out = await zip.generateAsync({
@@ -194,73 +181,44 @@ async function makeTemplateVariant(label, templatePath, extraDocVars = null) {
 // Variant 1: control (untouched copy, renamed for clarity).
 const v1 = join(outDir, `${baseStem}.v1-control.docx`);
 writeFileSync(v1, baseBytes);
-
-// Variants 2-5: docVar-only variants (original hypothesis — known
-// to fail per the first experiment run, kept here for completeness
-// in case we want to re-verify alongside the attached-template
-// variants).
-const docVarVariants = [
-  { label: 'v2-version-match', vars: { VerbatimVersion: '6.0.0' } },
-  { label: 'v3-version-lower', vars: { VerbatimVersion: '1.0' } },
-  { label: 'v4-version-sentinel', vars: { VerbatimVersion: 'cardmirror' } },
-  {
-    label: 'v5-full-docvar-set',
-    vars: {
-      OS: 'Windows NT',
-      OSVersion: '10.0',
-      VerbatimVersion: '6.0.0',
-      WordVersion: '16.0',
-      Profile: '',
-    },
-  },
-];
-
 console.log(`Wrote: ${v1}`);
-for (const v of docVarVariants) {
-  const out = await makeVariant(v.label, v.vars);
-  console.log(`Wrote: ${out}`);
-}
 
-// Variants 6-8: attached-template (new hypothesis after docVars
-// failed). Strings dump of Debate.dotm's vbaProject.bin shows
-// `AttachedTemplate`, `InstallCheckTemplateName`, and the literal
-// "Debate.dotm" together — recognition predicate is almost
-// certainly `ActiveDocument.AttachedTemplate.Name = "Debate.dotm"`.
+// Variants 8 and 9 — attached-template variants with the rel in
+// the correct place (word/_rels/settings.xml.rels, not
+// document.xml.rels — bug in the v6/v7 attempt). v8 uses the
+// bare filename so Word's template-search-path resolution can
+// find Debate.dotm; v9 uses the full Windows path the
+// Verbatimize macro itself wrote.
+//
+// (v2-v5 docVar-only variants and v6/v7 wrong-rel-file variants
+// from earlier runs of this script are dropped — confirmed not
+// the recognition trigger by the first experiment, and the
+// gold-truth diff against a Verbatimize'd doc showed neither
+// VerbatimVersion nor any docVar is set when Verbatim
+// recognizes a doc.)
 const templateVariants = [
   {
-    label: 'v6-template-bare-filename',
+    label: 'v8-template-bare-filename',
     path: 'Debate.dotm',
-    docVars: null,
-    note: 'Bare filename — Word resolves via its template search path (user template folder, Startup folder, etc.). Most portable if the user has Verbatim installed normally.',
   },
   {
-    label: 'v7-template-bare-plus-version',
-    path: 'Debate.dotm',
-    docVars: { VerbatimVersion: '6.0.0' },
-    note: 'Same as v6 plus the VerbatimVersion docVar — covers the case where BOTH signals are needed.',
+    label: 'v9-template-full-path',
+    path: 'file:///C:\\Users\\anthonytrufanov\\AppData\\Roaming\\Microsoft\\Templates\\Debate.dotm',
   },
 ];
 
 for (const v of templateVariants) {
-  const out = await makeTemplateVariant(v.label, v.path, v.docVars);
+  const out = await makeTemplateVariant(v.label, v.path);
   console.log(`Wrote: ${out}`);
 }
 
 console.log(`
-Done. Open each variant in Word (with Verbatim installed) and note
-whether the Debate ribbon activates for that document.
+Done. Open v8 and v9 in Word (Verbatim installed) and note which
+ones activate the Debate ribbon.
 
-If v6 / v7 still don't activate the ribbon, the bare filename
-isn't resolving on your machine. Try this from a Word VBA window:
-
-    Debug.Print Application.NormalTemplate.Path
-    Debug.Print Application.Options.DefaultFilePath(wdUserTemplatesPath)
-
-Whichever path holds Debate.dotm, you can edit the variant's
-word/_rels/document.xml.rels by hand to use the full
-"file:///C:/Path/To/Debate.dotm" Target (TargetMode="External"
-stays the same) — that's the v8 case.
-
-Or, simpler: take any Word doc, click Verbatimize in the Verbatim
-ribbon, Save As, send me the resulting docx and we'll diff it
-against base.docx for the exact recognition surface.`);
+  v8 (bare filename) — tests whether we can ship a portable
+     export that activates Verbatim on any user's machine. If
+     this works, that's our shippable shape.
+  v9 (full path matching your install) — mirrors exactly what
+     Verbatim's own Verbatimize macro writes. Should activate
+     for sure; serves as the "known-good" reference point.`);
