@@ -469,6 +469,31 @@ class Slot {
     this.showRecord(this.stack[next]!);
   }
 
+  /** Detach the visible record from this slot WITHOUT destroying
+   *  its view — used by send-to-slot to hand the record to another
+   *  slot. Mirrors `closeVisible` minus the destroy / journal-drop
+   *  steps (the doc keeps living; only its host slot changes).
+   *  Returns the released record, or null if nothing was visible. */
+  releaseVisible(): DocRecord | null {
+    const idx = this.visibleIndex;
+    if (idx < 0) return null;
+    const record = this.stack[idx]!;
+    this.detachVisible();
+    this.stack.splice(idx, 1);
+    if (this.stack.length === 0) {
+      this.visibleIndex = -1;
+      this.paneEl.hidden = true;
+      this.navSectionEl.hidden = true;
+      this.shell.notifySlotEmptied(this);
+      this.shell.refreshLayout();
+      this.shell.handleSlotEmptied(this);
+      return record;
+    }
+    this.visibleIndex = Math.min(idx, this.stack.length - 1);
+    this.mountVisible();
+    return record;
+  }
+
   /** Close the currently-visible doc. Reveals the next stack member
    *  (or empties the slot). Prompts for save / discard / cancel if
    *  the doc has unsaved changes; clean docs close immediately. */
@@ -1003,33 +1028,45 @@ class MultiPaneShell {
     this.scheduleSyncAllCardIntrinsicWidths();
   };
 
-  /** Mod-1 / Mod-2 / Mod-3 → focus slot 1 / 2 / 3. Skips when
-   *  the keystroke also carries Shift / Alt (so chords like
-   *  `Mod-Shift-1` stay available for other purposes) and when
-   *  the target slot has no doc loaded. Calling `focusSlot` does
-   *  the focus dance and routes the shared chrome through the
-   *  slot's visible view; we also call `view.focus()` so the
-   *  keystroke transfers actual keyboard focus into the doc. */
+  /** Mod-1 / Mod-2 / Mod-3 → focus slot N. Mod-Shift-1 / -2 / -3 →
+   *  send the focused slot's visible doc to slot N (a "send to
+   *  slot" gesture — closes the doc-on-source flow but keeps the
+   *  view live, mounts it into the target slot's stack). Skips
+   *  Alt-modified chords (those stay available for other
+   *  purposes). */
   private onSlotShortcutKey = (e: KeyboardEvent): void => {
     if (e.defaultPrevented) return;
-    const modOnly = (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey;
-    if (!modOnly) return;
+    const hasMod = (e.ctrlKey || e.metaKey) && !e.altKey;
+    if (!hasMod) return;
     let idx = -1;
     if (e.key === '1') idx = 0;
     else if (e.key === '2') idx = 1;
     else if (e.key === '3') idx = 2;
     if (idx < 0) return;
-    const slot = this.slots[SLOT_IDS[idx]!];
-    if (slot.stack.length === 0) return;
+    const targetSlotId = SLOT_IDS[idx]!;
+    const targetSlot = this.slots[targetSlotId];
     e.preventDefault();
+    if (e.shiftKey) {
+      // Mod-Shift-N → send focused slot's visible doc to slot N.
+      // No-op if the focused slot has no visible doc or if the
+      // target is the focused slot itself.
+      if (!this.focusedSlot || this.focusedSlot === targetSlot) return;
+      const record = this.focusedSlot.releaseVisible();
+      if (!record) return;
+      targetSlot.push(record);
+      targetSlot.visible?.view.focus();
+      return;
+    }
+    // Mod-N → focus target slot.
+    if (targetSlot.stack.length === 0) return;
     // If a slot is currently expanded, Mod-N moves the expansion to
     // the target slot (so the keyboard stays useful in expand mode).
-    if (this.expandedSlot && this.expandedSlot !== slot) {
-      this.setExpandedSlot(slot);
+    if (this.expandedSlot && this.expandedSlot !== targetSlot) {
+      this.setExpandedSlot(targetSlot);
     } else {
-      this.focusSlot(slot);
+      this.focusSlot(targetSlot);
     }
-    slot.visible?.view.focus();
+    targetSlot.visible?.view.focus();
   };
 
   /** Ctrl-Tab / Ctrl-Shift-Tab → cycle the visible doc within the
