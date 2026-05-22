@@ -7,6 +7,43 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Emphasize Acronym (Mod-F10).** New ribbon command for
+  marking the source letters of an acronym. Algorithm:
+  1. Bail if the selection is empty.
+  2. For each textblock that overlaps the selection (skipping
+     structural blocks via the existing `NAMED_STYLE_SKIP_BLOCKS`
+     set — emphasis_mark is body-only), find the leftmost and
+     rightmost non-whitespace character indices within the
+     selection's clip range. If neither exists (selection is
+     entirely whitespace), skip the block.
+  3. Expand leftward and rightward through non-whitespace to
+     reach whole-word boundaries (same word definition as
+     `wordRangeAtCursor` — maximal run of non-whitespace within
+     the textblock, inline leaves break words, mark boundaries
+     don't).
+  4. Walk the expanded range and emit a 1-character mark range
+     for every word-start position (WS-to-non-WS transitions
+     plus the initial position if non-WS).
+  5. Apply `emphasis_mark` to each range plus the same direct-
+     formatting strip `applyEmphasis` uses.
+
+  Wired the standard ribbon-command surface — type union,
+  registry array, label ("Emphasize Acronym"), default key
+  (`Mod-F10` → "Ctrl+F10" on Win/Linux, "⌘F10" on Mac),
+  dispatcher case, and `ribbon-groups.ts` placement next to
+  `applyEmphasis` in the Character styles group so both the
+  cheat sheet and the keybindings editor inherit the
+  grouping.
+
+  Tests in `tests/editor/ribbon-commands.test.ts` cover the
+  empty / two-words / partial-word / word-start-touch /
+  whitespace-only / structural-block-spanning cases plus the
+  default-key assertion. A new `emphPositionsInBlock(doc,
+  target)` test helper walks the children of a target textblock
+  and returns local-to-block character indices that carry the
+  mark — robust to post-`addMark` text-node splitting that
+  earlier `n.text === 'body text here'` checks broke on.
+
 - **Keybindings editor grouped by thematic section.** Lifted
   the `GROUPS` taxonomy out of `reference-ui.ts` into a new
   shared `ribbon-groups.ts` module as `RIBBON_GROUPS`. The

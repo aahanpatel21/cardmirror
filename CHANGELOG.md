@@ -9,6 +9,14 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Added
 
+- **Emphasize Acronym (Ctrl+F10).** New ribbon command. Select
+  any text (or a partial word — the selection auto-expands to
+  whole-word boundaries) and the first letter of every word in
+  the range gets the Emphasis style applied. Useful for marking
+  the source letters of an acronym: select "United States
+  Capitol Police", press Ctrl+F10, and U / S / C / P are
+  emphasized. Selection-only — no-op without a selection, and
+  no-op if the selection is entirely whitespace.
 - **Keybindings editor (Settings → Keybindings) is now grouped
   by category** — same 17-section taxonomy as the Keyboard
   Shortcuts reference modal (File, Speech, Structural styles,
