@@ -1587,12 +1587,26 @@ class MultiPaneShell {
       dialog.appendChild(cancel);
       overlay.appendChild(dialog);
       document.body.appendChild(overlay);
-      // Esc cancels.
+      // Esc cancels; 1 / 2 / 3 pick the corresponding slot. Skips
+      // chords with modifiers so e.g. Ctrl+1 keeps its slot-focus
+      // meaning even if a picker is open.
       const onKey = (e: KeyboardEvent) => {
         if (e.key === 'Escape') {
           document.removeEventListener('keydown', onKey);
           overlay.remove();
           resolve(null);
+          return;
+        }
+        if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+        let idx = -1;
+        if (e.key === '1') idx = 0;
+        else if (e.key === '2') idx = 1;
+        else if (e.key === '3') idx = 2;
+        if (idx >= 0) {
+          e.preventDefault();
+          document.removeEventListener('keydown', onKey);
+          overlay.remove();
+          resolve(SLOT_IDS[idx]!);
         }
       };
       document.addEventListener('keydown', onKey);

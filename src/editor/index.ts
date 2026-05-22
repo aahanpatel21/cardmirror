@@ -3605,6 +3605,26 @@ export function confirmCloseUnsaved(): Promise<'save' | 'saveAs' | 'discard' | '
       if (e.key === 'Escape') {
         cleanup();
         resolve('cancel');
+        return;
+      }
+      // Number keys mirror button order so the dialog is fully
+      // keyboard-navigable: 1=Save, 2=Save As, 3=Don't save.
+      // Esc still cancels. Skips when a modifier is held so we
+      // don't intercept chords (e.g., Ctrl+1 stays available for
+      // its slot-focus meaning, even if a save prompt is open).
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      if (e.key === '1') {
+        e.preventDefault();
+        cleanup();
+        resolve('save');
+      } else if (e.key === '2') {
+        e.preventDefault();
+        cleanup();
+        resolve('saveAs');
+      } else if (e.key === '3') {
+        e.preventDefault();
+        cleanup();
+        resolve('discard');
       }
     };
     document.addEventListener('keydown', onKey);
