@@ -49,8 +49,12 @@ export class Docx {
     // sufficient: Word doesn't validate the file exists at the
     // stored path, it just basename-matches the URI. Both Windows
     // and Mac Verbatim installs read the same XML shape and
-    // activate identically. See bin/experiment-verbatimize.mjs for
-    // the diff-grounded methodology.
+    // activate identically. The methodology (extract Verbatimize'd
+    // doc, diff against unverbatimized, narrow the recognition
+    // surface, sweep URI shapes to pick the most portable Target)
+    // lives in `reference-docs/experiment-verbatimize.mjs`
+    // (gitignored — local diagnostic for re-running if Verbatim's
+    // recognition mechanism ever shifts).
     zip.file('word/settings.xml', SETTINGS_XML);
     zip.file('word/_rels/settings.xml.rels', SETTINGS_RELS_XML);
     return new Docx(zip);

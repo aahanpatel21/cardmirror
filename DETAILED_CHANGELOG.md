@@ -67,9 +67,10 @@ in each release, see `CHANGELOG.md`.
   Target is unresolvable to them, Word falls back to
   Normal.dotm, no prompt, no UI shift.
 
-  See `bin/experiment-verbatimize.mjs` for the experiment
-  script (kept in `bin/` as a future diagnostic if Verbatim's
-  recognition mechanism ever shifts).
+  The experiment script
+  (`reference-docs/experiment-verbatimize.mjs`, gitignored)
+  stays around as a local diagnostic if Verbatim's
+  recognition mechanism ever shifts in a future release.
 
 - **Emphasize Acronym (Mod-F10).** New ribbon command for
   marking the source letters of an acronym. Algorithm:
