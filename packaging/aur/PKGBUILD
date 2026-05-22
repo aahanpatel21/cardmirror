@@ -43,7 +43,13 @@ depends=('c-ares' 'ffmpeg' 'gtk3' 'libevent' 'libnotify' 'libvpx'
          'libxslt' 'libxss' 'minizip' 'nss' 're2' 'snappy'
          'libxcrypt-compat')
 provides=('cardmirror')
-conflicts=('cardmirror' 'cardmirror-git')
+# `CardMirror` (capital C) is the package name electron-builder
+# stamps into the upstream `.pacman` itself (from `productName`).
+# Users who installed via direct `pacman -U cardmirror-*.pacman`
+# end up with that package and would collide on disk with this
+# AUR-bin's payload — declare the conflict so pacman offers to
+# remove the upstream copy when installing this one.
+conflicts=('cardmirror' 'cardmirror-git' 'CardMirror')
 options=('!strip')
 source=("https://github.com/ant981228/cardmirror/releases/download/v${_origver}/cardmirror-${_origver}.pacman")
 # Alpha policy: SKIP until release sha256s stabilize. Once the
