@@ -286,6 +286,29 @@ describe('exporter — hyperlinks', () => {
     const matches = relsXml.match(/Target="https:\/\/example\.com"/g);
     expect(matches).toHaveLength(1);
   });
+
+  it('escapes ampersands in hyperlink Target so the rels XML stays well-formed', async () => {
+    // Real-world URL shape (query string with multiple `&`-separated
+    // parameters) that broke Word's "is this doc valid" check: raw
+    // `&` in an XML attribute is malformed, Word recovers but flags
+    // the doc as corrupted on open. URL taken from a debate-corpus
+    // doc that reproduced the bug in production.
+    const url = 'http://example.com/home.aspx?sid=56&categoryid=56&newsid=11568';
+    const doc = schema.nodes['doc']!.createChecked(null, [
+      schema.nodes['paragraph']!.create(null, [
+        schema.text('q', [schema.marks['link']!.create({ href: url })]),
+      ]),
+    ]);
+    const { relsXml } = exportDoc(doc);
+    // Confirm the raw `&` did NOT survive into the attribute.
+    expect(relsXml).toMatch(/Target="http:\/\/example\.com\/home\.aspx\?sid=56&amp;categoryid=56&amp;newsid=11568"/);
+    expect(relsXml).not.toContain('?sid=56&categoryid=');
+    // And the relsXml as a whole is well-formed XML (parses without
+    // entity-ref errors).
+    const { XMLParser } = await import('fast-xml-parser');
+    const parser = new XMLParser({ ignoreAttributes: false });
+    expect(() => parser.parse(relsXml)).not.toThrow();
+  });
 });
 
 describe('exporter — full docx', () => {

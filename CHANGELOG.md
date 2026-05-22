@@ -48,6 +48,15 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Fixed
 
+- **Round-tripped .docx files with hyperlinks no longer open as
+  corrupted in Word.** URLs containing `&` (very common in
+  query-string-heavy citation links — multiple `&`-separated
+  parameters) were being written into the hyperlink Target
+  attribute without XML-escaping, producing malformed XML.
+  Word recovered the doc body but flagged it as corrupted on
+  open, and images attached to that doc could fail to display.
+  Now properly escapes `&`, `<`, `>`, `"`, and `'` in all
+  hyperlink and image relationship Targets.
 - **Plain-paste no longer jumps the viewport to the doc end.**
   Pasting text that contained a line break (the common case:
   triple-clicking an article title in the browser, which grabs

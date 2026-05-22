@@ -124,6 +124,35 @@ in each release, see `CHANGELOG.md`.
   "remembered to update both" failure mode for future
   command additions.
 
+- **Round-trip: hyperlink rel Targets are XML-attribute-escaped.**
+  `exporter.ts`'s `buildRelsXml` was interpolating `rel.target`
+  raw into the `Target="..."` attribute of each hyperlink
+  `<Relationship>`. URLs containing `&` (the standard
+  query-string parameter separator — extremely common in cite
+  links) ended up as raw `&` in the XML, which is malformed.
+  Word's loader uses a recovery-mode parser that pulls the
+  document body through anyway, but flags the file as
+  corrupted on open. User-reported symptom: round-trip of a
+  doc with many cite hyperlinks opened on another machine as
+  "we found a problem with some content" and images failed to
+  display (likely because the rels XML failure cascaded into
+  the relationship resolver giving up partway).
+
+  Fix: pipe `rel.target` through the existing `escAttr` helper
+  (`src/ooxml/xml.ts`) for both the hyperlink and image rel
+  emission paths. `escAttr` escapes `&`, `<`, `>`, and `"` —
+  the four chars that can break an attribute value. Image
+  Targets are internally generated and currently safe, but
+  symmetry / defense in depth justifies the escape there too
+  (a future media filename with a special char would have the
+  same problem).
+
+  Detected via diff of a doc round-tripped through CardMirror
+  against the same doc untouched: both opened in Word, but the
+  round-tripped one reported corrupted on open. `xmllint
+  --noout document.xml.rels` returned `EntityRef: expecting
+  ';'` errors at exactly the unescaped `&` positions.
+
 - **Plain-paste no longer splits cards on a trailing newline.**
   Long-standing user-reported bug ("skipping around on paste"
   / "viewport shoots to the bottom") had a narrow trigger:

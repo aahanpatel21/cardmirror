@@ -669,13 +669,26 @@ class DocxExporter {
       '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>',
     );
     for (const rel of this.rels) {
+      // Hyperlink Targets are user-supplied URLs and commonly
+      // contain `&` (query-string separators), which is illegal
+      // in raw XML attribute values. Word still opens the doc
+      // (recovery mode) but flags it as corrupted on first
+      // open, which is the symptom that surfaced this bug. The
+      // rId is internally generated and safe; the target is the
+      // only attribute that needs escaping here. Image rels
+      // (below) and the styles / settings rels (above) get
+      // internally-controlled Targets that contain no special
+      // chars, so they don't need it — but we escape image
+      // targets too for symmetry / defense in depth (a media
+      // filename with a special char would have the same
+      // problem).
       inner.push(
-        `<Relationship Id="${rel.rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${rel.target}" TargetMode="External"/>`,
+        `<Relationship Id="${rel.rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${escAttr(rel.target)}" TargetMode="External"/>`,
       );
     }
     for (const rel of this.imageRels) {
       inner.push(
-        `<Relationship Id="${rel.rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${rel.target}"/>`,
+        `<Relationship Id="${rel.rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${escAttr(rel.target)}"/>`,
       );
     }
     if (this.threads.length > 0) {
