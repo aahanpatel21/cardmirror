@@ -428,10 +428,20 @@ class Slot {
     this.chipNameEl = document.createElement('span');
     this.chipNameEl.className = 'pmd-pane-chip-name';
     chip.appendChild(this.chipNameEl);
+    // Slot-number badge — small fixed glyph immediately left of
+    // the expand button. Helps users identify which slot they're
+    // looking at when only some slots are occupied (a single doc
+    // in slot 2 with slots 1 and 3 empty looks the same as a
+    // single doc in slot 1, otherwise).
+    const slotBadge = document.createElement('span');
+    slotBadge.className = 'pmd-pane-chip-slot-num';
+    slotBadge.textContent = id.replace('slot', '');
+    slotBadge.title = `Slot ${id.replace('slot', '')}`;
+    chip.appendChild(slotBadge);
     this.chipExpandBtn = document.createElement('button');
     this.chipExpandBtn.type = 'button';
     this.chipExpandBtn.className = 'pmd-pane-chip-expand';
-    this.chipExpandBtn.title = 'Expand this pane to fill the workspace';
+    this.chipExpandBtn.title = 'Expand this pane to fill the workspace (Ctrl+Shift+F)';
     this.chipExpandBtn.textContent = '⛶';
     this.chipExpandBtn.setAttribute('aria-pressed', 'false');
     this.chipExpandBtn.addEventListener('mousedown', (e) => e.preventDefault());
@@ -1007,6 +1017,11 @@ class MultiPaneShell {
     // keydown — web-edition users get Ctrl-Alt-Tab via a
     // separate path (see `onDocCycleKey` body).
     window.addEventListener('keydown', this.onDocCycleKey);
+    // Mod-Shift-F toggles expand-mode on the focused slot. Mirrors
+    // the per-slot chip expand button (⛶). Keystroke chord matches
+    // the convention "Mod-Shift-letter for toggle of a structural
+    // view mode."
+    window.addEventListener('keydown', this.onExpandToggleKey);
     // Companion keyup for the doc-switcher overlay: Ctrl/Meta
     // release commits the highlighted candidate; Escape cancels.
     window.addEventListener('keyup', this.onDocCycleKeyUp);
@@ -1240,6 +1255,21 @@ class MultiPaneShell {
     } else {
       this.docSwitcher.open(slot, direction);
     }
+  };
+
+  /** Mod-Shift-F → toggle expand-mode on the focused slot. Mirrors
+   *  the chip's ⛶ expand button. No-op when no slot is focused
+   *  (e.g., all slots empty). Uses `e.code === 'KeyF'` (not
+   *  `e.key === 'F'`) for the same shift-shadowing reason that
+   *  motivated the Digit1/2/3 switch on the slot chords. */
+  private onExpandToggleKey = (e: KeyboardEvent): void => {
+    if (e.defaultPrevented) return;
+    if (e.code !== 'KeyF') return;
+    if (!((e.ctrlKey || e.metaKey) && e.shiftKey) || e.altKey) return;
+    const slot = this.focusedSlot;
+    if (!slot) return;
+    e.preventDefault();
+    this.toggleExpanded(slot);
   };
 
   /** Companion to `onDocCycleKey` — when Ctrl (or Meta) is released

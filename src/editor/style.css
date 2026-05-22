@@ -5925,6 +5925,29 @@ body.pmd-multi-doc #word-count-display {
   color: var(--pmd-c-text);
 }
 
+/* Slot-number badge — a single digit (1/2/3) shown to the left of
+   the expand button so the user can tell at a glance which slot
+   each chip belongs to. Especially useful when only some slots
+   are occupied — without it, a single chip with no neighbors
+   leaves you guessing whether it's slot 1, 2, or 3. */
+.pmd-pane-chip-slot-num {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.2em;
+  padding: 0 0.25em;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--pmd-c-text-muted);
+  opacity: 0.7;
+  user-select: none;
+}
+.pmd-pane-focused .pmd-pane-chip-slot-num {
+  color: inherit;
+  opacity: 0.85;
+}
+
 /* Speech-doc indicator. Class on the pane element gets set/cleared
    by `MultiPaneShell.refreshSpeechChips`. The 🎤 prefix on the
    chip name is the same affordance Verbatim's title-bar tweak
