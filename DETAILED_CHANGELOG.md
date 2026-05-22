@@ -7,6 +7,30 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Keybindings editor grouped by thematic section.** Lifted
+  the `GROUPS` taxonomy out of `reference-ui.ts` into a new
+  shared `ribbon-groups.ts` module as `RIBBON_GROUPS`. The
+  drift-guard assertion (every `RibbonCommandId` lands in
+  exactly one group, no duplicates, no orphans) moved with it
+  and now protects BOTH surfaces — adding a new command
+  without categorizing it throws at module load.
+
+  Settings → Keybindings used to call
+  `[...RIBBON_COMMAND_IDS].sort((a, b) => labelA.localeCompare(labelB))`
+  and render every row in one alphabetical flat list (~70
+  rows). Now iterates `RIBBON_GROUPS` instead: each group
+  becomes a `<section>` with an uppercase muted `<h3>` heading
+  + that group's commands in the order the group defines them
+  (matching the cheat sheet's ergonomic clustering, not raw
+  alphabetical). Group headings are `position: sticky; top:
+  0` inside the scrollable list so users keep their place as
+  they scroll through long sections like "Table" (10 rows).
+
+  Single source of truth: editing `ribbon-groups.ts` updates
+  both the cheat sheet and the rebinding editor. No more
+  "remembered to update both" failure mode for future
+  command additions.
+
 - **Plain-paste no longer splits cards on a trailing newline.**
   Long-standing user-reported bug ("skipping around on paste"
   / "viewport shoots to the bottom") had a narrow trigger:

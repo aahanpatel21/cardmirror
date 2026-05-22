@@ -9,6 +9,15 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Added
 
+- **Keybindings editor (Settings → Keybindings) is now grouped
+  by category** — same 17-section taxonomy as the Keyboard
+  Shortcuts reference modal (File, Speech, Structural styles,
+  Character styles, Inline formatting, Condense, Editing
+  utilities, Highlight tools, Color pickers & menus, Find, View,
+  Zoom & scale, Comments, AI, Select, Cleanup, Table). Each
+  group's heading sticks to the top of the scrollable list as
+  you scroll. Previously the editor rendered every command as
+  one alphabetical flat list.
 - **Resizable comments column.** Drag the column's left edge to
   resize it (240 – 560 px). The col-resize cursor appears when
   you hover near the edge. Persists across sessions via the new
