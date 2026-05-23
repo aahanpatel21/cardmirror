@@ -877,7 +877,7 @@ export function applyEmphasis(): Command {
 }
 
 /**
- * Ctrl-F10 — apply `emphasis_mark` to the FIRST character of each
+ * Alt-F10 — apply `emphasis_mark` to the FIRST character of each
  * word inside the selection, expanding the selection to whole-word
  * boundaries first. Useful for marking the source letters of an
  * acronym: select "United States Capitol Police", run this, and
@@ -1004,6 +1004,106 @@ export function emphasizeAcronym(): Command {
       // style's typography. Highlight + shading follow the same
       // rules as `applyBodyMark`.
       stripDirectFormattingOnApply(tr, r.from, r.to);
+    }
+    dispatch(tr);
+    return true;
+  };
+}
+
+/**
+ * Alt-F11 — apply the active `highlight` color to the FIRST
+ * character of each word inside the selection, using the same
+ * per-word-first-letter walk as `emphasizeAcronym`. Useful for
+ * making an acronym's source letters pop visually (e.g., select
+ * "United States Capitol Police", run this, and `U / S / C / P`
+ * each carry the active highlight).
+ *
+ * Differences from `emphasizeAcronym`, parallel to the differences
+ * between `applyHighlight` and `applyEmphasis`:
+ *   - No structural-block skip — highlight is a runtime annotation,
+ *     not a named style, and F11 itself works in tags / analytics.
+ *   - No direct-formatting strip — highlight is additive; nothing
+ *     about the marked character's other formatting should change.
+ *
+ * No-op on empty selection (matches the emphasize-acronym contract
+ * — no "highlight the word at the cursor" fallback).
+ */
+export function highlightAcronym(activeColor: () => string): Command {
+  return (state, dispatch) => {
+    const markType = schema.marks['highlight'];
+    if (!markType) return false;
+    const sel = state.selection;
+    if (sel.empty) return false;
+
+    const firstLetterRanges: { from: number; to: number }[] = [];
+    state.doc.nodesBetween(sel.from, sel.to, (node, pos) => {
+      if (!node.isTextblock) return true;
+      // No NAMED_STYLE_SKIP_BLOCKS gate — highlight is allowed in
+      // structural textblocks (tags / analytics / pockets / etc.).
+
+      const tbStart = pos + 1;
+      const size = node.content.size;
+      if (size === 0) return false;
+
+      // Per-position word-class map, identical to emphasizeAcronym.
+      const isW = new Array<boolean>(size);
+      let p = 0;
+      node.forEach((child) => {
+        if (child.isText) {
+          const t = child.text ?? '';
+          for (let i = 0; i < t.length; i++) {
+            isW[p + i] = isWordChar(t[i] ?? '\0');
+          }
+          p += t.length;
+        } else {
+          for (let i = 0; i < child.nodeSize; i++) isW[p + i] = false;
+          p += child.nodeSize;
+        }
+      });
+
+      const localFrom = Math.max(0, sel.from - tbStart);
+      const localTo = Math.min(size, sel.to - tbStart);
+      if (localFrom >= localTo) return false;
+
+      let leftW = -1;
+      let rightW = -1;
+      for (let i = localFrom; i < localTo; i++) {
+        if (isW[i] === true) {
+          if (leftW < 0) leftW = i;
+          rightW = i;
+        }
+      }
+      if (leftW < 0) return false;
+
+      let expFrom = leftW;
+      let expTo = rightW + 1;
+      while (expFrom > 0 && isW[expFrom - 1] === true) expFrom--;
+      while (expTo < size && isW[expTo] === true) expTo++;
+
+      let inWord = false;
+      for (let i = expFrom; i < expTo; i++) {
+        const isWord = isW[i] === true;
+        if (isWord && !inWord) {
+          firstLetterRanges.push({ from: tbStart + i, to: tbStart + i + 1 });
+          inWord = true;
+        } else if (!isWord) {
+          inWord = false;
+        }
+      }
+      return false;
+    });
+
+    if (firstLetterRanges.length === 0) return false;
+    if (!dispatch) return true;
+
+    const tr = state.tr;
+    const color = activeColor();
+    for (const r of firstLetterRanges) {
+      // Replace any existing highlight color on this character so
+      // the new acronym mark wins (parallel to applyHighlight's
+      // remove-then-add for the "apply" branch).
+      tr.removeMark(r.from, r.to, markType);
+      tr.addMark(r.from, r.to, markType.create({ color }));
     }
     dispatch(tr);
     return true;
@@ -3125,6 +3225,7 @@ export type RibbonCommandId =
   | 'applyEmphasis'
   | 'emphasizeAcronym'
   | 'applyHighlight'
+  | 'highlightAcronym'
   | 'applyShading'
   | 'condenseDefault'
   | 'condenseNoIntegrity'
@@ -3239,6 +3340,7 @@ export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
   'applyEmphasis',
   'emphasizeAcronym',
   'applyHighlight',
+  'highlightAcronym',
   'applyShading',
   'condenseDefault',
   'condenseNoIntegrity',
@@ -3338,6 +3440,7 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   applyEmphasis: 'Apply Emphasis Style',
   emphasizeAcronym: 'Emphasize Acronym',
   applyHighlight: 'Toggle Highlight',
+  highlightAcronym: 'Highlight Acronym',
   applyShading: 'Toggle Background Color',
   condenseDefault: 'Condense',
   condenseNoIntegrity: 'Condense Without Paragraph Integrity',
@@ -3442,8 +3545,9 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   applyCite: 'F8',
   applyUnderline: ['F9', 'Mod-u'],
   applyEmphasis: 'F10',
-  emphasizeAcronym: 'Mod-F10',
+  emphasizeAcronym: 'Alt-F10',
   applyHighlight: 'F11',
+  highlightAcronym: 'Alt-F11',
   applyShading: 'Mod-F11',
   condenseDefault: 'F3',
   condenseNoIntegrity: 'Alt-F3',
@@ -3777,6 +3881,7 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
     case 'applyEmphasis': return applyEmphasis();
     case 'emphasizeAcronym': return emphasizeAcronym();
     case 'applyHighlight': return applyHighlight(ctx.highlightColor);
+    case 'highlightAcronym': return highlightAcronym(ctx.highlightColor);
     case 'applyShading': return applyShading(ctx.shadingColor);
     case 'condenseDefault':
       // F3 reads paragraphIntegrity + usePilcrows at invocation time.

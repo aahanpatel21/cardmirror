@@ -7,6 +7,25 @@ see `DETAILED_CHANGELOG.md`.
 
 ## Unreleased
 
+### Added
+
+- **Highlight Acronym command (Alt+F11).** Counterpart to
+  Emphasize Acronym (now Alt+F10): expands the selection to
+  whole-word boundaries, then applies the active highlight color
+  to the first character of each word. Useful for visually
+  popping the source letters of an acronym ("United States
+  Capitol Police" → U, S, C, P each carry the active highlight).
+  Unlike Emphasize Acronym, this works in structural blocks
+  (tags, analytics, pockets) too, since highlight is a runtime
+  annotation rather than a body-only named style.
+
+### Changed
+
+- **Emphasize Acronym moved from Ctrl+F10 to Alt+F10.** Frees
+  Ctrl+F10 and makes room for Highlight Acronym on Alt+F11
+  next to it. Rebind via Settings → Keybindings if you've been
+  using the Ctrl chord.
+
 ### Fixed
 
 - **Viewport no longer rockets to the doc end after a paste or

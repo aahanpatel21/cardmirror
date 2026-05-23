@@ -16,6 +16,7 @@ import {
   applyEmphasis,
   emphasizeAcronym,
   applyHighlight,
+  highlightAcronym,
   applyShading,
   setHighlightColor,
   setShadingColor,
@@ -2014,9 +2015,9 @@ describe('applyEmphasis (F10)', () => {
   });
 });
 
-// ---- emphasizeAcronym (Mod-F10) ----
+// ---- emphasizeAcronym (Alt-F10) ----
 
-describe('emphasizeAcronym (Mod-F10)', () => {
+describe('emphasizeAcronym (Alt-F10)', () => {
   // Returns the set of character indices WITHIN A TARGET BLOCK's
   // textblock content that carry emphasis_mark. Walks just the
   // children of the textblock whose textContent matches `target`,
@@ -2180,8 +2181,142 @@ describe('emphasizeAcronym (Mod-F10)', () => {
       .toEqual(new Set([0, 5, 10]));
   });
 
-  it('default key binding: Mod-F10 → emphasizeAcronym', () => {
-    expect(DEFAULT_RIBBON_KEYS['emphasizeAcronym']).toBe('Mod-F10');
+  it('default key binding: Alt-F10 → emphasizeAcronym', () => {
+    expect(DEFAULT_RIBBON_KEYS['emphasizeAcronym']).toBe('Alt-F10');
+  });
+});
+
+// ---- highlightAcronym (Alt-F11) ----
+
+describe('highlightAcronym (Alt-F11)', () => {
+  // Local helper: positions in a textblock that carry the
+  // `highlight` mark, with the color attribute.
+  function highlightPositionsInBlock(
+    doc: import('prosemirror-model').Node,
+    target: string,
+  ): Map<number, string> {
+    const out = new Map<number, string>();
+    let foundBlock: import('prosemirror-model').Node | null = null;
+    doc.descendants((n) => {
+      if (n.isTextblock && n.textContent === target) {
+        foundBlock = n;
+        return false;
+      }
+      return true;
+    });
+    if (!foundBlock) return out;
+    let offset = 0;
+    (foundBlock as import('prosemirror-model').Node).forEach((child) => {
+      if (child.isText) {
+        const t = child.text ?? '';
+        const hl = child.marks.find((m) => m.type.name === 'highlight');
+        for (let i = 0; i < t.length; i++) {
+          if (hl) out.set(offset + i, String(hl.attrs['color']));
+        }
+        offset += t.length;
+      } else {
+        offset += child.nodeSize;
+      }
+    });
+    return out;
+  }
+
+  it('empty selection: no-op', () => {
+    const doc = makeDoc([cardWithChildren(tag('T'), cardBody('hello world'))]);
+    let pos = -1;
+    doc.descendants((n, p) => {
+      if (n.isText && n.text === 'hello world') pos = p + 2;
+      return true;
+    });
+    const base = EditorState.create({ doc });
+    const state = base.apply(base.tr.setSelection(TextSelection.create(base.doc, pos)));
+    expect(apply(state, highlightAcronym(() => 'yellow'))).toBeNull();
+  });
+
+  it('selection spans two whole words: highlights "h" + "w" with active color', () => {
+    const doc = makeDoc([cardWithChildren(tag('T'), cardBody('hello world'))]);
+    let from = -1;
+    let to = -1;
+    doc.descendants((n, p) => {
+      if (n.isText && n.text === 'hello world') {
+        from = p;
+        to = p + n.nodeSize;
+      }
+      return true;
+    });
+    const base = EditorState.create({ doc });
+    const state = base.apply(
+      base.tr.setSelection(TextSelection.create(base.doc, from, to)),
+    );
+    const next = apply(state, highlightAcronym(() => 'cyan'));
+    expect(next).not.toBeNull();
+    const marked = highlightPositionsInBlock(next!.doc, 'hello world');
+    expect([...marked.entries()].sort((a, b) => a[0] - b[0]))
+      .toEqual([[0, 'cyan'], [6, 'cyan']]);
+  });
+
+  it('partial-word selection: expands to full words then highlights first letters', () => {
+    const doc = makeDoc([
+      cardWithChildren(tag('T'), cardBody('United States Capitol Police')),
+    ]);
+    let textPos = -1;
+    doc.descendants((n, p) => {
+      if (n.isText && (n.text ?? '').startsWith('United')) textPos = p;
+      return true;
+    });
+    const from = textPos + 3;
+    const to = textPos + 17;
+    const base = EditorState.create({ doc });
+    const state = base.apply(base.tr.setSelection(TextSelection.create(base.doc, from, to)));
+    const next = apply(state, highlightAcronym(() => 'yellow'));
+    expect(next).not.toBeNull();
+    const marked = highlightPositionsInBlock(next!.doc, 'United States Capitol Police');
+    expect([...marked.keys()].sort((a, b) => a - b)).toEqual([0, 7, 14]);
+  });
+
+  it('selection entirely in whitespace: no-op', () => {
+    const doc = makeDoc([cardWithChildren(tag('T'), cardBody('hello   world'))]);
+    let textPos = -1;
+    doc.descendants((n, p) => {
+      if (n.isText && (n.text ?? '').includes('hello')) textPos = p;
+      return true;
+    });
+    const from = textPos + 5;
+    const to = textPos + 8;
+    const base = EditorState.create({ doc });
+    const state = base.apply(base.tr.setSelection(TextSelection.create(base.doc, from, to)));
+    expect(apply(state, highlightAcronym(() => 'yellow'))).toBeNull();
+  });
+
+  it('selection spans a structural block: highlights run in BOTH the tag and the body', () => {
+    // Differs from emphasizeAcronym, which skips structural blocks.
+    // highlightAcronym mirrors applyHighlight: no structural skip.
+    const doc = makeDoc([
+      cardWithChildren(tag('Tag Text'), cardBody('body text here')),
+    ]);
+    let tagPos = -1;
+    let bodyEnd = -1;
+    doc.descendants((n, p) => {
+      if (n.isText && n.text === 'Tag Text') tagPos = p;
+      if (n.isText && n.text === 'body text here') bodyEnd = p + n.nodeSize;
+      return true;
+    });
+    const from = tagPos;
+    const to = bodyEnd;
+    const base = EditorState.create({ doc });
+    const state = base.apply(base.tr.setSelection(TextSelection.create(base.doc, from, to)));
+    const next = apply(state, highlightAcronym(() => 'yellow'));
+    expect(next).not.toBeNull();
+    // Tag: word-start letters in "Tag Text" → offsets 0 (T), 4 (T).
+    expect([...highlightPositionsInBlock(next!.doc, 'Tag Text').keys()].sort((a, b) => a - b))
+      .toEqual([0, 4]);
+    // Body: word-start letters in "body text here" → offsets 0, 5, 10.
+    expect([...highlightPositionsInBlock(next!.doc, 'body text here').keys()].sort((a, b) => a - b))
+      .toEqual([0, 5, 10]);
+  });
+
+  it('default key binding: Alt-F11 → highlightAcronym', () => {
+    expect(DEFAULT_RIBBON_KEYS['highlightAcronym']).toBe('Alt-F11');
   });
 });
 

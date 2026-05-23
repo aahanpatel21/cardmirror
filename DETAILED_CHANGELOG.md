@@ -7,6 +7,41 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Highlight Acronym (Alt+F11) added; Emphasize Acronym
+  rebound from Ctrl+F10 to Alt+F10.** New
+  `highlightAcronym(activeColor)` in `ribbon-commands.ts`
+  mirrors `emphasizeAcronym`'s per-word-first-letter walk: for
+  each textblock the selection touches, build a word-class map
+  (`isWordChar` from `word-break.ts`), expand the selection
+  range to whole-word boundaries, then emit the start position
+  of each word inside that expanded range. The selection-expand
+  rule and word definition are identical to Emphasize Acronym
+  (so `U.S.A.` is three words per the spec, and the command
+  marks `U`, `S`, `A` individually).
+
+  Two deliberate deviations from Emphasize Acronym, parallel to
+  the differences between `applyHighlight` and `applyEmphasis`:
+  (1) no `NAMED_STYLE_SKIP_BLOCKS` gate — highlight is allowed
+  in structural textblocks (tags, analytics, pockets, hat,
+  block, undertag), matching the F11 toggle's reach; (2) no
+  `stripDirectFormattingOnApply` — highlight is additive and
+  shouldn't change the marked character's other formatting. The
+  apply uses `tr.removeMark(...highlight) + tr.addMark(...
+  highlight.create({color}))` per first-letter slot so a new
+  active color wins over any existing highlight on those slots
+  (parallel to `applyHighlight`'s apply-branch behavior).
+
+  Bindings: `Mod-F10` → `Alt-F10` for Emphasize Acronym, plus
+  new `Alt-F11` → Highlight Acronym in `DEFAULT_RIBBON_KEYS`.
+  Both stay rebindable via Settings → Keybindings. The Ctrl-F10
+  rebinding choice keeps Mod-F10 (which on Win/Linux is
+  Ctrl-F10) available for future use; symmetric to Mod-F11
+  (Ctrl-F11, Apply Shading) and F11 (Apply Highlight) already
+  occupying the highlight column. `ribbon-groups.ts` lists
+  Highlight Acronym next to Apply Highlight in the Character
+  Styles group so the settings UI surfaces it near its
+  conceptual sibling.
+
 - **Viewport-rockets-to-doc-end on paste / F7 fixed by
   changing the absorb-plugin from a wholesale doc replace to
   per-region surgical edits.** Two community reports surfaced

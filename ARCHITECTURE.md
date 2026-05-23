@@ -1044,6 +1044,15 @@ overrides surface:
   `applyBodyMark()` internally; the differing empty-selection
   behavior is parameterized via `expandToWordWhenEmpty`. Both strip
   direct formatting in the marked range as part of the apply.
+- **Alt-F10 — Emphasize Acronym.** Per-word-first-letter variant of
+  F10: walks the selection, expands to whole-word boundaries, and
+  applies `emphasis_mark` to the first character of each word —
+  intended for marking the source letters of an acronym
+  ("United States Capitol Police" → U, S, C, P). Word definition
+  matches the Layer-1 word iterator (`isWordChar` in
+  `word-break.ts`), so `U.S.A.` is three words and each leading
+  letter is marked individually. No-op on empty selection. Skips
+  structural blocks (same body-only rule as F10).
 - **F11 — toggle Highlight.** Color-agnostic toggle: if every char in
   the selection already carries any `highlight` mark, the toggle
   strips it. Otherwise the active color (from `settings.lastHighlight
@@ -1055,6 +1064,16 @@ overrides surface:
   (`yellow`, `green`, `cyan`, `magenta`, `blue`, `red`, plus the six
   `dark*` variants, `lightGray`, `darkGray`, `black`) round-tripped
   as `<w:highlight w:val="…"/>`.
+- **Alt-F11 — Highlight Acronym.** Per-word-first-letter variant of
+  F11, mirroring Alt-F10's relationship to F10. Same selection-
+  expand + word-walk as Emphasize Acronym; applies the active
+  highlight color (`settings.lastHighlightColor`) to the first
+  character of each word. Two deviations from Emphasize Acronym
+  that parallel F11 vs F10: no structural-block skip (works in
+  tags / analytics / etc., same as F11) and no direct-formatting
+  strip (highlight is additive). Apply-only — re-running with a
+  different active color overwrites the previous acronym color on
+  the same first-letter slots.
 - **Mod-F11 — toggle Background color (shading).** Same toggle shape
   as F11 but operates on the `shading` mark (`<w:shd w:fill="…"/>`,
   RGB hex). Independent of highlight — both marks can coexist on the
