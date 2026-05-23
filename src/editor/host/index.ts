@@ -57,3 +57,24 @@ export function getElectronHost(): ElectronHost | null {
   const h = getHost();
   return h.kind === 'electron' ? (h as ElectronHost) : null;
 }
+
+/** Compare two file handles for identity — used by the
+ *  duplicate-open guard so we can refuse a second open of a doc
+ *  that's already loaded into the workspace. Electron handles are
+ *  absolute path strings (cheap `===`); browser handles are
+ *  `FileSystemFileHandle`s and need `isSameEntry` (async). Returns
+ *  false when either side is null/undefined or types are mixed. */
+export async function isSameOpenHandle(a: unknown, b: unknown): Promise<boolean> {
+  if (a == null || b == null) return false;
+  if (a === b) return true;
+  if (typeof a === 'string' && typeof b === 'string') return a === b;
+  const isSameEntry = (a as { isSameEntry?: (other: unknown) => Promise<boolean> }).isSameEntry;
+  if (typeof isSameEntry === 'function') {
+    try {
+      return await isSameEntry.call(a, b);
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}

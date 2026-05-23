@@ -7,6 +7,31 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Duplicate-open guard on the file-open path.** The workspace
+  doesn't currently support having multiple copies of the same
+  doc open — opening a duplicate would create a second
+  `DocRecord` with its own undo history, journal, and dirty
+  state, which is a confusing UX. The two entry points now
+  check before loading:
+
+  - Single-pane (`runOpenFlow`): compares `opened.handle`
+    against `currentDocHandle`.
+  - Multi-pane shell (`onFileOpen` ribbon path +
+    `openFileIntoSlot` per-slot button): a new
+    `findOpenRecordByHandle` walks every slot's stack. On
+    match, the existing copy is brought to its slot's visible
+    record and the slot is focused, so the user lands on the
+    doc they "tried to open."
+
+  Handle equality goes through a new
+  `isSameOpenHandle(a, b)` helper in `host/index.ts` — string
+  comparison on Electron paths, `FileSystemFileHandle
+  .isSameEntry()` on the browser. Never-saved docs (handle
+  null) aren't deduped — we have no identity to compare yet.
+  Cross-window duplicates in Electron's spawn-window flow are
+  out of scope; that would need main-process IPC to query
+  other renderers.
+
 - **Comments column ported to multi-pane as a shell-row
   sibling.** Previously the column was hidden whenever
   `multiDocWorkspace` was on and the Add Comment / Ask AI ribbon

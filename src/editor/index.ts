@@ -99,7 +99,7 @@ import {
 import { openWordCount } from './word-count-ui.js';
 import { wireColorPanel } from './color-panel.js';
 import { countReadAloudWords, formatReadTime, formatNumber } from './word-count.js';
-import { getHost, getElectronHost, type OpenedFile, type JournalEntry } from './host/index.js';
+import { getHost, getElectronHost, isSameOpenHandle, type OpenedFile, type JournalEntry } from './host/index.js';
 
 // Tag the body with the host kind so CSS can gate platform-specific
 // chrome (e.g. the plain-paste toggle button only appears in the
@@ -3025,12 +3025,24 @@ async function runOpenFlow(): Promise<void> {
   }
   if (!opened) return;
   if (multiDocActive && multiDocOnFileOpen) {
+    // Multi-pane shell runs its own duplicate-open guard (checks
+    // every slot's stack) before showing the slot picker.
     try {
       await multiDocOnFileOpen(opened);
     } catch (err) {
       console.error('Multi-doc open failed:', err);
       alert(`Failed to open: ${err instanceof Error ? err.message : err}`);
     }
+    return;
+  }
+  // Single-doc duplicate-open guard: if the file we just opened is
+  // already the current doc, refuse and toast. Same intent as the
+  // multi-pane check — the workspace doesn't currently support
+  // having multiple copies of the same doc open. (Cross-window
+  // duplicates in Electron are out of scope for now; that would
+  // need main-process IPC to query other renderers' state.)
+  if (opened.handle != null && (await isSameOpenHandle(currentDocHandle, opened.handle))) {
+    showToast(`"${opened.name}" is already open.`);
     return;
   }
   const format = formatFromFilename(opened.name) ?? 'docx';

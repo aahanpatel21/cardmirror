@@ -9,6 +9,14 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Added
 
+- **Opening a file that's already loaded surfaces the existing
+  copy instead of opening a duplicate.** Picking the same file
+  from the Open dialog (ribbon or per-slot "+ Open file" button)
+  brings the existing copy into focus, shows its slot if it was
+  in a stack, and toasts "<filename> is already open." rather
+  than spawning a second copy with its own undo history and
+  edits. Files without an on-disk handle (never-saved docs)
+  aren't deduped — they have no identity to compare against yet.
 - **Comments work in multi-pane mode.** A single shared comments
   column sits to the right of the three pane slots — visually a
   narrow fourth slot that shrinks the doc slots equally. Threads

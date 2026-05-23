@@ -32,7 +32,7 @@ import { Node as PMNode } from 'prosemirror-model';
 import { schema, newHeadingId } from '../schema/index.js';
 import { fromDocxFull, parseNative, serializeNative, NATIVE_FILE_EXTENSION } from '../index.js';
 import { settings } from './settings.js';
-import { getHost, type OpenedFile } from './host/index.js';
+import { getHost, isSameOpenHandle, type OpenedFile } from './host/index.js';
 import { getCommentsState, loadThreads, type Thread } from './comments-plugin.js';
 
 type DocFormat = 'cmir' | 'docx';
@@ -55,6 +55,7 @@ import { scheduleIdle, cancelIdle, type IdleHandle } from './idle-scheduler.js';
 import { getSpeechDocResolver } from './speech-doc-registry.js';
 import { sendToSpeech as runSendToSpeech } from './speech-doc-send.js';
 import { promptForText } from './text-prompt.js';
+import { showToast } from './toast.js';
 import {
   buildEditorPlugins,
   enableMultiDocMode,
@@ -1611,6 +1612,7 @@ class MultiPaneShell {
       return;
     }
     if (!opened) return;
+    if (await this.surfaceDuplicateIfOpen(opened)) return;
     await this.loadOpenedIntoSlot(opened, target);
   }
 
@@ -1618,9 +1620,24 @@ class MultiPaneShell {
    *  `onFileOpen` callback. The shell shows the inline slot picker
    *  before loading, since the user didn't pre-choose a destination. */
   async onFileOpen(opened: OpenedFile): Promise<void> {
+    if (await this.surfaceDuplicateIfOpen(opened)) return;
     const choice = await this.promptForSlot(opened.name);
     if (!choice) return;
     await this.loadOpenedIntoSlot(opened, choice);
+  }
+
+  /** Duplicate-open guard: if `opened` is already loaded in the
+   *  workspace, focus + show the existing copy, toast the user,
+   *  and return true so the caller can short-circuit. The shell
+   *  doesn't currently support having multiple copies of the same
+   *  doc open. */
+  private async surfaceDuplicateIfOpen(opened: OpenedFile): Promise<boolean> {
+    const existing = await this.findOpenRecordByHandle(opened.handle ?? null);
+    if (!existing) return false;
+    existing.slot.showRecord(existing.record);
+    this.focusSlot(existing.slot);
+    showToast(`"${opened.name}" is already open.`);
+    return true;
   }
 
   /** Show the inline "Send to slot…" picker; resolves with the
@@ -1695,6 +1712,10 @@ class MultiPaneShell {
    *  given slot. Detects format from the filename extension and
    *  routes to the right parser. */
   private async loadOpenedIntoSlot(opened: OpenedFile, target: SlotId): Promise<void> {
+    // Duplicate-open guard runs in the entry points
+    // (`onFileOpen` + `openFileIntoSlot`) BEFORE the slot picker
+    // shows, so we don't pester the user with a slot prompt for a
+    // doc they already have open.
     const format = formatFromFilename(opened.name) ?? 'docx';
     let doc: PMNode;
     let threads: Thread[];
@@ -1710,6 +1731,27 @@ class MultiPaneShell {
       threads,
     });
     slot.push(record);
+  }
+
+  /** Look for an already-open DocRecord whose on-disk handle
+   *  matches `handle`. Used by the duplicate-open guard. Returns
+   *  the slot + record so the caller can re-focus the existing
+   *  copy. Null when `handle` is null (never-saved doc) or no
+   *  match — never-saved docs aren't deduped (we have no identity
+   *  for them yet). */
+  private async findOpenRecordByHandle(
+    handle: unknown,
+  ): Promise<{ slot: Slot; record: DocRecord } | null> {
+    if (handle == null) return null;
+    for (const id of SLOT_IDS) {
+      const slot = this.slots[id];
+      for (const record of slot.stack) {
+        if (await isSameOpenHandle(record.handle, handle)) {
+          return { slot, record };
+        }
+      }
+    }
+    return null;
   }
 
   /** Create an empty doc; prompt for slot. Used by the ribbon's
