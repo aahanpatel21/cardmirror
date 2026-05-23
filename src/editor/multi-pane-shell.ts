@@ -32,7 +32,7 @@ import { Node as PMNode } from 'prosemirror-model';
 import { schema, newHeadingId } from '../schema/index.js';
 import { fromDocxFull, parseNative, serializeNative, NATIVE_FILE_EXTENSION } from '../index.js';
 import { settings } from './settings.js';
-import { getHost, isSameOpenHandle, type OpenedFile } from './host/index.js';
+import { getHost, getElectronHost, isSameOpenHandle, type OpenedFile } from './host/index.js';
 import { getCommentsState, loadThreads, type Thread } from './comments-plugin.js';
 
 type DocFormat = 'cmir' | 'docx';
@@ -81,6 +81,22 @@ const SLOT_IDS: SlotId[] = ['slot1', 'slot2', 'slot3'];
 let nextDocUid = 1;
 function newDocUid(): string {
   return `doc-${nextDocUid++}`;
+}
+
+/** Sync the cross-window open-path claim when a record's handle
+ *  changes. Releases `prev`'s claim (if any) and registers
+ *  `next`'s claim (if any) with the main process. No-op outside
+ *  Electron (browser has no cross-window concept). Called from
+ *  the record lifecycle: mount (null → handle), Save-As (old →
+ *  new), close (handle → null). Best-effort fire-and-forget —
+ *  main also cleans up automatically when a window closes, so a
+ *  missed release won't permanently block re-opening. */
+function syncDocPathClaim(prev: unknown, next: unknown): void {
+  if (prev === next) return;
+  const electron = getElectronHost();
+  if (!electron) return;
+  if (typeof prev === 'string' && prev) void electron.openPathRelease(prev);
+  if (typeof next === 'string' && next) void electron.openPathRegister(next);
 }
 
 /** Debounce window for per-DocRecord journal writes. */
@@ -696,6 +712,9 @@ class Slot {
       speechResolver.setSpeechByUid(null);
     }
     speechResolver.unregisterView(closing.uid);
+    // Release the cross-window path claim before destroying the
+    // view — re-opening this file in any window should succeed.
+    syncDocPathClaim(closing.handle, null);
     closing.view.destroy();
     closing.dragSurface.detach();
     this.stack.splice(idx, 1);
@@ -875,6 +894,7 @@ class Slot {
       speechResolver.setSpeechByUid(null);
     }
     speechResolver.unregisterView(rec.uid);
+    syncDocPathClaim(rec.handle, null);
     rec.view.destroy();
     rec.dragSurface.detach();
     this.stack.splice(idx, 1);
@@ -1484,6 +1504,10 @@ class MultiPaneShell {
     const rec = slot.visible;
     if (!rec) return;
     rec.filename = file.filename;
+    // Save-As may have moved this doc to a new on-disk location;
+    // re-sync the cross-window path claim so the new path is
+    // owned by us and the old one is released.
+    syncDocPathClaim(rec.handle, file.handle);
     rec.handle = file.handle;
     rec.format = file.format;
     slot.refreshChipFilename();
@@ -1612,6 +1636,20 @@ class MultiPaneShell {
       return;
     }
     if (!opened) return;
+    // Cross-window duplicate-open guard (Electron). Runs BEFORE
+    // the within-window check so a duplicate held by another
+    // window jumps focus there rather than landing on this
+    // window's existing copy if any.
+    if (typeof opened.handle === 'string' && opened.handle) {
+      const electron = getElectronHost();
+      if (electron) {
+        const { takenByOther } = await electron.openPathCheck(opened.handle);
+        if (takenByOther) {
+          showToast(`"${opened.name}" is already open in another window.`);
+          return;
+        }
+      }
+    }
     if (await this.surfaceDuplicateIfOpen(opened)) return;
     await this.loadOpenedIntoSlot(opened, target);
   }
@@ -2121,6 +2159,13 @@ function buildDocRecord(
   if (opts.threads && opts.threads.length > 0) {
     view.dispatch(loadThreads(view.state, opts.threads));
   }
+
+  // Register this window's claim on the file path (Electron only)
+  // so the cross-window duplicate-open guard can find it. Main's
+  // spawn-window handler already claims for the new window's id
+  // when a spawn carries a payload.handle, so this re-register is
+  // an idempotent no-op for spawn-target initial mounts.
+  syncDocPathClaim(null, record.handle);
 
   return record;
 }

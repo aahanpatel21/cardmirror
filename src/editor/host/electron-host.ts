@@ -52,6 +52,9 @@ interface ElectronAPI {
   onCloseRequest(handler: () => void): () => void;
   docRegister(uid: string): Promise<void>;
   docUnregister(uid: string): Promise<void>;
+  openPathCheck(path: string): Promise<{ takenByOther: boolean }>;
+  openPathRegister(path: string): Promise<void>;
+  openPathRelease(path: string): Promise<void>;
   speechSet(uid: string | null): Promise<void>;
   speechGet(): Promise<{ uid: string | null }>;
   onSpeechChanged(handler: (state: { uid: string | null }) => void): () => void;
@@ -221,6 +224,25 @@ export class ElectronHost implements Host {
 
   async docUnregister(uid: string): Promise<void> {
     await api().docUnregister(uid);
+  }
+
+  /** Cross-window duplicate-open guard. `openPathCheck` is the
+   *  read-only pre-load probe — if another window owns the
+   *  path, main focuses it for the user and returns
+   *  `takenByOther: true`. `openPathRegister` claims a path on
+   *  successful mount; `openPathRelease` drops the claim on
+   *  unmount. Window-close auto-cleanup handles force-quits.
+   *  See the IPC handlers in `apps/desktop/src/main.ts`. */
+  async openPathCheck(path: string): Promise<{ takenByOther: boolean }> {
+    return await api().openPathCheck(path);
+  }
+
+  async openPathRegister(path: string): Promise<void> {
+    await api().openPathRegister(path);
+  }
+
+  async openPathRelease(path: string): Promise<void> {
+    await api().openPathRelease(path);
   }
 
   /** Set / clear the current speech-doc designation. Main broadcasts

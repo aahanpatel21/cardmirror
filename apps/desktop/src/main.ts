@@ -551,7 +551,30 @@ ipcMain.handle('host:spawn-window', async (_event, payload: InitialDocPayload | 
   // Defensive normalization of `payload.bytes` — IPC may have
   // transferred it as a Buffer / typed array. Store as-is; the
   // renderer will normalize at read time too.
-  createWindow(payload ?? undefined);
+  const newWin = createWindow(payload ?? undefined);
+  // If the spawn carries an on-disk path, claim it for the new
+  // window right away so a concurrent open in a third window
+  // can't sneak in between spawn and the new window's mount.
+  // The spawner doesn't claim in `runOpenFlow` for this path
+  // (it isn't going to host the doc itself), so there's nothing
+  // to transfer FROM — just claim for the new window directly.
+  // (Stale-owner override handles the rare case where the path
+  // was previously owned by a window that died without
+  // releasing.)
+  if (payload && typeof payload.handle === 'string' && payload.handle) {
+    const norm = canonicalOpenPath(payload.handle);
+    const prevOwner = openPathOwners.get(norm);
+    if (prevOwner !== undefined && prevOwner !== newWin.id) {
+      windowOpenPaths.get(prevOwner)?.delete(norm);
+    }
+    openPathOwners.set(norm, newWin.id);
+    let set = windowOpenPaths.get(newWin.id);
+    if (!set) {
+      set = new Set();
+      windowOpenPaths.set(newWin.id, set);
+    }
+    set.add(norm);
+  }
 });
 
 ipcMain.handle('host:get-initial-doc', async (event) => {
@@ -632,6 +655,29 @@ let speechRegistration: SpeechRegistration | null = null;
 const docOwners = new Map<string, number>(); // uid → windowId
 const windowDocs = new Map<number, Set<string>>(); // windowId → uid set
 
+// ─── Cross-window duplicate-open guard ────────────────────────────
+// Maps an open file's absolute path to the BrowserWindow.id that
+// currently has it loaded. Renderers register a path after they
+// finish loading a doc with an on-disk handle, and release it when
+// the doc unmounts (close, replace, Save-As to a different path).
+// At open-time, renderers query `host:open-path-claim` — if the
+// path is already owned by ANOTHER window, main focuses that
+// window and tells the caller to abort; otherwise the path is
+// claimed for the caller. Window-close cleanup runs in the shared
+// `browser-window-created → closed` listener below.
+const openPathOwners = new Map<string, number>(); // canonical-path → windowId
+const windowOpenPaths = new Map<number, Set<string>>(); // windowId → canonical-paths
+
+/** Canonical form of `p` for use as a key in `openPathOwners`.
+ *  `path.resolve` collapses `./` and `../`, expands the cwd for
+ *  relative paths, and normalizes separators. Doesn't case-fold —
+ *  Windows is technically case-insensitive but a same-case match
+ *  is good enough for the duplicate-guard's purpose (the dialog
+ *  always returns the same casing for a given file). */
+function canonicalOpenPath(p: string): string {
+  return path.resolve(p);
+}
+
 /** Broadcast the current speech state to every window's renderer.
  *  Renderers reflect it in their UI (speech-mark button, etc.). */
 function broadcastSpeechState(): void {
@@ -666,6 +712,67 @@ ipcMain.handle('host:doc-unregister', async (event, uid: string) => {
     speechRegistration = null;
     broadcastSpeechState();
   }
+});
+
+// Pre-load duplicate-open check. Renderer calls this BEFORE
+// loading a file from disk. If another window owns the path, we
+// focus that window and tell the caller `takenByOther: true` so
+// the caller can toast + abort. Otherwise `false` and the caller
+// proceeds to mount the doc. This handler does NOT register —
+// registration happens through `host:open-path-register` once
+// the doc has actually mounted (the centralized
+// `setCurrentDocHandle` helper in the renderer wires that up).
+ipcMain.handle('host:open-path-check', async (event, p: string) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || typeof p !== 'string' || !p) return { takenByOther: false };
+  const norm = canonicalOpenPath(p);
+  const ownerId = openPathOwners.get(norm);
+  if (ownerId === undefined || ownerId === win.id) return { takenByOther: false };
+  const ownerWin = BrowserWindow.fromId(ownerId);
+  if (!ownerWin || ownerWin.isDestroyed()) {
+    // Stale entry — window died without releasing. Clean up so
+    // the next caller can register fresh.
+    openPathOwners.delete(norm);
+    windowOpenPaths.get(ownerId)?.delete(norm);
+    return { takenByOther: false };
+  }
+  if (ownerWin.isMinimized()) ownerWin.restore();
+  ownerWin.focus();
+  return { takenByOther: true };
+});
+
+// Register `p` as owned by the caller's window. Idempotent — if
+// the caller already owns it, no-op. If another window owns it,
+// we overwrite (the caller's pre-load check should have caught
+// the conflict; this is best-effort for paths picked up via
+// Save-As / recovery where no check happened).
+ipcMain.handle('host:open-path-register', async (event, p: string) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || typeof p !== 'string' || !p) return;
+  const norm = canonicalOpenPath(p);
+  const prevOwner = openPathOwners.get(norm);
+  if (prevOwner === win.id) return;
+  if (prevOwner !== undefined) {
+    windowOpenPaths.get(prevOwner)?.delete(norm);
+  }
+  openPathOwners.set(norm, win.id);
+  let set = windowOpenPaths.get(win.id);
+  if (!set) {
+    set = new Set();
+    windowOpenPaths.set(win.id, set);
+  }
+  set.add(norm);
+});
+
+// Release a previously-registered path. No-op if the caller
+// doesn't own it (defensive — shouldn't happen in normal flow).
+ipcMain.handle('host:open-path-release', async (event, p: string) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || typeof p !== 'string' || !p) return;
+  const norm = canonicalOpenPath(p);
+  if (openPathOwners.get(norm) !== win.id) return;
+  openPathOwners.delete(norm);
+  windowOpenPaths.get(win.id)?.delete(norm);
 });
 
 ipcMain.handle('host:speech-set', async (event, uid: string | null) => {
@@ -730,6 +837,14 @@ app.on('browser-window-created', (_event, win) => {
     if (speechRegistration?.windowId === win.id) {
       speechRegistration = null;
       broadcastSpeechState();
+    }
+    // Release every open-path claim the window held — if the
+    // window closed without releasing (force-quit, crash, etc.)
+    // we'd otherwise leave stale entries blocking future opens.
+    const paths = windowOpenPaths.get(win.id);
+    if (paths) {
+      for (const p of paths) openPathOwners.delete(p);
+      windowOpenPaths.delete(win.id);
     }
   });
 });

@@ -15,8 +15,11 @@ see `DETAILED_CHANGELOG.md`.
   brings the existing copy into focus, shows its slot if it was
   in a stack, and toasts "<filename> is already open." rather
   than spawning a second copy with its own undo history and
-  edits. Files without an on-disk handle (never-saved docs)
-  aren't deduped — they have no identity to compare against yet.
+  edits. The guard covers cross-window duplicates too: opening a
+  file that's already loaded in a DIFFERENT CardMirror window
+  focuses that window for you instead of opening another copy.
+  Files without an on-disk handle (never-saved docs) aren't
+  deduped — they have no identity to compare against yet.
 - **Comments work in multi-pane mode.** A single shared comments
   column sits to the right of the three pane slots — visually a
   narrow fourth slot that shrinks the doc slots equally. Threads

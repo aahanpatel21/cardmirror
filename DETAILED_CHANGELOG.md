@@ -28,9 +28,33 @@ in each release, see `CHANGELOG.md`.
   comparison on Electron paths, `FileSystemFileHandle
   .isSameEntry()` on the browser. Never-saved docs (handle
   null) aren't deduped — we have no identity to compare yet.
-  Cross-window duplicates in Electron's spawn-window flow are
-  out of scope; that would need main-process IPC to query
-  other renderers.
+
+  Cross-window duplicates are also covered on Electron via a
+  main-process path map (`Map<canonical-path, windowId>`).
+  Three new IPC handlers in `apps/desktop/src/main.ts`:
+
+  - `host:open-path-check(path)` is the read-only pre-load
+    probe. If another window owns the path, main focuses that
+    window (restoring it if minimized) and returns
+    `{ takenByOther: true }` so the caller can toast + abort.
+  - `host:open-path-register(path)` claims a path for the
+    caller window once a doc has finished mounting.
+  - `host:open-path-release(path)` drops the claim on
+    unmount / Save-As to a new path.
+
+  Window-close auto-cleanup runs in the existing `browser-
+  window-created → closed` listener so a force-quit can't
+  leave stale entries blocking re-opens. The `host:spawn-
+  window` handler also claims the new window's path
+  atomically at spawn time so a concurrent open from a third
+  window can't sneak in between spawn and the new window's
+  mount. Renderers wire through a centralized
+  `setCurrentDocHandle` helper (single-pane) /
+  `syncDocPathClaim` helper (multi-pane shell) — each is
+  called at every handle-assignment site (open, recovery,
+  spawn-target initial mount, Save-As, close) so the
+  registration map stays in sync. Browser host has no
+  multi-window concept and no-ops these methods.
 
 - **Comments column ported to multi-pane as a shell-row
   sibling.** Previously the column was hidden whenever

@@ -141,6 +141,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   docUnregister: (uid: string) =>
     ipcRenderer.invoke('host:doc-unregister', uid),
 
+  /** Cross-window duplicate-open guard. `openPathCheck(path)` is
+   *  read-only — if another window already owns the path, main
+   *  focuses that window and the caller gets `takenByOther:
+   *  true` so it can toast + abort the open. Caller registers
+   *  via `openPathRegister(path)` once it actually mounts the
+   *  doc, and `openPathRelease(path)` when the doc unmounts
+   *  (close, replace, Save-As to a different path). Main also
+   *  cleans up claims automatically when a window closes, so
+   *  missed releases don't permanently block re-opening. */
+  openPathCheck: (path: string) =>
+    ipcRenderer.invoke('host:open-path-check', path) as Promise<{
+      takenByOther: boolean;
+    }>,
+  openPathRegister: (path: string) =>
+    ipcRenderer.invoke('host:open-path-register', path),
+  openPathRelease: (path: string) =>
+    ipcRenderer.invoke('host:open-path-release', path),
+
   /** Set / clear / read the current speech-doc designation. Main
    *  broadcasts `speech:changed` to every window after any state
    *  change so UIs stay in sync. */

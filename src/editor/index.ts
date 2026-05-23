@@ -833,7 +833,7 @@ async function onNewDocClicked(): Promise<void> {
   void clearCurrentJournal();
   mountView(makeNewDocBody());
   currentDocFilename = null;
-  currentDocHandle = null;
+  setCurrentDocHandle(null);
   currentDocFormat = null;
   currentDocUid = newSessionDocUid();
   markCurrentDocClean();
@@ -2898,8 +2898,27 @@ let currentDocFilename: string | null = null;
 /** Opaque host handle for the current single-doc file. Set on
  *  open (when the host hands one out) and on Save-As (when the user
  *  commits to a location). The "Save" command writes to this handle
- *  silently; absent → Save falls through to Save-As. */
+ *  silently; absent → Save falls through to Save-As.
+ *
+ *  Mutated through `setCurrentDocHandle` so the cross-window
+ *  duplicate-open guard stays in sync (Electron only): the helper
+ *  releases the old path-claim and registers the new one with
+ *  main, so opening the same file in a different window can
+ *  detect + focus this window instead. */
 let currentDocHandle: unknown | null = null;
+function setCurrentDocHandle(next: unknown | null): void {
+  const prev = currentDocHandle;
+  currentDocHandle = next;
+  if (prev === next) return;
+  const electron = getElectronHost();
+  if (!electron) return;
+  if (typeof prev === 'string' && prev) {
+    void electron.openPathRelease(prev);
+  }
+  if (typeof next === 'string' && next) {
+    void electron.openPathRegister(next);
+  }
+}
 /** On-disk format of the current single-doc file. Drives whether
  *  "Save" routes through `toDocx` or `serializeNative`. `null` for
  *  brand-new docs that have never been saved. */
@@ -3024,9 +3043,28 @@ async function runOpenFlow(): Promise<void> {
     return;
   }
   if (!opened) return;
+  // Cross-window duplicate-open guard (Electron): if any other
+  // window already has this path open, main focuses that window
+  // and we abort. Runs BEFORE the multi-doc / spawn-window /
+  // mount branches so the same check applies whether this
+  // window is single-doc or multi-pane and whether we're about
+  // to mount here or spawn a fresh window. Path-only — never-
+  // saved docs (handle == null) have no identity yet so they're
+  // not deduped.
+  if (typeof opened.handle === 'string' && opened.handle) {
+    const electron = getElectronHost();
+    if (electron) {
+      const { takenByOther } = await electron.openPathCheck(opened.handle);
+      if (takenByOther) {
+        showToast(`"${opened.name}" is already open in another window.`);
+        return;
+      }
+    }
+  }
   if (multiDocActive && multiDocOnFileOpen) {
-    // Multi-pane shell runs its own duplicate-open guard (checks
-    // every slot's stack) before showing the slot picker.
+    // Multi-pane shell runs its own within-window duplicate-open
+    // guard (checks every slot's stack) before showing the slot
+    // picker.
     try {
       await multiDocOnFileOpen(opened);
     } catch (err) {
@@ -3035,12 +3073,8 @@ async function runOpenFlow(): Promise<void> {
     }
     return;
   }
-  // Single-doc duplicate-open guard: if the file we just opened is
-  // already the current doc, refuse and toast. Same intent as the
-  // multi-pane check — the workspace doesn't currently support
-  // having multiple copies of the same doc open. (Cross-window
-  // duplicates in Electron are out of scope for now; that would
-  // need main-process IPC to query other renderers' state.)
+  // Single-doc within-window duplicate-open guard: if the file is
+  // already the current doc, refuse and toast.
   if (opened.handle != null && (await isSameOpenHandle(currentDocHandle, opened.handle))) {
     showToast(`"${opened.name}" is already open.`);
     return;
@@ -3082,7 +3116,7 @@ async function runOpenFlow(): Promise<void> {
     void clearCurrentJournal();
     mountView(docNode, docThreads);
     currentDocFilename = opened.name;
-    currentDocHandle = opened.handle ?? null;
+    setCurrentDocHandle(opened.handle ?? null);
     currentDocFormat = format;
     currentDocUid = newSessionDocUid();
     markCurrentDocClean();
@@ -3123,7 +3157,7 @@ function commitSaveResult(filename: string, handle: unknown | null, format: 'cmi
     multiDocSetFocusedFile({ filename, handle, format });
   } else {
     currentDocFilename = filename;
-    currentDocHandle = handle;
+    setCurrentDocHandle(handle);
     currentDocFormat = format;
   }
   updateWindowTitle();
@@ -3835,7 +3869,7 @@ async function mountFromSpawnPayload(
     }
     mountView(docNode, docThreads);
     currentDocFilename = payload.filename;
-    currentDocHandle = payload.handle;
+    setCurrentDocHandle(payload.handle);
     currentDocFormat = format;
     currentDocUid = payload.uid ?? newSessionDocUid();
     // Newly spawned window starts clean — even though it has
@@ -4157,7 +4191,7 @@ async function applyRecovery(entry: JournalEntry): Promise<void> {
   }
   mountView(parsed.doc, parsed.threads.length > 0 ? parsed.threads : undefined);
   currentDocFilename = entry.filename;
-  currentDocHandle = entry.handle;
+  setCurrentDocHandle(entry.handle);
   currentDocFormat = entry.format;
   // Reuse the original uid so a re-crash overwrites the same
   // journal slot (rather than accumulating new ones).
