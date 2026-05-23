@@ -372,14 +372,45 @@ function horizontalCommandPair(
   return { move, extend: base.extend };
 }
 
+/** Variant of `commandPair` for the vertical Ctrl+Up / Ctrl+Down
+ *  pair: when a non-empty selection is present and Shift is NOT
+ *  held, the move command jumps to the start (Up) or end (Down)
+ *  of the paragraph CONTAINING the corresponding selection edge,
+ *  instead of computing the destination from the head (which can
+ *  carry the caret into the adjacent paragraph). Shift-extend
+ *  variants are unaffected. */
+function verticalCommandPair(
+  computeDest: (state: EditorState) => number | null,
+  paraEdge: 'from-start' | 'to-end',
+): { move: Command; extend: Command } {
+  const base = commandPair(computeDest);
+  const move: Command = (state, dispatch) => {
+    if (!state.selection.empty) {
+      const corner =
+        paraEdge === 'from-start' ? state.selection.$from : state.selection.$to;
+      if (!corner.parent.isTextblock) return base.move(state, dispatch);
+      if (!dispatch) return true;
+      const dest = paraEdge === 'from-start' ? corner.start() : corner.end();
+      dispatch(
+        state.tr
+          .setSelection(TextSelection.create(state.doc, dest))
+          .scrollIntoView(),
+      );
+      return true;
+    }
+    return base.move(state, dispatch);
+  };
+  return { move, extend: base.extend };
+}
+
 const { move: moveCaretToPrevUnit, extend: extendSelectionToPrevUnit } =
   horizontalCommandPair(destPrevUnit, 'from');
 const { move: moveCaretToNextUnit, extend: extendSelectionToNextUnit } =
   horizontalCommandPair(destNextUnit, 'to');
 const { move: moveCaretToPrevParaStart, extend: extendSelectionToPrevParaStart } =
-  commandPair(destPrevParaStart);
+  verticalCommandPair(destPrevParaStart, 'from-start');
 const { move: moveCaretToNextParaStart, extend: extendSelectionToNextParaStart } =
-  commandPair(destNextParaStart);
+  verticalCommandPair(destNextParaStart, 'to-end');
 const { move: moveCaretToPrevHeading, extend: extendSelectionToPrevHeading } =
   commandPair(destPrevHeading);
 const { move: moveCaretToNextHeading, extend: extendSelectionToNextHeading } =

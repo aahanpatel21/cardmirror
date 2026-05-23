@@ -101,6 +101,26 @@ in each release, see `CHANGELOG.md`.
   branch (replace-the-paragraph-with-the-cite) is unchanged
   and still runs first.
 
+- **Ctrl+Up / Ctrl+Down with an active selection no longer
+  carries the caret into the adjacent paragraph.** The plain
+  (no-Shift) variants now collapse the selection by snapping to
+  the start (Up) or end (Down) of the paragraph that contains
+  the corresponding selection edge (`$from` for Up, `$to` for
+  Down), instead of computing the destination from
+  `selection.$head`. Previously, with a selection where the
+  head was at the bottom edge, Ctrl+Down ran
+  `destNextParaStart` and moved to the NEXT paragraph's start;
+  symmetric for Ctrl+Up with head at the top edge running
+  `destPrevParaStart`. New `verticalCommandPair` in
+  `word-selection-keymap.ts` mirrors the existing
+  `horizontalCommandPair` (which handled the Ctrl+Left/Right
+  collapse case): when `selection.empty` is false and Shift is
+  not held, the move command snaps to the paragraph edge of
+  the relevant selection corner and stops. Shift-extend
+  variants (`Ctrl-Shift-ArrowUp / -ArrowDown`) keep the
+  existing extend semantics by passing through to the base
+  command pair.
+
 ## 0.1.0-alpha.4 — 2026-05-22
 
 - **Layer 2 (keyboard navigation keymap) from the Word-selection

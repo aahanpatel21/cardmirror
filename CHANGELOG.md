@@ -41,6 +41,12 @@ see `DETAILED_CHANGELOG.md`.
   BEFORE the paragraph in that boundary case. Cursor
   mid-paragraph or at the end of a paragraph still inserts
   after, as before.
+- **Ctrl+Up / Ctrl+Down with an active selection no longer
+  skips into the adjacent paragraph.** They now snap to the
+  start (Up) or end (Down) of the paragraph that contains the
+  selection's relevant edge, matching the behavior of plain
+  Ctrl+Left / Ctrl+Right with a selection (collapse to the
+  edge, no further nav). Shift-extend variants are unchanged.
 
 ## 0.1.0-alpha.4 — 2026-05-22
 
