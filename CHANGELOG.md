@@ -28,6 +28,14 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Fixed
 
+- **AI cite creator always lands the formatted cite in its own
+  paragraph.** Previously, if the selection ended mid-paragraph
+  or spanned a paragraph break, the formatted cite would inherit
+  whatever trailing text was left in the textblock and merge
+  with the paragraph after. The cite is now split out cleanly:
+  any pre-cite text in the surrounding textblock stays as its
+  own paragraph before, any post-cite text stays as its own
+  paragraph after, and the cite is alone in the middle.
 - **Viewport no longer rockets to the doc end after a paste or
   F7 wrap that triggers card-body absorption.** The card-body
   absorption rule (paragraphs and friends after a `card` get

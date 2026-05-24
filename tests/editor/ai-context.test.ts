@@ -349,3 +349,172 @@ describe('clod activity pool selection', () => {
     expect(pickRandomActivity([])).toBe('Clod is thinking…');
   });
 });
+
+// ---- buildCiteTransaction --------------------------------------
+
+describe('buildCiteTransaction (cite-is-its-own-paragraph)', () => {
+  // Doc shape used by these tests: one card whose body holds
+  // raw citation info BEFORE the user invokes the cite creator,
+  // with a second body following that should stay separate.
+  function findText(
+    doc: import('prosemirror-model').Node,
+    text: string,
+  ): { start: number; end: number } {
+    let r = { start: -1, end: -1 };
+    doc.descendants((n, p) => {
+      if (r.start !== -1) return false;
+      if (n.isText && n.text === text) {
+        r = { start: p, end: p + n.nodeSize };
+        return false;
+      }
+      return true;
+    });
+    if (r.start < 0) throw new Error(`text "${text}" not in doc`);
+    return r;
+  }
+
+  async function loadBuilder() {
+    const mod = await import('../../src/editor/ai/cite-creator.js');
+    return mod.buildCiteTransaction;
+  }
+
+  it('selection that ends mid-paragraph: trailing text goes to a NEW textblock after the cite', async () => {
+    const buildCiteTransaction = await loadBuilder();
+    const doc = makeDoc(
+      card(
+        tag('TAG'),
+        cardBody('raw cite info HERE then trailing text'),
+      ),
+    );
+    const { start } = findText(doc, 'raw cite info HERE then trailing text');
+    // Select "raw cite info HERE" (positions 0..18 within the text node).
+    const from = start;
+    const to = start + 'raw cite info HERE'.length;
+    const state = selectionAt(doc, from, to);
+    const tr = buildCiteTransaction(state, from, to, {
+      cite: 'Author 25, "Title," Source, https://example.com/',
+      tokens: ['Author 25'],
+    });
+    expect(tr).not.toBeNull();
+    const next = state.apply(tr!);
+    // The card_body should be split: cite in its own body, trailing
+    // text in a separate body.
+    const card2 = next.doc.firstChild!;
+    const types: string[] = [];
+    card2.forEach((c) => types.push(c.type.name));
+    expect(types).toEqual(['tag', 'card_body', 'card_body']);
+    expect(card2.child(1).textContent).toBe('Author 25, "Title," Source, https://example.com/');
+    expect(card2.child(2).textContent).toBe(' then trailing text');
+  });
+
+  it('selection starts mid-paragraph: pre-cite text goes to a NEW textblock before the cite', async () => {
+    const buildCiteTransaction = await loadBuilder();
+    const doc = makeDoc(
+      card(
+        tag('TAG'),
+        cardBody('keep this. raw cite info'),
+      ),
+    );
+    const { start } = findText(doc, 'keep this. raw cite info');
+    const from = start + 'keep this. '.length;
+    const to = start + 'keep this. raw cite info'.length;
+    const state = selectionAt(doc, from, to);
+    const tr = buildCiteTransaction(state, from, to, {
+      cite: 'Doe 24, "X," Y',
+      tokens: ['Doe 24'],
+    });
+    expect(tr).not.toBeNull();
+    const next = state.apply(tr!);
+    const c = next.doc.firstChild!;
+    const types: string[] = [];
+    c.forEach((ch) => types.push(ch.type.name));
+    expect(types).toEqual(['tag', 'card_body', 'card_body']);
+    expect(c.child(1).textContent).toBe('keep this. ');
+    expect(c.child(2).textContent).toBe('Doe 24, "X," Y');
+  });
+
+  it('selection covers exactly one whole body: no extra splits, body becomes the cite', async () => {
+    const buildCiteTransaction = await loadBuilder();
+    const doc = makeDoc(
+      card(
+        tag('TAG'),
+        cardBody('raw info'),
+        cardBody('keep me'),
+      ),
+    );
+    const { start } = findText(doc, 'raw info');
+    const from = start;
+    const to = start + 'raw info'.length;
+    const state = selectionAt(doc, from, to);
+    const tr = buildCiteTransaction(state, from, to, {
+      cite: 'Smith 25, "Article," Source',
+      tokens: ['Smith 25'],
+    });
+    expect(tr).not.toBeNull();
+    const next = state.apply(tr!);
+    const c = next.doc.firstChild!;
+    const types: string[] = [];
+    c.forEach((ch) => types.push(ch.type.name));
+    // Still two card_bodies, no spurious splits.
+    expect(types).toEqual(['tag', 'card_body', 'card_body']);
+    expect(c.child(1).textContent).toBe('Smith 25, "Article," Source');
+    expect(c.child(2).textContent).toBe('keep me');
+  });
+
+  it('selection crosses a paragraph break: cite gets its own body, trailing tail goes to a new body', async () => {
+    const buildCiteTransaction = await loadBuilder();
+    // User's selection starts mid-body 1 ("info ") and ends
+    // mid-body 2 ("rest"). After `tr.insertText` PM collapses
+    // the two bodies into one because the paragraph break sat
+    // inside the deleted range. The post-cite cleanup should
+    // re-split so the trailing "rest of body 2" stands alone.
+    const doc = makeDoc(
+      card(
+        tag('TAG'),
+        cardBody('info raw'),
+        cardBody('foo rest of body 2'),
+      ),
+    );
+    const { start: b1Start } = findText(doc, 'info raw');
+    const { start: b2Start } = findText(doc, 'foo rest of body 2');
+    const from = b1Start + 'info '.length;
+    const to = b2Start + 'foo '.length;
+    const state = selectionAt(doc, from, to);
+    const tr = buildCiteTransaction(state, from, to, {
+      cite: 'Lee 25, "T," P',
+      tokens: ['Lee 25'],
+    });
+    expect(tr).not.toBeNull();
+    const next = state.apply(tr!);
+    const c = next.doc.firstChild!;
+    const types: string[] = [];
+    c.forEach((ch) => types.push(ch.type.name));
+    expect(types).toEqual(['tag', 'card_body', 'card_body', 'card_body']);
+    expect(c.child(1).textContent).toBe('info ');
+    expect(c.child(2).textContent).toBe('Lee 25, "T," P');
+    expect(c.child(3).textContent).toBe('rest of body 2');
+  });
+
+  it('cite_mark is applied to the leading-author token after the split', async () => {
+    const buildCiteTransaction = await loadBuilder();
+    const doc = makeDoc(card(tag('TAG'), cardBody('raw info more after')));
+    const { start } = findText(doc, 'raw info more after');
+    const from = start;
+    const to = start + 'raw info'.length;
+    const state = selectionAt(doc, from, to);
+    const tr = buildCiteTransaction(state, from, to, {
+      cite: 'Author 25, "Title," Source',
+      tokens: ['Author 25'],
+    });
+    expect(tr).not.toBeNull();
+    const next = state.apply(tr!);
+    // Find the "Author 25" substring and confirm it carries cite_mark.
+    let marked = false;
+    next.doc.descendants((n) => {
+      if (n.isText && (n.text ?? '').startsWith('Author 25')) {
+        marked = n.marks.some((m) => m.type.name === 'cite_mark');
+      }
+    });
+    expect(marked).toBe(true);
+  });
+});

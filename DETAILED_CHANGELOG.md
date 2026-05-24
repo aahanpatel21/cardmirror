@@ -7,6 +7,25 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **AI cite creator now guarantees the cite stands alone in its
+  own paragraph.** Refactor of `applyCiteToSelection` in
+  `ai/cite-creator.ts` into a (testable) `buildCiteTransaction`
+  helper. The existing pipeline still runs first — `tr.insertText`
+  to replace the selection, `tr.removeMark` to strip inherited
+  boundary marks, per-token `tr.addMark` to apply `cite_mark` to
+  the leading "Lastname Date" pieces. After that, two new
+  defensive splits: if the surrounding textblock has inline
+  content AFTER the cite end (the common bug case — selection
+  spanned a paragraph break and the trailing text from the last
+  selected paragraph is now joined onto the cite), `tr.split(end)`
+  to break out the tail. Symmetric `tr.split(start)` when there's
+  pre-cite content in the same textblock. The after-split runs
+  first so the start position doesn't need remapping. Both
+  wrapped in try/catch — schema-illegal splits (e.g., a second
+  tag inside one card) fall back to the inline-cite shape rather
+  than crashing. `applyCiteToSelection` now just calls the
+  builder and dispatches.
+
 - **Highlight Acronym (Alt+F11) added; Emphasize Acronym
   rebound from Ctrl+F10 to Alt+F10.** New
   `highlightAcronym(activeColor)` in `ribbon-commands.ts`

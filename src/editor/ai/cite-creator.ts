@@ -20,6 +20,7 @@
  */
 
 import type { EditorView } from 'prosemirror-view';
+import type { EditorState, Transaction } from 'prosemirror-state';
 import { schema } from '../../schema/index.js';
 import { settings } from '../settings.js';
 import { callAnthropic, AnthropicError } from './anthropic.js';
@@ -160,25 +161,29 @@ function findMarker(text: string, name: string): number {
   return m ? m.index : -1;
 }
 
-/** Apply the cite to the editor: replace [from, to] with `cite`
- *  text, then add `cite_mark` to each token substring that
- *  appears within the inserted range. Returns false when the
- *  cite_mark type isn't in the schema (defensive — it always is). */
-export function applyCiteToSelection(
-  view: EditorView,
+/** Build (but don't dispatch) the transaction that replaces
+ *  [from, to] with the formatted cite and marks the tokens. Also
+ *  ensures the cite is its own paragraph by splitting before /
+ *  after the inserted span when the surrounding textblock has
+ *  adjacent inline content. Exposed for unit testing; the
+ *  dispatching path is `applyCiteToSelection` below. Returns
+ *  null when the `cite_mark` type isn't in the schema (defensive
+ *  — it always is). */
+export function buildCiteTransaction(
+  state: EditorState,
   from: number,
   to: number,
   result: AiCiteResult,
-): boolean {
+): Transaction | null {
   const citeType = schema.marks['cite_mark'];
-  if (!citeType) return false;
+  if (!citeType) return null;
 
   // Replace the selection with the cite text. `insertText` keeps
-  // any existing block boundaries intact and produces plain text
+  // existing block boundaries intact and produces plain text
   // nodes. The inserted span runs from `from` to `from + cite.length`
   // — positions inside a single textblock are 1:1 with character
   // offsets, which is what we use to find token substrings below.
-  const tr = view.state.tr;
+  const tr = state.tr;
   tr.insertText(result.cite, from, to);
 
   const start = from;
@@ -204,6 +209,57 @@ export function applyCiteToSelection(
       searchOffset = idx + token.length;
     }
   }
+
+  // Cite-is-its-own-paragraph cleanup. After `insertText`, the
+  // cite sits inline in whatever textblock the original selection
+  // was anchored in. If that textblock has more inline content
+  // adjacent to the cite — text after `end` (the common "selection
+  // spanned past a paragraph break, so the trailing text from the
+  // last selected paragraph is now glued onto the cite" case) or
+  // text before `start` — split the textblock so the cite stands
+  // alone in its own block.
+  //
+  // Split AFTER first: positions before `end` (including `start`)
+  // are unchanged by `tr.split(end)`, so the second split is
+  // computed against an up-to-date doc without remapping.
+  // Wrapped in try/catch: a few textblock types (tag, analytic,
+  // single-instance headings) can't legally have two siblings of
+  // the same type, so PM rejects the split. Falling through to
+  // the inline-cite shape is better than crashing.
+  try {
+    const $end = tr.doc.resolve(end);
+    if (
+      $end.parent.isTextblock &&
+      $end.parentOffset < $end.parent.content.size
+    ) {
+      tr.split(end);
+    }
+  } catch {
+    // Schema doesn't allow the after-split here; leave the cite
+    // joined with whatever follows.
+  }
+  try {
+    const $start = tr.doc.resolve(start);
+    if ($start.parent.isTextblock && $start.parentOffset > 0) {
+      tr.split(start);
+    }
+  } catch {
+    // Schema doesn't allow the before-split; leave the cite at
+    // the same offset within its textblock.
+  }
+
+  return tr;
+}
+
+/** Dispatch the cite transaction onto the live view. */
+export function applyCiteToSelection(
+  view: EditorView,
+  from: number,
+  to: number,
+  result: AiCiteResult,
+): boolean {
+  const tr = buildCiteTransaction(view.state, from, to, result);
+  if (!tr) return false;
   view.dispatch(tr);
   return true;
 }
