@@ -465,6 +465,10 @@ class SettingsModal {
       row.appendChild(text);
       row.appendChild(buildBodyFontEditor());
       return row;
+    } else if (meta.kind === 'uiFont') {
+      row.appendChild(text);
+      row.appendChild(buildUiFontEditor());
+      return row;
     } else if (meta.kind === 'lineHeights') {
       row.appendChild(text);
       row.appendChild(buildLineHeightsEditor());
@@ -976,6 +980,71 @@ function buildBodyFontEditor(): HTMLElement {
 
   const unsubscribe = settings.subscribe(() => {
     if (select.value !== settings.get('bodyFont')) populate();
+  });
+  onDetached(wrap, () => unsubscribe());
+
+  return wrap;
+}
+
+/** UI-font picker. Same shape as the body-font picker, but the
+ *  default value is an empty string (= use the stylesheet's
+ *  system-UI default) and the first option is an explicit "System
+ *  default" entry that resolves to that empty string. */
+function buildUiFontEditor(): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'pmd-body-font-editor';
+
+  const select = document.createElement('select');
+  select.className = 'pmd-body-font-select';
+
+  function populate(): void {
+    select.innerHTML = '';
+    const current = settings.get('uiFont');
+    const GENERICS = new Set([
+      'serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui',
+    ]);
+
+    // "System default" sentinel — value '' means "no override, use
+    // the stylesheet's `--pmd-ui-font` default (the platform UI
+    // stack)."
+    const systemOpt = document.createElement('option');
+    systemOpt.value = '';
+    systemOpt.textContent = 'System default';
+    if (current === '') systemOpt.selected = true;
+    select.appendChild(systemOpt);
+
+    function buildOption(font: string): HTMLOptionElement {
+      const opt = document.createElement('option');
+      opt.value = font;
+      opt.textContent = font;
+      opt.style.fontFamily = GENERICS.has(font) ? font : `"${font}", sans-serif`;
+      if (font === current) opt.selected = true;
+      return opt;
+    }
+    const currentInGroups = FONT_GROUPS.some((g) => g.fonts.includes(current));
+    if (current !== '' && !currentInGroups) {
+      select.appendChild(buildOption(current));
+    }
+    for (const group of FONT_GROUPS) {
+      const available = group.fonts.filter(isFontAvailable);
+      if (available.length === 0) continue;
+      const og = document.createElement('optgroup');
+      og.label = group.label;
+      for (const font of available) og.appendChild(buildOption(font));
+      select.appendChild(og);
+    }
+  }
+
+  populate();
+
+  select.addEventListener('change', () => {
+    settings.set('uiFont', select.value);
+  });
+
+  wrap.appendChild(select);
+
+  const unsubscribe = settings.subscribe(() => {
+    if (select.value !== settings.get('uiFont')) populate();
   });
   onDetached(wrap, () => unsubscribe());
 

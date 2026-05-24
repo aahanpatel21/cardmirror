@@ -1614,6 +1614,24 @@ function applyBodyFont(font: string): void {
   document.documentElement.style.setProperty('--pmd-body-font', value);
 }
 
+/** Apply the user's "Interface font" preference. Sets
+ *  `--pmd-ui-font` on documentElement to the chosen family with a
+ *  sans-serif fallback; an empty string clears the inline override
+ *  so the stylesheet's `:root { --pmd-ui-font: <system stack> }`
+ *  default kicks back in. */
+function applyUiFont(font: string): void {
+  const trimmed = font.trim();
+  if (!trimmed) {
+    document.documentElement.style.removeProperty('--pmd-ui-font');
+    return;
+  }
+  const head = GENERIC_FONT_KEYWORDS.has(trimmed) ? trimmed : `"${trimmed}"`;
+  document.documentElement.style.setProperty(
+    '--pmd-ui-font',
+    `${head}, sans-serif`,
+  );
+}
+
 function applyLineHeight(_multiplier: number): void {
   // The runtime override now sets each of the six per-paragraph-type
   // line-height variables from its corresponding setting, so every
@@ -1668,6 +1686,7 @@ settings.subscribe((s) => {
     CUSTOMIZABLE_COLOR_TOKENS.map((t) => t.name),
   );
   applyBodyFont(s.bodyFont);
+  applyUiFont(s.uiFont);
   applyLineHeight(s.lineHeight);
   applyFormattingPanel(s.formattingPanelMode, s.formattingPanelPreview, s.showCharacterStyles);
   syncParagraphIntegrityBtn();
@@ -1873,6 +1892,7 @@ applyCustomColorOverrides(
   CUSTOMIZABLE_COLOR_TOKENS.map((t) => t.name),
 );
 applyBodyFont(settings.get('bodyFont'));
+applyUiFont(settings.get('uiFont'));
 applyLineHeight(settings.get('lineHeight'));
 applyFormattingPanel(
   settings.get('formattingPanelMode'),

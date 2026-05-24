@@ -7,6 +7,43 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **UI font is now configurable via Settings → Accessibility →
+  "Interface font."** The chrome was previously pinned to
+  `'Calibri', 'Helvetica Neue', sans-serif` in every surface that
+  used a font-family override (`body`, plus ~14 redundant
+  restatements across `.pmd-settings-dialog`, `.pmd-nav-panel`,
+  `.pmd-comments-column`, `.pmd-ai-cite-tooltip`,
+  `.pmd-prompt-dialog`, `.pmd-clod-dialog`, `.pmd-recovery-sidebar`,
+  `.pmd-save-as-dialog`, `.pmd-reference-dialog`,
+  `.pmd-doc-switcher`, `.pmd-timer-panel`, `.pmd-doc-menu`,
+  `.pmd-nav-context-menu`, `.pmd-nav-pickup-pill`,
+  `#ribbon .formatting-panel-btn`).
+
+  Refactor:
+  1. New `--pmd-ui-font` CSS variable on `:root` defaulting to a
+     platform system-UI stack (`-apple-system, BlinkMacSystemFont,
+     'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif`).
+  2. Every Calibri-stack `font-family` declaration in `style.css`
+     swapped for `var(--pmd-ui-font)`. The font-color glyph
+     (`#fontcolor-glyph`'s `'Calibri', serif`) and the four
+     monospace stacks (keybinding chips, delimiter samples, code
+     blocks, AI prompt) are left alone — those are intentional
+     per-element design choices.
+  3. New `uiFont` setting (string; `''` = use the CSS default,
+     non-empty = override) added to the `Settings` interface with
+     `kind: 'uiFont'` and category `accessibility`.
+     `sanitizeUiFont` mirrors `sanitizeBodyFont`'s quote / comma
+     stripping but allows empty.
+  4. `applyUiFont(font)` in `index.ts`: empty value removes the
+     inline override on `documentElement` (CSS default applies);
+     non-empty sets `--pmd-ui-font` to `"<font>", sans-serif`
+     (quoted unless `font` is one of the generic keywords).
+     Mirrors `applyBodyFont`'s shape; called from both the
+     settings subscriber and the initial-load pass.
+  5. New `buildUiFontEditor` in `settings-ui.ts` reuses
+     `FONT_GROUPS` and `isFontAvailable` but prepends a "System
+     default" sentinel option that resolves to `''`.
+
 - **Settings dialog tab strip now scrolls behind arrow buttons
   instead of overflowing the dialog.** The previous
   `.pmd-settings-tabs` was a plain flex row with no overflow

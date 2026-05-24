@@ -423,6 +423,14 @@ export interface Settings {
    */
   bodyFont: string;
   /**
+   * User-interface font family. Applied as `--pmd-ui-font` on
+   * documentElement; flows into every UI surface (ribbon, dialogs,
+   * nav pane, comments column, etc.). Empty string keeps the
+   * stylesheet's system-UI default — distinct from `bodyFont`,
+   * which is the editor-content font.
+   */
+  uiFont: string;
+  /**
    * Per-paragraph-type line-height multipliers. Each maps to a CSS
    * variable on `#editor` (--pmd-line-height, --pmd-line-height-cite,
    * etc.). `lineHeight` is the body knob — it also scales shrunken-
@@ -768,6 +776,7 @@ const DEFAULTS: Settings = {
   displayTypography: { ...DEFAULT_DISPLAY_TYPOGRAPHY },
   displayColors: { ...DEFAULT_DISPLAY_COLORS },
   bodyFont: 'Times New Roman',
+  uiFont: '',
   lineHeight: 1.3,
   lineHeightCite: 1.2,
   lineHeightTag: 1.2,
@@ -859,6 +868,7 @@ export interface SettingMeta {
     | 'displayTypography'
     | 'displayColors'
     | 'bodyFont'
+    | 'uiFont'
     | 'lineHeights'
     | 'formattingPanelMode'
     | 'headingMode'
@@ -1152,6 +1162,14 @@ export const SETTING_METADATA: SettingMeta[] = [
     description:
       "Override any color in the interface. Explicit overrides here always win over the defaults and over future accessibility presets (high-contrast, dark mode, colorblind-friendly, etc.) — pick a color to override it; reset a row to fall back to whichever preset is active.",
     kind: 'colorOverrides',
+    category: 'accessibility',
+  },
+  {
+    key: 'uiFont',
+    label: 'Interface font',
+    description:
+      'Font family for the user interface — ribbon, dialogs, navigation pane, comments column, etc. Distinct from the body font (the editor content font). "System default" uses the platform\'s native UI font stack.',
+    kind: 'uiFont',
     category: 'accessibility',
   },
   {
@@ -1538,6 +1556,7 @@ function sanitize(s: Settings): Settings {
     displayTypography: sanitizeDisplayTypography(s.displayTypography),
     displayColors: sanitizeDisplayColors(s.displayColors),
     bodyFont: sanitizeBodyFont(s.bodyFont),
+    uiFont: sanitizeUiFont(s.uiFont),
     lineHeight: sanitizeLineHeight(s.lineHeight, DEFAULTS.lineHeight),
     lineHeightCite: sanitizeLineHeight(s.lineHeightCite, DEFAULTS.lineHeightCite),
     lineHeightTag: sanitizeLineHeight(s.lineHeightTag, DEFAULTS.lineHeightTag),
@@ -1958,6 +1977,14 @@ function sanitizeBodyFont(raw: unknown): string {
   // persisted value might contain `"Calibri", sans-serif` or similar.
   const cleaned = raw.replace(/["',]/g, '').trim();
   return cleaned || DEFAULTS.bodyFont;
+}
+
+function sanitizeUiFont(raw: unknown): string {
+  // uiFont is `''` by default (= use the stylesheet's system-UI
+  // default). Any other value must be a single family name; same
+  // quote / comma stripping as `sanitizeBodyFont`.
+  if (typeof raw !== 'string') return DEFAULTS.uiFont;
+  return raw.replace(/["',]/g, '').trim();
 }
 
 function sanitizeDisplayTypography(raw: unknown): DisplayTypography {

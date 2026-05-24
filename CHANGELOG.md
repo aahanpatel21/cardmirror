@@ -9,6 +9,15 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Added
 
+- **Interface font is now configurable** in Settings →
+  Accessibility → "Interface font." Pick any of the body-font
+  picker's familiar groups (readability fonts, Office defaults,
+  Apple defaults, etc.) and the choice cascades to every UI
+  surface — ribbon, dialogs, navigation pane, comments column,
+  status bar, menus, tooltips. Default is the platform's
+  system-UI font stack so the chrome blends with other native
+  apps; "System default" stays selectable as a sentinel to
+  return there. Independent of the editor body font.
 - **Highlight Acronym command (Alt+F11).** Counterpart to
   Emphasize Acronym (now Alt+F10): expands the selection to
   whole-word boundaries, then applies the active highlight color
