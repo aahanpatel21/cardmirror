@@ -7,6 +7,35 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Settings dialog tab strip now scrolls behind arrow buttons
+  instead of overflowing the dialog.** The previous
+  `.pmd-settings-tabs` was a plain flex row with no overflow
+  handling — labels just spilled past the dialog's right edge
+  when the dialog was narrower than the strip's natural width.
+
+  New shape: wrap the existing `<nav class="pmd-settings-tabs">`
+  in a `.pmd-settings-tabs-bar` flex container that also holds
+  left and right `.pmd-settings-tabs-scroll` arrow buttons.
+  The nav itself is `flex: 1 1 auto; min-width: 0; overflow-x:
+  hidden; scroll-behavior: smooth` — no native scrollbar, only
+  the JS-driven arrows scroll it. The border-bottom and
+  horizontal padding moved from the nav to the bar so the
+  active-tab border overlay still works and the arrows sit
+  flush against the divider line.
+
+  Arrow visibility is driven by a per-render `ResizeObserver`
+  on the nav: when `nav.scrollWidth > nav.clientWidth + 1`,
+  both arrows show; otherwise both hide via `[hidden]`. Each
+  arrow's `disabled` flag toggles based on `nav.scrollLeft`
+  (left at 0, right at end). A scroll-event listener on the
+  nav re-runs the same updater so the disabled state stays in
+  sync as the user scrolls. Click handler calls `scrollBy(±step,
+  smooth)` where step is `max(60, clientWidth * 0.6)` — about
+  half the visible width, with a 60px floor so it still
+  advances at very narrow widths. Observer is held on the
+  modal instance and disconnected in `close()` and on each
+  new `render()`.
+
 - **Ribbon resizer reserves a column-gap-sized buffer before the
   overflow trigger fires.** `initRibbonResizer` in `index.ts`
   previously used `scrollWidth > clientWidth + 1` as its overflow

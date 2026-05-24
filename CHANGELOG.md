@@ -28,6 +28,14 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Fixed
 
+- **Settings modal tab strip now scrolls with arrows instead
+  of overflowing the dialog.** When the dialog is narrow enough
+  that the tab labels don't fit, a left and right arrow appear
+  on either side of the tab list; clicking either scrolls the
+  tabs by about half the visible width. Each arrow disables
+  when there's nothing more to scroll in its direction. When
+  the tabs fit, the arrows disappear entirely. No native
+  scrollbar.
 - **Ribbon panels now collapse one panel sooner**, so the
   rightmost visible panel no longer sits flush against the
   right-pinned buttons (timer / settings / reference). The

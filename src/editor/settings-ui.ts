@@ -159,6 +159,10 @@ class SettingsModal {
    *  instance (across opens) so reopening lands you back where you
    *  were, but resets if the page reloads. */
   private activeCategory: SettingsCategory = 'general';
+  /** ResizeObserver for the tab strip, used to show / hide the
+   *  scroll-arrow buttons when the tabs overflow horizontally.
+   *  Disconnected on close() and on each new render(). */
+  private tabsResizeObserver: ResizeObserver | null = null;
 
   constructor() {
     this.overlay = document.createElement('div');
@@ -199,6 +203,10 @@ class SettingsModal {
       this.settingsUnsubscribe();
       this.settingsUnsubscribe = null;
     }
+    if (this.tabsResizeObserver) {
+      this.tabsResizeObserver.disconnect();
+      this.tabsResizeObserver = null;
+    }
     this.overlay.style.display = 'none';
   }
 
@@ -219,7 +227,23 @@ class SettingsModal {
     header.appendChild(closeBtn);
     this.dialog.appendChild(header);
 
-    // Tab strip.
+    // Tab strip + arrow scrollers. The bar wraps the nav so the
+    // arrows sit flush against the divider line (it lives on the
+    // bar, not the nav). The arrows are hidden when the strip
+    // fits its container and revealed via ResizeObserver when it
+    // overflows; each arrow disables at the end of its scroll
+    // range. No native scrollbar — overflow-x: hidden on the nav.
+    const tabsBar = document.createElement('div');
+    tabsBar.className = 'pmd-settings-tabs-bar';
+
+    const scrollLeftBtn = document.createElement('button');
+    scrollLeftBtn.type = 'button';
+    scrollLeftBtn.className = 'pmd-settings-tabs-scroll pmd-settings-tabs-scroll-left';
+    scrollLeftBtn.setAttribute('aria-label', 'Scroll settings tabs left');
+    scrollLeftBtn.textContent = '◀';
+    scrollLeftBtn.hidden = true;
+    tabsBar.appendChild(scrollLeftBtn);
+
     const tabStrip = document.createElement('nav');
     tabStrip.className = 'pmd-settings-tabs';
     tabStrip.setAttribute('role', 'tablist');
@@ -234,7 +258,45 @@ class SettingsModal {
       tabStrip.appendChild(btn);
       tabButtons[id] = btn;
     }
-    this.dialog.appendChild(tabStrip);
+    tabsBar.appendChild(tabStrip);
+
+    const scrollRightBtn = document.createElement('button');
+    scrollRightBtn.type = 'button';
+    scrollRightBtn.className = 'pmd-settings-tabs-scroll pmd-settings-tabs-scroll-right';
+    scrollRightBtn.setAttribute('aria-label', 'Scroll settings tabs right');
+    scrollRightBtn.textContent = '▶';
+    scrollRightBtn.hidden = true;
+    tabsBar.appendChild(scrollRightBtn);
+
+    this.dialog.appendChild(tabsBar);
+
+    const scrollTabsBy = (dir: -1 | 1): void => {
+      const step = Math.max(60, tabStrip.clientWidth * 0.6);
+      tabStrip.scrollBy({ left: dir * step, behavior: 'smooth' });
+    };
+    scrollLeftBtn.addEventListener('click', () => scrollTabsBy(-1));
+    scrollRightBtn.addEventListener('click', () => scrollTabsBy(1));
+
+    const updateArrows = (): void => {
+      const overflowing = tabStrip.scrollWidth > tabStrip.clientWidth + 1;
+      if (!overflowing) {
+        scrollLeftBtn.hidden = true;
+        scrollRightBtn.hidden = true;
+        return;
+      }
+      scrollLeftBtn.hidden = false;
+      scrollRightBtn.hidden = false;
+      scrollLeftBtn.disabled = tabStrip.scrollLeft <= 0;
+      scrollRightBtn.disabled =
+        tabStrip.scrollLeft + tabStrip.clientWidth >= tabStrip.scrollWidth - 1;
+    };
+    tabStrip.addEventListener('scroll', updateArrows);
+    if (this.tabsResizeObserver) this.tabsResizeObserver.disconnect();
+    this.tabsResizeObserver = new ResizeObserver(updateArrows);
+    this.tabsResizeObserver.observe(tabStrip);
+    // Initial pass — sizes are available immediately because the
+    // dialog is already in the DOM (constructor appended overlay).
+    updateArrows();
 
     // Panels — one per category. Only the active panel is visible
     // (set via `hidden`); we build all of them up-front so the

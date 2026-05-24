@@ -2976,15 +2976,57 @@ html.pmd-nav-flat .pmd-nav-type-analytic:hover .pmd-nav-label {
   color: var(--pmd-c-text-strong);
 }
 
-/* Tab strip below the header. Horizontal scroll if the labels
-   don't fit (narrow dialog on small screens). Active tab is
-   indicated by a bottom border + heavier weight. */
-.pmd-settings-tabs {
+/* Tab bar below the header. The bar wraps the tab nav and a
+   left/right arrow on each side — the arrows are revealed by JS
+   only when the tab list overflows its container. Active tab is
+   indicated by a bottom border + heavier weight (border lives on
+   the bar so the active-tab border can overlay it). */
+.pmd-settings-tabs-bar {
   display: flex;
   flex: 0 0 auto;
-  gap: 0.25rem;
+  align-items: stretch;
   padding: 0 1rem;
   border-bottom: 1px solid var(--pmd-c-divider);
+}
+
+.pmd-settings-tabs {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 0.25rem;
+  /* Horizontal scroll under JS-arrow control. No native
+     scrollbar — the arrow buttons are the only scroll affordance. */
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+}
+
+/* Arrow buttons revealed when the tab strip overflows. Sized to
+   match the tab buttons' visual weight; lean on the same muted/
+   strong color tokens as the inactive/hover tab states. The
+   negative bottom margin pulls the button onto the bar's bottom
+   border the same way `.pmd-settings-tab` does. */
+.pmd-settings-tabs-scroll {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--pmd-c-text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 0 0.5rem;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  margin-bottom: -1px;
+  transition: color 0.1s ease;
+}
+.pmd-settings-tabs-scroll[hidden] { display: none; }
+.pmd-settings-tabs-scroll:hover:not(:disabled) {
+  color: var(--pmd-c-text-strong);
+}
+.pmd-settings-tabs-scroll:disabled {
+  color: var(--pmd-c-border);
+  cursor: default;
 }
 
 .pmd-settings-tab {
