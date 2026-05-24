@@ -583,7 +583,11 @@ html:has(body.pmd-speech-banner-visible) {
 
 .ribbon-left { flex: 0 0 auto; }
 .ribbon-center { flex: 1 1 auto; justify-content: center; }
-.ribbon-right { flex: 0 0 auto; }
+/* Tighten ribbon-right's internal flex gap so the timer-toggle
+   sits 3px from the settings/reference stack — matching the
+   intra-panel column-gap on the left side instead of the
+   `.ribbon-section`'s default 0.35rem. */
+.ribbon-right { flex: 0 0 auto; gap: 3px; }
 
 /* All ribbon buttons share the same icon-button look: square, centered
    glyph, no padding-driven asymmetry. Flexbox centering avoids

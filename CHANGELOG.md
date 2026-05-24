@@ -59,6 +59,10 @@ see `DETAILED_CHANGELOG.md`.
   Analytic, so col 2 ended up tighter than col 3), and with
   style preview off the eye picked that up as asymmetric
   spacing.
+- **Timer toggle now sits 3px from the settings / shortcuts
+  stack** on the right side of the ribbon (was 5.6px from the
+  default `.ribbon-section` flex-gap), matching the intra-
+  panel column-gap used everywhere on the left side.
 - **Ribbon panels now collapse one panel sooner**, so the
   rightmost visible panel no longer sits flush against the
   right-pinned buttons (timer / settings / reference). The
