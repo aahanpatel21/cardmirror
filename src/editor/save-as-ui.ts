@@ -9,14 +9,15 @@
  *     teammates still on Verbatim, or for any tournament-day round
  *     where the receiving party needs Word.
  *
- * Layout: an INFO section (file name + format radios), then a SAVE
- * section with one-click presets — Save Send Doc (no analytics /
- * undertags / comments), Save Read Doc (read-mode export), Save
- * As-Is (everything) — and a Custom Save block (comments / analytics
- * / undertags checkboxes + a Save Custom button), then Cancel. The
- * format radio drives the default filename extension and which
- * filter the OS dialog defaults to; all content options apply
- * equally to both formats.
+ * Layout: a File Name section, a Format section, then a Save section
+ * with one-click presets — As-Is (everything), Send Doc (no
+ * analytics / undertags / comments), Read Doc (read-mode export),
+ * each with its description as a caption below the button — followed
+ * by a Custom Save block (comments / analytics / undertags
+ * checkboxes + a Save Custom button), then Cancel. The format radio
+ * drives the default filename extension and which filter the OS
+ * dialog defaults to; all content options apply equally to both
+ * formats.
  */
 
 export type SaveAsFormat = 'cmir' | 'docx';
@@ -150,9 +151,9 @@ class SaveAsModal {
       });
     });
 
-    // INFO section: file name + format. Grouped under one heading so
-    // the dialog reads "here's what/where, then here's how to save."
-    form.appendChild(this.buildInfoSection());
+    // FILE NAME and FORMAT — the what/where, each under its heading.
+    form.appendChild(this.buildFileNameSection());
+    form.appendChild(this.buildFormatSection());
 
     // SAVE section heading — covers the presets and the custom-save
     // block below.
@@ -161,29 +162,30 @@ class SaveAsModal {
     saveHeading.textContent = 'Save';
     form.appendChild(saveHeading);
 
-    // One-click presets — common content configurations. Each
-    // saves immediately with the filename + format above.
+    // One-click presets — common content configurations. Each saves
+    // immediately with the filename + format above; the description
+    // shows as a caption below the button.
     const presets = document.createElement('div');
     presets.className = 'pmd-save-as-presets';
     presets.appendChild(
       this.buildPreset(
-        'Save Send Doc',
+        'As-Is',
+        'Includes everything in the document.',
+        { includeComments: true, includeAnalytics: true, includeUndertags: true, readMode: false },
+      ),
+    );
+    presets.appendChild(
+      this.buildPreset(
+        'Send Doc',
         'Excludes analytics, undertags, and comments.',
         { includeComments: false, includeAnalytics: false, includeUndertags: false, readMode: false },
       ),
     );
     presets.appendChild(
       this.buildPreset(
-        'Save Read Doc',
+        'Read Doc',
         'Exports the read-mode view of the document.',
         { includeComments: false, includeAnalytics: false, includeUndertags: false, readMode: true },
-      ),
-    );
-    presets.appendChild(
-      this.buildPreset(
-        'Save As-Is',
-        'Includes everything in the document.',
-        { includeComments: true, includeAnalytics: true, includeUndertags: true, readMode: false },
       ),
     );
     form.appendChild(presets);
@@ -222,10 +224,10 @@ class SaveAsModal {
     this.dialog.appendChild(form);
   }
 
-  /** Build a preset save button: a primary (blue) button that, when
-   *  clicked, saves immediately with the given content options
-   *  (filename + format read live from the inputs). The description
-   *  rides along as a tooltip. */
+  /** Build a preset cell: a primary (blue) button with its
+   *  description as a caption below. Clicking the button saves
+   *  immediately with the given content options (filename + format
+   *  read live from the inputs). */
   private buildPreset(
     title: string,
     sub: string,
@@ -235,41 +237,48 @@ class SaveAsModal {
       includeUndertags: boolean;
       readMode: boolean;
     },
-  ): HTMLButtonElement {
+  ): HTMLElement {
+    const cell = document.createElement('div');
+    cell.className = 'pmd-save-as-preset';
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'pmd-save-as-btn pmd-save-as-btn-primary pmd-save-as-preset';
+    btn.className = 'pmd-save-as-btn pmd-save-as-btn-primary pmd-save-as-preset-btn';
     btn.textContent = title;
-    btn.title = sub;
     btn.addEventListener('click', () => this.confirmWith(opts));
-    return btn;
+    cell.appendChild(btn);
+    const caption = document.createElement('span');
+    caption.className = 'pmd-save-as-preset-sub';
+    caption.textContent = sub;
+    cell.appendChild(caption);
+    return cell;
   }
 
-  /** INFO section: an "Info" heading, the file-name field, then the
-   *  format radios — the what/where of the save, above the how. */
-  private buildInfoSection(): HTMLElement {
+  /** FILE NAME section: a heading + the file-name input. */
+  private buildFileNameSection(): HTMLElement {
     const wrap = document.createElement('div');
-    wrap.className = 'pmd-save-as-format';
+    wrap.className = 'pmd-save-as-field';
     const heading = document.createElement('div');
     heading.className = 'pmd-save-as-options-heading';
-    heading.textContent = 'Info';
+    heading.textContent = 'File Name';
     wrap.appendChild(heading);
-
-    // File name field — directly under the heading, above format.
-    const fileLabel = document.createElement('label');
-    fileLabel.className = 'pmd-save-as-field';
-    const fileSpan = document.createElement('span');
-    fileSpan.className = 'pmd-save-as-field-label';
-    fileSpan.textContent = 'File name';
-    fileLabel.appendChild(fileSpan);
     this.filenameInput = document.createElement('input');
     this.filenameInput.type = 'text';
     this.filenameInput.className = 'pmd-save-as-input';
     this.filenameInput.value = withExtension(this.opts.initialFilename, this.currentFormat);
     this.filenameInput.spellcheck = false;
     this.filenameInput.autocomplete = 'off';
-    fileLabel.appendChild(this.filenameInput);
-    wrap.appendChild(fileLabel);
+    wrap.appendChild(this.filenameInput);
+    return wrap;
+  }
+
+  /** FORMAT section: a heading + the cmir / docx radio rows. */
+  private buildFormatSection(): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'pmd-save-as-format';
+    const heading = document.createElement('div');
+    heading.className = 'pmd-save-as-options-heading';
+    heading.textContent = 'Format';
+    wrap.appendChild(heading);
 
     const groupName = `pmd-save-as-format-${Math.random().toString(36).slice(2, 8)}`;
     this.formatRadios = { cmir: null!, docx: null! };

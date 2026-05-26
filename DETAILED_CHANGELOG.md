@@ -8,19 +8,21 @@ in each release, see `CHANGELOG.md`.
 ## Unreleased
 
 - **Save As dialog reorganized around presets.** The dialog body
-  now reads top-to-bottom: an **Info** section (heading, file-name
-  field, format radios — `buildInfoSection`) → a **Save** heading →
-  preset buttons → a divider → the **Custom Save** section → a
-  divider → Cancel (right-aligned).
+  now reads top-to-bottom: a **File Name** section
+  (`buildFileNameSection`) → a **Format** section
+  (`buildFormatSection`) → a **Save** heading → preset buttons → a
+  divider → the **Custom Save** section → a divider → Cancel
+  (right-aligned).
 
-  - Three presets — a horizontal row of primary (blue) buttons
-    (`.pmd-save-as-presets` / `.pmd-save-as-preset`), the
-    description carried as a tooltip — each call `confirmWith(opts)`
-    with a fixed content configuration and save immediately using
-    the name + format above: **Save Send Doc**
-    `{comments:false, analytics:false, undertags:false}`, **Save
-    Read Doc** `{…false, readMode:true}`, **Save As-Is**
-    `{comments:true, analytics:true, undertags:true}`.
+  - Three presets — a three-column grid (`.pmd-save-as-presets`),
+    each cell (`.pmd-save-as-preset`) a primary (blue) button
+    (`.pmd-save-as-preset-btn`) over a caption
+    (`.pmd-save-as-preset-sub`) — each call `confirmWith(opts)` with
+    a fixed content configuration and save immediately using the
+    name + format above: **As-Is**
+    `{comments:true, analytics:true, undertags:true}`, **Send Doc**
+    `{comments:false, analytics:false, undertags:false}`, **Read
+    Doc** `{…false, readMode:true}`.
   - The previous read-mode checkbox (and its mutual-exclusivity
     logic that disabled the other boxes when checked) is removed;
     `readModeBox` is gone. Read-mode export is now reachable only
