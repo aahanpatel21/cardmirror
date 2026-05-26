@@ -3303,10 +3303,10 @@ export type RibbonCommandId =
   | 'sendToSpeechAtCursor'
   | 'sendToSpeechAtEnd'
   | 'sendToDropzone'
-  // Select / copy the cursor's enclosing structure (selection if any,
-  // else the current card / analytic_unit / heading + its subtree),
-  // reusing the same bounds logic as send-to-speech / -dropzone. No
-  // default bindings — wire up via Settings → Keybindings.
+  // Select / copy the cursor's enclosing structure (the current card /
+  // analytic_unit / heading + its subtree), reusing the send-to-*
+  // bounds logic but keyed off the cursor — any active selection is
+  // ignored. No default bindings — wire up via Settings → Keybindings.
   | 'selectCurrentHeading'
   | 'copyCurrentHeading'
   | 'insertImage'
@@ -3805,9 +3805,9 @@ export interface RibbonContext {
   sendToSpeechAtCursor: () => void;
   sendToSpeechAtEnd: () => void;
   sendToDropzone: () => void;
-  /** Select / copy the cursor's enclosing structure (selection if
-   *  any, else the current card / analytic_unit / heading + subtree),
-   *  using the same bounds logic as the send-to-* commands. */
+  /** Select / copy the cursor's enclosing structure (the current
+   *  card / analytic_unit / heading + subtree). Keyed off the cursor;
+   *  any active selection is ignored. */
   selectCurrentHeading: () => void;
   copyCurrentHeading: () => void;
   /** Open the file picker that prompts for an image to insert at

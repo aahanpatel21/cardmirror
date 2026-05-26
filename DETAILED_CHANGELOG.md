@@ -10,19 +10,25 @@ in each release, see `CHANGELOG.md`.
 - **Select Current Heading / Copy Current Heading commands.** Two new
   ribbon commands (`selectCurrentHeading`, `copyCurrentHeading`) that
   reuse the send-to-speech / send-to-dropzone cursor→bounds logic.
-  Extracted that logic into `resolveSendRange(view): {from,to} | null`
-  in `speech-doc-send.ts` (selection if non-empty, else the enclosing
-  `card` / `analytic_unit` / heading + everything up to the next
-  equal-or-shallower heading); `resolveSendSlice` now just slices over
-  that range, so behavior is unchanged. Select dispatches a
-  `TextSelection.between(from, to)` (+ `scrollIntoView`, refocus);
-  Copy serializes the range's slice to HTML + plain text and writes
-  the clipboard without disturbing the selection (same serialization
-  the nav pane's copy-heading uses). Source-only operations on the
-  focused `view`, so no multi-doc routing. Registered through the full
-  pipeline (id union, `RIBBON_COMMAND_IDS`, labels, `DEFAULT_RIBBON_KEYS`
-  empty = unbound, `RibbonContext` + stub, `commandFor`, `RIBBON_GROUPS`
-  "Editing utilities"); rebindable via Settings → Keybindings.
+  Refactored that logic in `speech-doc-send.ts` into a shared
+  `enclosingStructureRange(doc, $pos)` (the enclosing `card` /
+  `analytic_unit` / heading + everything up to the next
+  equal-or-shallower heading), with two callers:
+  `resolveSendRange` (selection if non-empty, else the enclosing
+  structure — unchanged send-to-* behavior; `resolveSendSlice` slices
+  over it) and `resolveCursorStructureRange` (always the cursor's
+  structure, **ignoring any selection**, keyed off `selection.$head`).
+  Select/copy use the latter — a pre-existing selection is irrelevant
+  to them (re-selecting it is a no-op, and Ctrl+C copies it). Select
+  dispatches a `TextSelection.between(from, to)` (+ `scrollIntoView`,
+  refocus); Copy serializes the range's slice to HTML + plain text and
+  writes the clipboard without disturbing the selection (same
+  serialization the nav pane's copy-heading uses). Source-only
+  operations on the focused `view`, so no multi-doc routing. Registered
+  through the full pipeline (id union, `RIBBON_COMMAND_IDS`, labels,
+  `DEFAULT_RIBBON_KEYS` empty = unbound, `RibbonContext` + stub,
+  `commandFor`, `RIBBON_GROUPS` "Editing utilities"); rebindable via
+  Settings → Keybindings.
 
 - **Fixed: large `.docx` files failing to import with "Entity
   expansion limit exceeded: N > 1000".** `src/ooxml/parse.ts`

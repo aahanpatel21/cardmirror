@@ -33,7 +33,7 @@ import {
 import {
   sendToSpeech as runSendToSpeech,
   resolveSendSlice,
-  resolveSendRange,
+  resolveCursorStructureRange,
   installIncomingSpeechSliceHandler,
 } from './speech-doc-send.js';
 import { promptForText } from './text-prompt.js';
@@ -259,13 +259,13 @@ export async function sendViewToDropzone(sourceView: EditorView): Promise<void> 
   });
 }
 
-/** Select the cursor's enclosing structure — selection if present,
- *  else the current card / analytic_unit / heading + subtree — using
- *  the exact bounds logic the send-to-speech / -dropzone commands use
- *  (`resolveSendRange`). `TextSelection.between` snaps the raw block
+/** Select the cursor's enclosing structure — the current card /
+ *  analytic_unit / heading + subtree — using the send commands'
+ *  bounds logic but **ignoring any active selection** (it keys off
+ *  the cursor only). `TextSelection.between` snaps the raw block
  *  bounds to a valid text selection spanning the whole region. */
 function selectCurrentHeadingIn(sourceView: EditorView): void {
-  const range = resolveSendRange(sourceView);
+  const range = resolveCursorStructureRange(sourceView);
   if (!range) return;
   const { doc } = sourceView.state;
   const sel = TextSelection.between(doc.resolve(range.from), doc.resolve(range.to));
@@ -274,11 +274,12 @@ function selectCurrentHeadingIn(sourceView: EditorView): void {
 }
 
 /** Copy the cursor's enclosing structure to the clipboard (same
- *  bounds as `selectCurrentHeadingIn`) as both HTML and plain text,
- *  without moving the cursor or changing the selection. Mirrors the
- *  nav pane's copy-heading serialization. */
+ *  bounds as `selectCurrentHeadingIn`, also ignoring any active
+ *  selection) as both HTML and plain text, without moving the cursor
+ *  or changing the selection. Mirrors the nav pane's copy-heading
+ *  serialization. */
 async function copyCurrentHeadingIn(sourceView: EditorView): Promise<void> {
-  const range = resolveSendRange(sourceView);
+  const range = resolveCursorStructureRange(sourceView);
   if (!range) return;
   const slice = sourceView.state.doc.slice(range.from, range.to);
   const serializer = DOMSerializer.fromSchema(sourceView.state.schema);

@@ -10,12 +10,13 @@ see `DETAILED_CHANGELOG.md`.
 ### Added
 
 - **Select Current Heading** and **Copy Current Heading** commands.
-  Each acts on the same region the Send to Speech / Send to Dropzone
-  commands do: your selection if you have one, otherwise the card,
-  analytic, or heading (plus its subtree) your cursor is in. "Select"
-  highlights that region; "Copy" puts it on the clipboard without
-  moving your cursor. Both ship **unbound** — assign keys via
-  Settings → Keybindings.
+  Each acts on the card, analytic, or heading (plus its subtree) your
+  cursor is in — the same structure Send to Speech / Send to Dropzone
+  target. They key off the cursor and **ignore any active selection**
+  (re-selecting a selection is pointless, and Ctrl+C already copies
+  one). "Select" highlights that structure; "Copy" puts it on the
+  clipboard without moving your cursor. Both ship **unbound** — assign
+  keys via Settings → Keybindings.
 
 - **Home screen.** Launching CardMirror without a file now opens
   a start screen instead of a blank document: New document, New

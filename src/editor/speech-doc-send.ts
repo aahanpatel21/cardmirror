@@ -15,7 +15,7 @@
 
 import type { EditorView } from 'prosemirror-view';
 import { TextSelection } from 'prosemirror-state';
-import { Slice } from 'prosemirror-model';
+import { Slice, type Node as PMNode, type ResolvedPos } from 'prosemirror-model';
 import { closeHistory } from 'prosemirror-history';
 import { schema } from '../schema/index.js';
 import { rewriteHeadingIds } from './drag-controller.js';
@@ -33,22 +33,13 @@ export interface SendRange {
   to: number;
 }
 
-/** Compute the range to act on from `sourceView`. Returns the user's
- *  selection if any, otherwise the enclosing card / analytic_unit /
- *  heading range. Returns `null` if the cursor isn't inside a
- *  structure that has natural send semantics (e.g., empty doc).
- *
- *  This is the shared cursor→bounds logic behind send-to-speech,
- *  send-to-dropzone, and the select/copy-current-heading commands;
- *  `resolveSendSlice` is just `doc.slice(...)` over this range. */
-export function resolveSendRange(view: EditorView): SendRange | null {
-  const state = view.state;
-  const sel = state.selection;
-  if (!sel.empty) {
-    return { from: sel.from, to: sel.to };
-  }
-  const $pos = sel.$from;
-  const doc = state.doc;
+/** The card / analytic_unit / heading (+ its subtree) enclosing
+ *  `$pos`, ignoring any selection. A heading's range runs from the
+ *  heading to the next equal-or-shallower heading — the same
+ *  semantics `computeHeadingRange` uses. Returns `null` if `$pos`
+ *  isn't inside such a structure. Shared bounds logic for the
+ *  send-to-* and select/copy-current-heading commands. */
+function enclosingStructureRange(doc: PMNode, $pos: ResolvedPos): SendRange | null {
   for (let depth = $pos.depth; depth >= 0; depth--) {
     const node = $pos.node(depth);
     const t = node.type.name;
@@ -57,8 +48,6 @@ export function resolveSendRange(view: EditorView): SendRange | null {
       return { from, to: from + node.nodeSize };
     }
     if (t === 'pocket' || t === 'hat' || t === 'block') {
-      // Heading + everything until the next equal-or-shallower
-      // heading. Same semantics computeHeadingRange uses.
       const from = $pos.before(depth);
       const headingLevel = t === 'pocket' ? 1 : t === 'hat' ? 2 : 3;
       let to = doc.content.size;
@@ -80,6 +69,26 @@ export function resolveSendRange(view: EditorView): SendRange | null {
     }
   }
   return null;
+}
+
+/** Range for the **send-to-** commands: the user's selection if any,
+ *  otherwise the cursor's enclosing structure. `null` if neither
+ *  applies (e.g., empty doc). `resolveSendSlice` slices over this. */
+export function resolveSendRange(view: EditorView): SendRange | null {
+  const sel = view.state.selection;
+  if (!sel.empty) {
+    return { from: sel.from, to: sel.to };
+  }
+  return enclosingStructureRange(view.state.doc, sel.$from);
+}
+
+/** Range for **select / copy current heading**: ALWAYS the structure
+ *  the cursor sits in, deliberately ignoring any active selection
+ *  (re-selecting an existing selection is meaningless, and Ctrl+C
+ *  already copies a selection). Uses the selection head as "the
+ *  cursor." `null` if the cursor isn't inside a structure. */
+export function resolveCursorStructureRange(view: EditorView): SendRange | null {
+  return enclosingStructureRange(view.state.doc, view.state.selection.$head);
 }
 
 /** Compute the slice to send from `sourceView`. Returns the user's
