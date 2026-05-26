@@ -7,6 +7,25 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Fixed: large `.docx` files failing to import with "Entity
+  expansion limit exceeded: N > 1000".** `src/ooxml/parse.ts`
+  configures `fast-xml-parser`, whose entity-expansion guard (added
+  in the 4.5.x security hardening) defaults to
+  `maxTotalExpansions: 1000`. That counter increments per match for
+  *every* entity replaced — including the standard XML entities
+  (`&amp; &lt; &gt; &quot; &apos;`) — cumulatively across the whole
+  `document.xml`, reset only per parse. Large debate docs blow past
+  1000 standard entities easily, so the parse threw before the
+  importer ever ran (no ProseMirror involvement — this is upstream
+  of the editor entirely). Fix: pass `processEntities` as an object
+  with `maxTotalExpansions: Infinity` / `maxExpandedLength: Infinity`.
+  Safe because (a) standard entities and numeric char-refs are 1:1,
+  non-recursive — no exponential blow-up — and (b) the real
+  billion-laughs vector is DOCTYPE-declared nested custom entities,
+  which OOXML never emits (and the depth / size / count guards for
+  those remain at their defaults). We also only ever open trusted
+  local files.
+
 - **Save As dialog reorganized around presets.** The dialog body
   now reads top-to-bottom: a **Name** section
   (`buildFileNameSection`) → a **Format** section

@@ -27,6 +27,24 @@ const parser = new XMLParser({
   trimValues: false,
   parseAttributeValue: false,
   parseTagValue: false,
+  // fast-xml-parser ships a "billion laughs" guard that caps the
+  // total number of entity expansions per document at 1000. That
+  // guard counts every ordinary standard entity (&amp; &lt; &gt;
+  // &quot; &apos;) and numeric char-ref toward the budget, so a
+  // large, legitimate debate file — which easily contains thousands
+  // of ampersands / quotes across document.xml — trips it with
+  // "Entity expansion limit exceeded: N > 1000" and fails to load.
+  // Standard entities are 1:1, non-recursive replacements (no
+  // exponential blow-up); the actual entity-bomb vector is
+  // DOCTYPE-declared nested custom entities, which OOXML never uses.
+  // We open trusted local files, so lift the cap rather than reject
+  // real documents. (depth / entity-count / size guards still apply
+  // to any DOCTYPE entities, which OOXML doesn't have anyway.)
+  processEntities: {
+    enabled: true,
+    maxTotalExpansions: Infinity,
+    maxExpandedLength: Infinity,
+  },
 });
 
 export function parseXml(xml: string): XmlNode[] {

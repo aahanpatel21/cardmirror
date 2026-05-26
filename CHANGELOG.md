@@ -143,6 +143,14 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Fixed
 
+- **Large `.docx` files no longer fail to open with "Entity
+  expansion limit exceeded".** The XML parser shipped a "billion
+  laughs" safety cap that counted every ordinary `&amp;` / `&lt;` /
+  `&gt;` / `&quot;` / `&apos;` toward a 1000-per-document budget, so
+  big files (multi-tournament affs, large generics) tripped a
+  malware-defense limit on perfectly valid content. The cap is
+  lifted for import — standard entities are harmless 1:1
+  replacements, and the documents we open are trusted local files.
 - **Saving a Send Doc / Read Doc no longer renames the document
   you're working on.** Previously, saving via a content-dropping
   preset (or a partial Save Custom) rebound the open document's
