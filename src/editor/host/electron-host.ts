@@ -19,6 +19,22 @@ import type {
   SpawnWindowPayload,
 } from './types.js';
 
+/** Wire shape of a quick card across IPC. Structurally identical to
+ *  the renderer's `QuickCard`; declared locally so this module takes
+ *  no import dependency on the store (and no import cycle). */
+export interface QuickCardIpc {
+  id: string;
+  name: string;
+  tags: string[];
+  contentJson: unknown;
+  nameLower: string;
+  tagsLower: string[];
+  textLower: string;
+  sourceName: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** The shape we expect the preload script to expose. Defined here
  *  (and not imported from the desktop workspace) so the editor
  *  doesn't take a build-time dependency on Electron-specific code. */
@@ -79,6 +95,16 @@ interface ElectronAPI {
       items: Array<{ id: string; label: string; type: string; sliceJson: unknown; createdAt: number }>,
     ) => void,
   ): () => void;
+
+  /** Cross-window + persistent Quick Cards library. List returns the
+   *  current cards; upsert/bulkUpsert/remove/clear mutate, persist to
+   *  disk, and broadcast via onQuickCardsChanged. */
+  quickCardsList(): Promise<QuickCardIpc[]>;
+  quickCardsUpsert(card: QuickCardIpc): Promise<void>;
+  quickCardsBulkUpsert(cards: QuickCardIpc[]): Promise<void>;
+  quickCardsRemove(id: string): Promise<void>;
+  quickCardsClear(): Promise<void>;
+  onQuickCardsChanged(handler: (cards: QuickCardIpc[]) => void): () => void;
 
   /** Return every open doc across every window with its current
    *  filename, owning window, and speech-doc status. */
@@ -325,6 +351,30 @@ export class ElectronHost implements Host {
     ) => void,
   ): () => void {
     return api().onDropzoneChanged(handler);
+  }
+
+  async quickCardsList(): Promise<QuickCardIpc[]> {
+    return api().quickCardsList();
+  }
+
+  async quickCardsUpsert(card: QuickCardIpc): Promise<void> {
+    await api().quickCardsUpsert(card);
+  }
+
+  async quickCardsBulkUpsert(cards: QuickCardIpc[]): Promise<void> {
+    await api().quickCardsBulkUpsert(cards);
+  }
+
+  async quickCardsRemove(id: string): Promise<void> {
+    await api().quickCardsRemove(id);
+  }
+
+  async quickCardsClear(): Promise<void> {
+    await api().quickCardsClear();
+  }
+
+  onQuickCardsChanged(handler: (cards: QuickCardIpc[]) => void): () => void {
+    return api().onQuickCardsChanged(handler);
   }
 
   async listDocs(): Promise<

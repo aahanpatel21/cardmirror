@@ -42,6 +42,7 @@ import { createReference } from './create-reference.js';
 import { showToast } from './toast.js';
 import { openSelectSpeechDocModal } from './select-speech-doc-ui.js';
 import { dropzoneStore, deriveDropzoneLabel } from './dropzone-store.js';
+import { quickCardsStore } from './quick-cards-store.js';
 import { homeScreen, type HomeScreenCallbacks } from './home-screen.js';
 import { recordRecent, removeRecent, type RecentFile } from './recents-store.js';
 import {
@@ -4426,6 +4427,10 @@ if (!BOOT_MULTI_DOC_WORKSPACE && getHost().canSpawnWindow) {
 // on Electron; safe to install in both single-doc and (will-be)
 // multi-pane paths since the resolver filters by uid.
 installIncomingSpeechSliceHandler();
+// Load the persistent, cross-window Quick Cards library + subscribe to
+// changes. Done at boot (not on first UI mount) so the add command and
+// search palette work the instant they're invoked, in either layout.
+void quickCardsStore.init();
 if (BOOT_MULTI_DOC_WORKSPACE) {
   void import('./multi-pane-shell.js').then(async (m) => {
     m.mountMultiPaneShell();

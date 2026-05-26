@@ -7,6 +7,33 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Quick Cards — store foundation (no UI yet).** First slice of the
+  Quick Cards feature (see `reference-docs/SPEC-quick-cards.md`): a
+  persistent, cross-window library of reusable rich-text snippets.
+  - `src/editor/quick-cards-store.ts` — dual-backend reactive store
+    (`quickCardsStore`) mirroring `dropzone-store.ts` but persistent.
+    `QuickCard` shape: id (UUID), name, tags, `contentJson`
+    (`Slice.toJSON()`), denormalized search keys
+    (`nameLower`/`tagsLower`/`textLower`), `sourceName` provenance,
+    created/updated (epoch ms). API: `init` / `list` / `byId` /
+    `upsert` / `importMany` / `remove` / `clear` / `subscribe`, plus
+    `normalizeTag` + `tagSetKey` helpers for the (forthcoming)
+    duplicate-name-only-if-tags-differ rule. Electron backend reads
+    main + subscribes to `quick-cards:changed`; web backend uses
+    `localStorage` (persists across sessions, unlike the dropzone's
+    sessionStorage) + a `storage` listener.
+  - Host layer: `quickCardsList/Upsert/BulkUpsert/Remove/Clear` +
+    `onQuickCardsChanged` on `ElectronHost` (+ a local `QuickCardIpc`
+    type) and the preload bridge.
+  - Main process (`apps/desktop/src/main.ts`): authoritative
+    `quickCards` array persisted to `{userData}/quick-cards.json`
+    (lazy load, atomic tmp→rename writes serialized on a write-tail,
+    same discipline as the journal) and broadcast to every window on
+    mutation. New IPC: `host:quick-cards-list/upsert/bulk-upsert/
+    remove/clear`.
+  - Boot: `quickCardsStore.init()` runs at renderer startup so every
+    surface reads one cache.
+
 - **Select Current Heading / Copy Current Heading commands.** Two new
   ribbon commands (`selectCurrentHeading`, `copyCurrentHeading`) that
   reuse the send-to-speech / send-to-dropzone cursor→bounds logic.

@@ -28,6 +28,19 @@ interface JournalEntry {
   bytes: Uint8Array;
 }
 
+interface QuickCardIpc {
+  id: string;
+  name: string;
+  tags: string[];
+  contentJson: unknown;
+  nameLower: string;
+  tagsLower: string[];
+  textLower: string;
+  sourceName: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   /** Read the system clipboard's plain-text content. Used by the
    *  F2 (Paste Plain) command on Electron — bypasses the Chromium
@@ -213,6 +226,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ): void => handler(items);
     ipcRenderer.on('dropzone:changed', listener);
     return () => ipcRenderer.removeListener('dropzone:changed', listener);
+  },
+
+  /** Quick Cards — persistent, cross-window snippet library. List
+   *  returns current cards; upsert/bulkUpsert/remove/clear mutate,
+   *  persist to `{userData}/quick-cards.json`, and broadcast via
+   *  `quick-cards:changed`. */
+  quickCardsList: () =>
+    ipcRenderer.invoke('host:quick-cards-list') as Promise<QuickCardIpc[]>,
+  quickCardsUpsert: (card: QuickCardIpc) =>
+    ipcRenderer.invoke('host:quick-cards-upsert', card),
+  quickCardsBulkUpsert: (cards: QuickCardIpc[]) =>
+    ipcRenderer.invoke('host:quick-cards-bulk-upsert', cards),
+  quickCardsRemove: (id: string) =>
+    ipcRenderer.invoke('host:quick-cards-remove', id),
+  quickCardsClear: () => ipcRenderer.invoke('host:quick-cards-clear'),
+  onQuickCardsChanged(handler: (cards: QuickCardIpc[]) => void): () => void {
+    const listener = (_evt: unknown, cards: QuickCardIpc[]): void => handler(cards);
+    ipcRenderer.on('quick-cards:changed', listener);
+    return () => ipcRenderer.removeListener('quick-cards:changed', listener);
   },
 
   /** List every open doc across every window. Each entry carries

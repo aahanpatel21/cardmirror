@@ -843,6 +843,119 @@ ipcMain.handle('host:dropzone-clear', async () => {
   broadcastDropzoneState();
 });
 
+// ─── Quick Cards (persistent, cross-window snippet library) ────────
+// Renderers add/edit named rich-text snippets; main keeps the
+// canonical list in memory, persists it to
+// `{userData}/quick-cards.json`, and broadcasts every change so every
+// window stays in sync. Unlike the dropzone, this DOES persist across
+// app restarts.
+
+interface QuickCardIpc {
+  id: string;
+  name: string;
+  tags: string[];
+  contentJson: unknown;
+  nameLower: string;
+  tagsLower: string[];
+  textLower: string;
+  sourceName: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+let quickCards: QuickCardIpc[] = [];
+let quickCardsLoaded = false;
+
+function quickCardsPath(): string {
+  return path.join(app.getPath('userData'), 'quick-cards.json');
+}
+
+/** Lazy one-time load from disk. Every handler awaits this first so
+ *  the first mutation of a session doesn't clobber a saved library. */
+async function ensureQuickCardsLoaded(): Promise<void> {
+  if (quickCardsLoaded) return;
+  quickCardsLoaded = true;
+  try {
+    const text = await fs.readFile(quickCardsPath(), 'utf8');
+    const parsed = JSON.parse(text);
+    if (parsed && Array.isArray(parsed.cards)) {
+      quickCards = parsed.cards.filter(
+        (c: unknown): c is QuickCardIpc =>
+          !!c && typeof c === 'object' && typeof (c as QuickCardIpc).id === 'string',
+      );
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.warn('Failed to read quick-cards.json:', err);
+    }
+    quickCards = [];
+  }
+}
+
+// Serialize writes (tmp → atomic rename) so two quick mutations can't
+// race to a torn file — same discipline as the journal writer.
+let quickCardsWriteTail: Promise<void> = Promise.resolve();
+function persistQuickCards(): Promise<void> {
+  const snapshot = quickCards;
+  quickCardsWriteTail = quickCardsWriteTail.catch(() => {}).then(async () => {
+    const finalPath = quickCardsPath();
+    const tmpPath = `${finalPath}.tmp`;
+    await fs.writeFile(tmpPath, JSON.stringify({ version: 1, cards: snapshot }));
+    await fs.rename(tmpPath, finalPath);
+  });
+  return quickCardsWriteTail;
+}
+
+function broadcastQuickCardsState(): void {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send('quick-cards:changed', quickCards);
+  }
+}
+
+ipcMain.handle('host:quick-cards-list', async () => {
+  await ensureQuickCardsLoaded();
+  return quickCards;
+});
+
+ipcMain.handle('host:quick-cards-upsert', async (_event, card: QuickCardIpc) => {
+  if (!card || typeof card.id !== 'string' || !card.id) return;
+  await ensureQuickCardsLoaded();
+  // De-dup by id — upsert covers both new-card adds and edits.
+  quickCards = [...quickCards.filter((c) => c.id !== card.id), card];
+  broadcastQuickCardsState();
+  await persistQuickCards();
+});
+
+ipcMain.handle('host:quick-cards-bulk-upsert', async (_event, cards: QuickCardIpc[]) => {
+  if (!Array.isArray(cards)) return;
+  await ensureQuickCardsLoaded();
+  const incoming = new Map(
+    cards.filter((c) => c && typeof c.id === 'string' && c.id).map((c) => [c.id, c]),
+  );
+  if (incoming.size === 0) return;
+  quickCards = [...quickCards.filter((c) => !incoming.has(c.id)), ...incoming.values()];
+  broadcastQuickCardsState();
+  await persistQuickCards();
+});
+
+ipcMain.handle('host:quick-cards-remove', async (_event, id: string) => {
+  if (typeof id !== 'string' || !id) return;
+  await ensureQuickCardsLoaded();
+  const next = quickCards.filter((c) => c.id !== id);
+  if (next.length === quickCards.length) return;
+  quickCards = next;
+  broadcastQuickCardsState();
+  await persistQuickCards();
+});
+
+ipcMain.handle('host:quick-cards-clear', async () => {
+  await ensureQuickCardsLoaded();
+  if (quickCards.length === 0) return;
+  quickCards = [];
+  broadcastQuickCardsState();
+  await persistQuickCards();
+});
+
 // Pre-load duplicate-open check. Renderer calls this BEFORE
 // loading a file from disk. If another window owns the path, we
 // focus that window and tell the caller `takenByOther: true` so
