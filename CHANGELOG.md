@@ -18,17 +18,24 @@ see `DETAILED_CHANGELOG.md`.
   produces a thinner, lighter glyph consistent with the rest
   of the OS. Low-DPI displays keep the browser-default
   subpixel rendering, which is crisper at that resolution.
-- **Dropzone shelf** — a small floating bubble at the bottom of
-  the nav pane. Drag any card / heading / selection onto it and
-  the bubble absorbs the content into a cross-window shelf;
-  click the bubble to expand a popover listing every shelved
-  item; drag any item out of the popover into the editor or
-  nav pane to insert a copy at the drop point. Shared across
-  every CardMirror window in the same session; survives the
-  renderer reload that toggling multi-pane mode triggers; does
-  NOT persist between app restarts (per spec — clean slate
-  every launch). On web, single-window only with
-  `sessionStorage` survival.
+- **Dropzone shelf** — opt-in floating pill at the bottom of the
+  nav pane (Settings → Appearance → "Show dropzone shelf in nav
+  pane"; **default off**). When enabled, drag any card or
+  heading onto the pill to absorb it into a cross-window shelf;
+  click the pill to expand the shelf in place, click an item to
+  insert it at the cursor (Alt+click to insert at end of doc),
+  or drag an item out to drop it at a specific position in the
+  editor / nav pane. **Ctrl+\`** (rebindable as `sendToDropzone`)
+  sends the current selection or enclosing card/heading to the
+  shelf even when the pill is hidden — items pile up in the
+  store and become accessible the moment any window turns the
+  pill on. Card items show the same tag + cite preview the nav
+  pane uses; pocket / hat / block / analytic items show the
+  heading text only. Shared across every CardMirror window in
+  the same session; survives the renderer reload that toggling
+  multi-pane mode triggers; does NOT persist between app
+  restarts. On web, single-window only with `sessionStorage`
+  survival.
 - **Searchbar on Settings → Keybindings and the Keyboard
   Shortcuts reference modal.** Filters rows live against the
   command label AND its current keybinding text (searching "f7"
