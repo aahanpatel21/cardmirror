@@ -599,23 +599,16 @@ html:has(body.pmd-speech-banner-visible) {
   gap: 0.35rem;
 }
 
-/* Home button — leftmost in the ribbon. Single-doc only (home is
-   not a multi-pane concept); hidden in the multi-doc workspace. */
-#ribbon .ribbon-home-btn {
-  flex: 0 0 auto;
-  margin-right: 0.35rem;
-}
+/* Home button lives in the ribbon-right 2×2 grid. Single-doc
+   only (home isn't a multi-pane concept); hidden in multi-doc,
+   which leaves the timer alone in the grid's bottom row. */
 body.pmd-multi-doc #ribbon .ribbon-home-btn {
   display: none;
 }
 
 .ribbon-left { flex: 0 0 auto; }
 .ribbon-center { flex: 1 1 auto; justify-content: center; }
-/* Tighten ribbon-right's internal flex gap so the timer-toggle
-   sits 3px from the settings/reference stack — matching the
-   intra-panel column-gap on the left side instead of the
-   `.ribbon-section`'s default 0.35rem. */
-.ribbon-right { flex: 0 0 auto; gap: 3px; }
+.ribbon-right { flex: 0 0 auto; }
 
 /* All ribbon buttons share the same icon-button look: square, centered
    glyph, no padding-driven asymmetry. Flexbox centering avoids
@@ -642,29 +635,22 @@ body.pmd-multi-doc #ribbon .ribbon-home-btn {
   background: var(--pmd-c-hover);
 }
 
-/* Settings gear + reference (cheat-sheet) book sit stacked in the
-   ribbon-right section. Each sized to match the open/save and
-   doc-ops buttons so chrome widths stay consistent across the
-   ribbon. */
-.ribbon-right-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+/* Ribbon-right 2×2 grid: shortcuts / settings on top, timer /
+   home on the bottom. Uses the same 2px×3px intra-panel gap as
+   the left-side panels so spacing reads consistently. All four
+   buttons are sized uniformly (overriding the default 1.7rem
+   square and the timer's former tall sizing). */
+.ribbon-right-grid {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  grid-auto-flow: row;
+  gap: 2px 3px;
+  align-content: center;
 }
-#ribbon #settings-btn,
-#ribbon #reference-btn {
-  width: 1.5rem;
+#ribbon .ribbon-right-grid button {
+  width: 1.6rem;
   height: 1.45rem;
   font-size: 0.85rem;
-}
-/* Timer toggle button — sits beside the settings/reference stack
-   in ribbon-right. Sized to match the stack's combined height
-   so it reads as a peer of the stack rather than a smaller
-   floating chip. */
-#ribbon #timer-toggle-btn {
-  width: 1.6rem;
-  height: 2.92rem;
-  font-size: 0.95rem;
 }
 #ribbon #timer-toggle-btn[aria-pressed="true"] {
   background: var(--pmd-c-accent);
