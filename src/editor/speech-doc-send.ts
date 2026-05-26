@@ -116,6 +116,11 @@ export function insertSpeechSlice(
   slice: Slice,
   atEnd: boolean,
   afterInsert?: AfterInsertHook,
+  /** Mid-text insertion guard. Defaults to the speech-doc behavior
+   *  (confirm, speech-worded). Quick-card inserts pass their own
+   *  enabled flag (the `quickCardSkipMidTextInsertConfirm` setting)
+   *  and message. */
+  midTextConfirm: { enabled: boolean; message?: string } = { enabled: true },
 ): void {
   const state = speechView.state;
 
@@ -154,9 +159,10 @@ export function insertSpeechSlice(
     if (!inBlankLine && inMidOfText) midText = true;
   }
 
-  if (midText) {
+  if (midText && midTextConfirm.enabled) {
     const ok = window.confirm(
-      'Sending to the middle of text in the speech doc. Are you sure?',
+      midTextConfirm.message ??
+        'Sending to the middle of text in the speech doc. Are you sure?',
     );
     if (!ok) {
       // `window.confirm` steals OS-level focus from the editor's

@@ -50,6 +50,7 @@ import {
 } from './quick-cards-store.js';
 import { openQuickCardAdd } from './quick-card-add-ui.js';
 import { quickCardsManageUI } from './quick-cards-manage-ui.js';
+import { quickCardSearchUI, openQuickCardTagPicker } from './quick-card-search-ui.js';
 import { homeScreen, type HomeScreenCallbacks } from './home-screen.js';
 import { recordRecent, removeRecent, type RecentFile } from './recents-store.js';
 import {
@@ -878,6 +879,13 @@ const ribbonContext: RibbonContext = {
   addQuickCard: () => {
     if (view) void runAddQuickCard(view);
   },
+  openQuickCardSearch: () => {
+    // Centre over the focused pane (multi-pane) or the editor element
+    // (single-doc); opens browse-only when there's no active view.
+    const paneEl =
+      (view?.dom.closest('.pmd-pane') as HTMLElement | null) ?? editorEl ?? null;
+    quickCardSearchUI.open({ view, paneEl });
+  },
   insertImage: () => {
     if (!view) return;
     openImagePicker(view);
@@ -1377,8 +1385,11 @@ for (const btn of [qcSearchBtn, qcTagPickerBtn, qcManageBtn, qcAddBtn]) {
   btn?.addEventListener('mousedown', (e) => e.preventDefault());
 }
 qcAddBtn?.addEventListener('click', () => runRibbon('addQuickCard'));
-qcSearchBtn?.addEventListener('click', () => showToast('Quick card search — coming soon.'));
-qcTagPickerBtn?.addEventListener('click', () => showToast('Quick card tag picker — coming soon.'));
+// Search is view-less — call ctx directly so it opens even with no doc.
+qcSearchBtn?.addEventListener('click', () => ribbonContext.openQuickCardSearch());
+qcTagPickerBtn?.addEventListener('click', () => {
+  if (qcTagPickerBtn) openQuickCardTagPicker(qcTagPickerBtn);
+});
 qcManageBtn?.addEventListener('click', () => void quickCardsManageUI.open());
 
 // Comments column. The CommentsColumn instance owns the side-panel
@@ -2251,6 +2262,9 @@ const VIEWLESS_RIBBON_COMMANDS = new Set<RibbonCommandId>([
   // Home screen overlay — pure UI, no doc needed. Must be view-
   // less so it works in multi-pane with zero panes open.
   'goHome',
+  // Quick-card search palette — opens browse-only without a doc, so
+  // its Mod-Shift-Space binding must work view-less too.
+  'openQuickCardSearch',
   // Multi-pane workspace commands — fire on the shell, not a
   // doc. View-less so they work even when no slot has a doc.
   'focusSlot1',
@@ -2277,6 +2291,7 @@ function runViewlessRibbon(id: RibbonCommandId): void {
     case 'zoomReset': ribbonContext.zoomReset(); return;
     case 'toggleNavPane': ribbonContext.toggleNavPane(); return;
     case 'goHome': ribbonContext.goHome(); return;
+    case 'openQuickCardSearch': ribbonContext.openQuickCardSearch(); return;
     // Multi-pane workspace navigation. Each dispatches into the
     // shell via dynamic import — keeps single-doc bundles free
     // of the shell's deps. All no-op in single-doc mode (the

@@ -3310,8 +3310,10 @@ export type RibbonCommandId =
   | 'selectCurrentHeading'
   | 'copyCurrentHeading'
   // Quick Cards (see reference-docs/SPEC-quick-cards.md). Add saves the
-  // current selection as a named, tagged snippet. No default binding.
+  // current selection as a named, tagged snippet (no default binding);
+  // the search palette opens on Mod-Shift-Space.
   | 'addQuickCard'
+  | 'openQuickCardSearch'
   | 'insertImage'
   | 'zoomIn'
   | 'zoomOut'
@@ -3433,6 +3435,7 @@ export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
   'selectCurrentHeading',
   'copyCurrentHeading',
   'addQuickCard',
+  'openQuickCardSearch',
   'insertImage',
   'zoomIn',
   'zoomOut',
@@ -3539,6 +3542,7 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   selectCurrentHeading: 'Select Current Heading',
   copyCurrentHeading: 'Copy Current Heading',
   addQuickCard: 'Add Quick Card',
+  openQuickCardSearch: 'Search Quick Cards',
   insertImage: 'Insert Image at Cursor',
   zoomIn: 'Zoom In',
   zoomOut: 'Zoom Out',
@@ -3665,6 +3669,7 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   selectCurrentHeading: '',
   copyCurrentHeading: '',
   addQuickCard: '',
+  openQuickCardSearch: 'Mod-Shift-Space',
   newSpeechDocument: '',
   markActiveAsSpeech: '',
   insertImage: '',
@@ -3819,6 +3824,9 @@ export interface RibbonContext {
   /** Save the current selection as a named, tagged quick card
    *  (opens the Add dialog). No-op + toast if the selection is empty. */
   addQuickCard: () => void;
+  /** Open the floating quick-card search palette. Works with no
+   *  active doc (browse-only; insert no-ops). */
+  openQuickCardSearch: () => void;
   /** Open the file picker that prompts for an image to insert at
    *  the editor's current cursor. Pasting an image from the
    *  clipboard goes through paste-plugin instead — no ctx hook
@@ -3913,6 +3921,7 @@ const DEFAULT_RIBBON_CONTEXT: RibbonContext = {
   selectCurrentHeading: () => {},
   copyCurrentHeading: () => {},
   addQuickCard: () => {},
+  openQuickCardSearch: () => {},
   insertImage: () => {},
   zoomIn: () => {},
   zoomOut: () => {},
@@ -4177,6 +4186,12 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
       return (_state, dispatch) => {
         if (!dispatch) return true;
         ctx.addQuickCard();
+        return true;
+      };
+    case 'openQuickCardSearch':
+      return (_state, dispatch) => {
+        if (!dispatch) return true;
+        ctx.openQuickCardSearch();
         return true;
       };
     case 'insertImage':

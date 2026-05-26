@@ -44,7 +44,7 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
   },
   {
     title: 'Quick Cards',
-    commands: ['addQuickCard'],
+    commands: ['addQuickCard', 'openQuickCardSearch'],
   },
   {
     title: 'Structural styles',

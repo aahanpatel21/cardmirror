@@ -9,6 +9,30 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Added
 
+- **Quick Cards** — a persistent, cross-window library of reusable
+  rich-text snippets (think Verbatim's quick cards), reached from a
+  new 2×2 ribbon cluster (Search / Tag Picker / Manage / Add) between
+  the speech-doc buttons and the structural styles.
+  - **Add** (button, or bind a key in Settings → Keybindings): with
+    text selected, save it as a quick card. The name pre-fills with
+    the smallest enclosing heading; you can tag it (Enter or comma
+    between tags). A name may repeat only if its tags differ.
+  - **Search** (**Ctrl/Cmd+Shift+Space**, or the 🔍 button): a floating
+    palette over the current document. Type to fuzzy-match (matches on
+    name first, then card contents); ↑/↓ to move, **Enter** to insert
+    at the cursor, **Alt+Enter** to insert at the end of the doc, Esc
+    to close. **Tab** jumps to an inline tag filter.
+  - **Tag Picker** (🏷️): choose which tags are in scope for search —
+    handy when, say, several aff files each have a "2AC" card. The
+    filter is global and persists.
+  - **Manage** (🗂️, or the Home screen): a full-window browser to
+    edit a card's name / tags / content (in an embedded editor),
+    delete, and import/export as JSON.
+  - Quick cards persist across sessions and are shared live across all
+    open windows. Inserting into the middle of a paragraph asks for
+    confirmation first; disable that via **Settings → Editing →
+    "Skip mid-text confirm when inserting quick cards."**
+
 - **Select Current Heading** and **Copy Current Heading** commands.
   Each acts on the card, analytic, or heading (plus its subtree) your
   cursor is in — the same structure Send to Speech / Send to Dropzone

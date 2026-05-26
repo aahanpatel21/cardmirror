@@ -694,6 +694,15 @@ export interface Settings {
    *  (2 full + edge of 3rd visible). With 1 or 2 active slots the
    *  two modes render identically. */
   multiDocLayoutMode: 'compact' | 'wide';
+  /** Quick Cards: tags currently active in the search-palette filter
+   *  (edited by the Tag Picker). Empty = no filter (all cards in
+   *  scope); non-empty scopes search to cards with >=1 active tag.
+   *  Untagged cards are always in scope. Stored normalized
+   *  (lowercased). Global + persisted. */
+  quickCardActiveTags: string[];
+  /** When on, inserting a quick card skips the mid-text confirmation
+   *  prompt (inserts immediately even mid-sentence). Default off. */
+  quickCardSkipMidTextInsertConfirm: boolean;
 }
 
 /** Open-delimiter options for "Condense with warning" markers. The
@@ -852,6 +861,8 @@ const DEFAULTS: Settings = {
   aiCitePrompt: '',
   multiDocWorkspace: false,
   multiDocLayoutMode: 'compact',
+  quickCardActiveTags: [],
+  quickCardSkipMidTextInsertConfirm: false,
 };
 
 /** Public read-only view of the built-in defaults — handy for any UI
@@ -1291,6 +1302,14 @@ export const SETTING_METADATA: SettingMeta[] = [
     category: 'editing',
   },
   {
+    key: 'quickCardSkipMidTextInsertConfirm',
+    label: 'Skip mid-text confirm when inserting quick cards',
+    description:
+      'When off (default), inserting a quick card into the middle of a paragraph asks you to confirm first (pressing Enter again). Turn on to always insert immediately, even mid-sentence.',
+    kind: 'toggle',
+    category: 'editing',
+  },
+  {
     key: 'headingMode',
     label: 'Condense: heading handling',
     description:
@@ -1717,6 +1736,10 @@ function sanitize(s: Settings): Settings {
       s.multiDocLayoutMode === 'wide' || s.multiDocLayoutMode === 'compact'
         ? s.multiDocLayoutMode
         : DEFAULTS.multiDocLayoutMode,
+    quickCardActiveTags: Array.isArray(s.quickCardActiveTags)
+      ? s.quickCardActiveTags.filter((t): t is string => typeof t === 'string')
+      : [],
+    quickCardSkipMidTextInsertConfirm: s.quickCardSkipMidTextInsertConfirm === true,
   };
 }
 

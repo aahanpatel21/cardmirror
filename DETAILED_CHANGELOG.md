@@ -99,11 +99,37 @@ in each release, see `CHANGELOG.md`.
   - Ribbon: a 2×2 Quick Cards cluster (`#quickcards-stack`) between the
     speech stack and the formatting panel, shown in both single- and
     multi-doc (unlike the speech stack). Buttons: 🔍 Search · 🏷️ Tag
-    Picker (top), 🗂️ Manage · ➕ Add (bottom). **Add is live**
-    (`runRibbon('addQuickCard')`); Search / Tag Picker / Manage are
-    stubbed with "coming soon" toasts until their surfaces land.
-    `mousedown` preventDefault on all four preserves the editor
-    selection. CSS `.ribbon-quickcards-stack` mirrors the speech stack.
+    Picker (top), 🗂️ Manage · ➕ Add (bottom). `mousedown`
+    preventDefault on all four preserves the editor selection. CSS
+    `.ribbon-quickcards-stack` mirrors the speech stack.
+
+- **Quick Cards — Search palette + Tag Picker (feature complete).**
+  - `quick-cards-match.ts`: pure Block-Search matcher
+    (`searchQuickCards`) — order-independent multi-token substring AND,
+    scoped by the active-tags filter (`isInScope`: empty filter = all;
+    else ≥1 active tag; untagged always in scope), two-tier (name
+    matches, then content-only matches with a ~40-char snippet of the
+    matched region). Name tier ordered by first-token position then
+    recency; content tier by recency.
+  - `quick-card-search-ui.ts`: the floating palette (`quickCardSearchUI`)
+    — centered over the target pane, pinned bottom, results ABOVE the
+    bar; input focused synchronously; one-shot blue pulse
+    (`pmd-qcs-pulse`, auto-suppressed by the reduce-motion rule);
+    live search; ↑/↓ nav, Enter = insert at cursor, Alt+Enter = at
+    end, Tab = inline tag filter, Esc/click-away to close; keyboard
+    hints footer; no-editable-target → toast, no insert. Insert
+    reuses `insertSpeechSlice` with the new mid-text-confirm option
+    gated on `quickCardSkipMidTextInsertConfirm`. Also exports
+    `openQuickCardTagPicker` (the ribbon 🏷️ dropdown) — both it and
+    the inline Tab filter edit the global `quickCardActiveTags` setting.
+  - `insertSpeechSlice` gained a 5th `midTextConfirm: { enabled,
+    message? }` param (defaults preserve speech-doc behavior).
+  - Command `openQuickCardSearch` (`Mod-Shift-Space`), registered +
+    view-less (opens browse-only with no doc). 🔍 and 🏷️ ribbon
+    buttons wired (were stubs); ➕ Add unchanged.
+  - Settings: `quickCardActiveTags` (the global tag filter; edited via
+    the Tag Picker, not a settings row) and
+    `quickCardSkipMidTextInsertConfirm` (Editing tab, default off).
 
 - **Select Current Heading / Copy Current Heading commands.** Two new
   ribbon commands (`selectCurrentHeading`, `copyCurrentHeading`) that
