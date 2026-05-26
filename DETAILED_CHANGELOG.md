@@ -9,10 +9,12 @@ in each release, see `CHANGELOG.md`.
 
 - **Save As dialog reorganized around presets.** The dialog body
   now reads top-to-bottom: format picker → file-name field →
-  preset buttons → custom Include section → Cancel.
+  preset buttons → a divider → the Custom Save section → a
+  divider → Cancel (right-aligned).
 
-  - Three presets (`.pmd-save-as-presets` / `.pmd-save-as-preset`,
-    each a title-over-sub card button) each call `confirmWith(opts)`
+  - Three presets — a horizontal row of primary (blue) buttons
+    (`.pmd-save-as-presets` / `.pmd-save-as-preset`), the
+    description carried as a tooltip — each call `confirmWith(opts)`
     with a fixed content configuration and save immediately using
     the name + format above: **Save Send Doc**
     `{comments:false, analytics:false, undertags:false}`, **Save
@@ -22,11 +24,12 @@ in each release, see `CHANGELOG.md`.
     logic that disabled the other boxes when checked) is removed;
     `readModeBox` is gone. Read-mode export is now reachable only
     via the Save Read Doc preset.
-  - The Include section keeps the comments / analytics / undertags
-    checkboxes and gains a **Custom Save** submit button
-    (`.pmd-save-as-custom-save`); the form's submit handler routes
-    through `confirmWith` with the live checkbox state and
-    `readMode:false`.
+  - The custom section (heading renamed from "Include" to "Custom
+    Save") keeps the comments / analytics / undertags checkboxes
+    and gains a left-aligned **Custom Save** submit button
+    (`.pmd-save-as-custom-save`) directly below them; the form's
+    submit handler routes through `confirmWith` with the live
+    checkbox state and `readMode:false`.
   - `SaveAsResult` is unchanged, so the save pipeline downstream
     needed no edits — only how the four flags get chosen.
 

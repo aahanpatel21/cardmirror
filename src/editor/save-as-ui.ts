@@ -231,9 +231,10 @@ class SaveAsModal {
     this.dialog.appendChild(form);
   }
 
-  /** Build a preset save button: a title + sub-description that,
-   *  when clicked, saves immediately with the given content
-   *  options (filename + format read live from the inputs). */
+  /** Build a preset save button: a primary (blue) button that, when
+   *  clicked, saves immediately with the given content options
+   *  (filename + format read live from the inputs). The description
+   *  rides along as a tooltip. */
   private buildPreset(
     title: string,
     sub: string,
@@ -246,15 +247,9 @@ class SaveAsModal {
   ): HTMLButtonElement {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'pmd-save-as-preset';
-    const t = document.createElement('span');
-    t.className = 'pmd-save-as-preset-title';
-    t.textContent = title;
-    btn.appendChild(t);
-    const s = document.createElement('span');
-    s.className = 'pmd-save-as-preset-sub';
-    s.textContent = sub;
-    btn.appendChild(s);
+    btn.className = 'pmd-save-as-btn pmd-save-as-btn-primary pmd-save-as-preset';
+    btn.textContent = title;
+    btn.title = sub;
     btn.addEventListener('click', () => this.confirmWith(opts));
     return btn;
   }
@@ -307,7 +302,7 @@ class SaveAsModal {
   private buildOptionsHeading(): HTMLElement {
     const h = document.createElement('div');
     h.className = 'pmd-save-as-options-heading';
-    h.textContent = 'Include';
+    h.textContent = 'Custom Save';
     return h;
   }
 
