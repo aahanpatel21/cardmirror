@@ -8,8 +8,9 @@ in each release, see `CHANGELOG.md`.
 ## Unreleased
 
 - **Save As dialog reorganized around presets.** The dialog body
-  now reads top-to-bottom: format picker → file-name field →
-  preset buttons → a divider → the Custom Save section → a
+  now reads top-to-bottom: an **Info** section (heading, file-name
+  field, format radios — `buildInfoSection`) → a **Save** heading →
+  preset buttons → a divider → the **Custom Save** section → a
   divider → Cancel (right-aligned).
 
   - Three presets — a horizontal row of primary (blue) buttons
@@ -24,12 +25,11 @@ in each release, see `CHANGELOG.md`.
     logic that disabled the other boxes when checked) is removed;
     `readModeBox` is gone. Read-mode export is now reachable only
     via the Save Read Doc preset.
-  - The custom section (heading renamed from "Include" to "Custom
-    Save") keeps the comments / analytics / undertags checkboxes
-    and gains a left-aligned **Custom Save** submit button
-    (`.pmd-save-as-custom-save`) directly below them; the form's
-    submit handler routes through `confirmWith` with the live
-    checkbox state and `readMode:false`.
+  - The Custom Save section keeps the comments / analytics /
+    undertags checkboxes and gains a left-aligned **Save Custom**
+    submit button (`.pmd-save-as-custom-save`) directly below them;
+    the form's submit handler routes through `confirmWith` with the
+    live checkbox state and `readMode:false`.
   - `SaveAsResult` is unchanged, so the save pipeline downstream
     needed no edits — only how the four flags get chosen.
 

@@ -9,13 +9,14 @@
  *     teammates still on Verbatim, or for any tournament-day round
  *     where the receiving party needs Word.
  *
- * The format radio drives the default filename extension and which
- * filter the OS dialog defaults to. Below the filename are one-click
- * presets — Save Send Doc (no analytics / undertags / comments),
- * Save Read Doc (read-mode export), Save As-Is (everything) — and a
- * custom Include section (comments / analytics / undertags) with a
- * Custom Save button. All content options apply equally to both
- * formats.
+ * Layout: an INFO section (file name + format radios), then a SAVE
+ * section with one-click presets — Save Send Doc (no analytics /
+ * undertags / comments), Save Read Doc (read-mode export), Save
+ * As-Is (everything) — and a Custom Save block (comments / analytics
+ * / undertags checkboxes + a Save Custom button), then Cancel. The
+ * format radio drives the default filename extension and which
+ * filter the OS dialog defaults to; all content options apply
+ * equally to both formats.
  */
 
 export type SaveAsFormat = 'cmir' | 'docx';
@@ -137,7 +138,7 @@ class SaveAsModal {
 
     const form = document.createElement('form');
     form.className = 'pmd-save-as-body';
-    // Enter / the Custom Save submit button save with the current
+    // Enter / the Save Custom submit button save with the current
     // Include checkbox state.
     form.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -149,26 +150,16 @@ class SaveAsModal {
       });
     });
 
-    // Format picker — radio buttons at the top so the rest of the
-    // dialog reads as "you chose format X, here's how to configure
-    // that save."
-    form.appendChild(this.buildFormatPicker());
+    // INFO section: file name + format. Grouped under one heading so
+    // the dialog reads "here's what/where, then here's how to save."
+    form.appendChild(this.buildInfoSection());
 
-    // Filename field.
-    const fileLabel = document.createElement('label');
-    fileLabel.className = 'pmd-save-as-field';
-    const fileSpan = document.createElement('span');
-    fileSpan.className = 'pmd-save-as-field-label';
-    fileSpan.textContent = 'File name';
-    fileLabel.appendChild(fileSpan);
-    this.filenameInput = document.createElement('input');
-    this.filenameInput.type = 'text';
-    this.filenameInput.className = 'pmd-save-as-input';
-    this.filenameInput.value = withExtension(this.opts.initialFilename, this.currentFormat);
-    this.filenameInput.spellcheck = false;
-    this.filenameInput.autocomplete = 'off';
-    fileLabel.appendChild(this.filenameInput);
-    form.appendChild(fileLabel);
+    // SAVE section heading — covers the presets and the custom-save
+    // block below.
+    const saveHeading = document.createElement('div');
+    saveHeading.className = 'pmd-save-as-options-heading';
+    saveHeading.textContent = 'Save';
+    form.appendChild(saveHeading);
 
     // One-click presets — common content configurations. Each
     // saves immediately with the filename + format above.
@@ -197,7 +188,7 @@ class SaveAsModal {
     );
     form.appendChild(presets);
 
-    // Custom: the Include checkboxes + a Custom Save button.
+    // Custom Save: the Include checkboxes + a Save Custom button.
     const options = document.createElement('div');
     options.className = 'pmd-save-as-options';
     options.appendChild(this.buildOptionsHeading());
@@ -212,7 +203,7 @@ class SaveAsModal {
     const customSave = document.createElement('button');
     customSave.type = 'submit';
     customSave.className = 'pmd-save-as-btn pmd-save-as-btn-primary pmd-save-as-custom-save';
-    customSave.textContent = 'Custom Save';
+    customSave.textContent = 'Save Custom';
     options.appendChild(customSave);
 
     form.appendChild(options);
@@ -254,13 +245,31 @@ class SaveAsModal {
     return btn;
   }
 
-  private buildFormatPicker(): HTMLElement {
+  /** INFO section: an "Info" heading, the file-name field, then the
+   *  format radios — the what/where of the save, above the how. */
+  private buildInfoSection(): HTMLElement {
     const wrap = document.createElement('div');
     wrap.className = 'pmd-save-as-format';
     const heading = document.createElement('div');
     heading.className = 'pmd-save-as-options-heading';
-    heading.textContent = 'Format';
+    heading.textContent = 'Info';
     wrap.appendChild(heading);
+
+    // File name field — directly under the heading, above format.
+    const fileLabel = document.createElement('label');
+    fileLabel.className = 'pmd-save-as-field';
+    const fileSpan = document.createElement('span');
+    fileSpan.className = 'pmd-save-as-field-label';
+    fileSpan.textContent = 'File name';
+    fileLabel.appendChild(fileSpan);
+    this.filenameInput = document.createElement('input');
+    this.filenameInput.type = 'text';
+    this.filenameInput.className = 'pmd-save-as-input';
+    this.filenameInput.value = withExtension(this.opts.initialFilename, this.currentFormat);
+    this.filenameInput.spellcheck = false;
+    this.filenameInput.autocomplete = 'off';
+    fileLabel.appendChild(this.filenameInput);
+    wrap.appendChild(fileLabel);
 
     const groupName = `pmd-save-as-format-${Math.random().toString(36).slice(2, 8)}`;
     this.formatRadios = { cmir: null!, docx: null! };
@@ -320,7 +329,7 @@ class SaveAsModal {
   }
 
   /** Save with the given content options + the live filename /
-   *  format. Shared by every preset and the Custom Save submit.
+   *  format. Shared by every preset and the Save Custom submit.
    *  No-op on an empty filename. */
   private confirmWith(opts: {
     includeComments: boolean;
