@@ -2314,72 +2314,58 @@ body.pmd-nav-hidden #nav-pane-pull-tab {
 }
 
 /* ---- Dropzone shelf (cross-window scratch space) ----
-   ONE element that morphs between two states. Anchored at the
-   bottom of the nav pane.
-     - Closed: small muted grey pill (.pmd-dropzone-bar visible;
-       list hidden; root shrinks to bar's natural width).
-     - Open: the SAME element expands upward into a panel. The bar
-       moves to the bottom edge of the expanded element and the
-       list area appears above it.
-   Drag-over: blue accept-state via --pmd-c-drop tokens, matching
-   the editor + nav drop indicators. */
+   The visible "pill" is `.pmd-dropzone-bar`. The surrounding
+   root has no chrome of its own when closed — the bar IS the
+   visible element. When open, the root gains its own bg + border
+   to become a panel; the bar stays in place at the panel's
+   bottom edge while the list grows above it. The visual effect
+   is the pill morphing into the bottom of a shelf panel.
+   Drag-over: blue accept-state via --pmd-c-drop tokens. */
 .pmd-dropzone-root {
   position: absolute;
   bottom: 0.5rem;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  /* Anchor the bar's right edge to the nav-pane right edge minus a
-     small inset (resize-handle clearance), and let `width` grow
-     leftward from there when open. Closed: width: auto = bar's
-     natural width. Open: width = `--dz-open-width`. */
-  right: 0.75rem;
-  left: auto;
-  width: auto;
-  max-height: calc(100% - 1rem);
-  background: var(--pmd-c-surface-soft);
-  color: var(--pmd-c-text-muted);
-  border: 1px solid var(--pmd-c-border-soft);
-  border-radius: 999px;
-  box-shadow: 0 2px 6px var(--pmd-c-shadow-fade);
-  pointer-events: auto;
-  z-index: 12;
-  overflow: hidden;
-  transition:
-    background-color 0.18s ease,
-    border-color 0.18s ease,
-    color 0.18s ease,
-    border-radius 0.18s ease,
-    width 0.22s ease,
-    left 0.22s ease,
-    box-shadow 0.18s ease;
-}
-.pmd-dropzone-root[data-open="true"] {
   left: 0.5rem;
   right: 0.5rem;
+  max-height: calc(100% - 1rem);
+  pointer-events: auto;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  /* Closed: bar is the only visible element; center it
+     horizontally so the pill sits in the middle of the nav pane. */
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  transition:
+    background-color 0.22s ease,
+    border-color 0.22s ease,
+    box-shadow 0.22s ease,
+    align-items 0s linear 0.22s;
+}
+.pmd-dropzone-root[data-open="true"] {
+  align-items: stretch;
   background: var(--pmd-c-bg);
   border-color: var(--pmd-c-border);
-  color: var(--pmd-c-text);
-  border-radius: 10px;
   box-shadow: 0 6px 18px var(--pmd-c-shadow-fade);
+  transition:
+    background-color 0.22s ease,
+    border-color 0.22s ease,
+    box-shadow 0.22s ease;
 }
-.pmd-dropzone-root:hover {
-  background: var(--pmd-c-hover);
-  color: var(--pmd-c-text);
-}
-.pmd-dropzone-root[data-open="true"]:hover {
-  background: var(--pmd-c-bg);
-}
-.pmd-dropzone-root-drop-target {
-  color: var(--pmd-c-drop) !important;
-  background: var(--pmd-c-drop-tint) !important;
-  border-color: var(--pmd-c-drop) !important;
-  box-shadow: 0 0 0 2px var(--pmd-c-drop-outline) !important;
+/* Drop-target accept state — applies in both closed and open;
+   tints the WHOLE root (when open) and just the bar (when
+   closed, via the bar override below). */
+.pmd-dropzone-root[data-open="true"].pmd-dropzone-root-drop-target {
+  background: var(--pmd-c-drop-tint);
+  border-color: var(--pmd-c-drop);
+  box-shadow: 0 0 0 2px var(--pmd-c-drop-outline);
 }
 
-/* List area — collapsed when closed, expanded panel when open.
-   max-height transitions to give a smooth grow/shrink animation
-   between states. */
+/* List area — collapses when closed via display:none, so it
+   doesn't drive the root's intrinsic width (which would force a
+   wide pill). The whole-root background/border animates between
+   states; the list shows/hides instantly. */
 .pmd-dropzone-list {
   list-style: none;
   margin: 0;
@@ -2387,14 +2373,13 @@ body.pmd-nav-hidden #nav-pane-pull-tab {
   overflow-y: auto;
   flex: 0 1 auto;
   min-height: 0;
-  max-height: 0;
-  border-bottom: 0 solid var(--pmd-c-divider);
-  transition: max-height 0.22s ease, border-bottom-width 0.22s ease;
+  display: none;
 }
 .pmd-dropzone-root[data-open="true"] .pmd-dropzone-list {
+  display: block;
   max-height: 320px;
-  border-bottom-width: 1px;
   padding: 0.25rem;
+  border-bottom: 1px solid var(--pmd-c-divider);
 }
 .pmd-dropzone-empty {
   padding: 0.6rem 0.5rem;
@@ -2488,7 +2473,12 @@ body.pmd-nav-hidden #nav-pane-pull-tab {
 
 /* The bottom bar — always visible. Icon + count when closed,
    icon + count + Clear when open. Acts as the click-to-toggle
-   region. */
+   region.
+
+   Closed: bar IS the pill — owns its own bg/border/shadow,
+   sized to content (align-self auto inside align-items: center).
+   Open: bar becomes the panel's bottom row — strips its own
+   chrome, stretches to fill the root's width. */
 .pmd-dropzone-bar {
   flex: 0 0 auto;
   display: flex;
@@ -2499,8 +2489,48 @@ body.pmd-nav-hidden #nav-pane-pull-tab {
   cursor: pointer;
   font: inherit;
   font-size: 0.78rem;
-  color: inherit;
+  color: var(--pmd-c-text-muted);
+  background: var(--pmd-c-surface-soft);
+  border: 1px solid var(--pmd-c-border-soft);
+  border-radius: 999px;
+  box-shadow: 0 2px 6px var(--pmd-c-shadow-fade);
   user-select: none;
+  transition:
+    background-color 0.22s ease,
+    border-color 0.22s ease,
+    color 0.22s ease,
+    border-radius 0.22s ease,
+    box-shadow 0.22s ease,
+    padding 0.22s ease,
+    width 0.22s ease;
+}
+.pmd-dropzone-bar:hover {
+  background: var(--pmd-c-hover);
+  color: var(--pmd-c-text);
+}
+.pmd-dropzone-root[data-open="true"] .pmd-dropzone-bar {
+  align-self: stretch;
+  background: transparent;
+  border-color: transparent;
+  border-radius: 0 0 9px 9px;
+  box-shadow: none;
+  color: var(--pmd-c-text);
+}
+.pmd-dropzone-root[data-open="true"] .pmd-dropzone-bar:hover {
+  background: var(--pmd-c-surface-soft);
+}
+/* Drop-target accept state on the BAR — applies in both closed
+   and open modes so the pill turns blue regardless. */
+.pmd-dropzone-root-drop-target .pmd-dropzone-bar {
+  color: var(--pmd-c-drop);
+  background: var(--pmd-c-drop-tint);
+  border-color: var(--pmd-c-drop);
+  box-shadow: 0 0 0 2px var(--pmd-c-drop-outline);
+}
+.pmd-dropzone-root[data-open="true"].pmd-dropzone-root-drop-target .pmd-dropzone-bar {
+  /* When already inside the open-state panel, don't double up the
+     box-shadow; the root's outline carries the accept signal. */
+  box-shadow: none;
 }
 .pmd-dropzone-icon {
   display: inline-flex;
