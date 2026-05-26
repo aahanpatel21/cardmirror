@@ -209,7 +209,7 @@ export class DropzoneController {
       const empty = document.createElement('li');
       empty.className = 'pmd-dropzone-empty';
       empty.textContent =
-        'Drag a card, heading, or selection onto the pill. Shelf items are shared across windows in this session.';
+        'Drag a card or heading onto the pill. Shelf items are shared across windows in this session.';
       this.listEl.appendChild(empty);
       return;
     }
