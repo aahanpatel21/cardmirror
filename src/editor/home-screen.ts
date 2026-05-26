@@ -82,13 +82,15 @@ class HomeScreen {
     const actions = document.createElement('div');
     actions.className = 'pmd-home-actions';
     actions.appendChild(
-      this.actionCard('New document', 'Start a fresh card document.', () =>
+      this.actionCard('New document', 'Create a new document.', () =>
         this.callbacks?.newDoc(),
       ),
     );
     actions.appendChild(
-      this.actionCard('New speech document', 'Start a speech doc for round prep.', () =>
-        this.callbacks?.newSpeechDoc(),
+      this.actionCard(
+        'New speech document',
+        'Create a new document and designate it as the speech doc.',
+        () => this.callbacks?.newSpeechDoc(),
       ),
     );
     actions.appendChild(
