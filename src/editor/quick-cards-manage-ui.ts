@@ -30,6 +30,7 @@ import {
   normalizeTag,
   type QuickCard,
 } from './quick-cards-store.js';
+import { setIcon } from './icons';
 
 type SortMode = 'updated' | 'name' | 'source';
 
@@ -73,7 +74,7 @@ class QuickCardsManageUI {
         <header class="pmd-qc-manage-header">
           <h1>Quick Cards</h1>
           <div class="pmd-qc-manage-header-actions"></div>
-          <button type="button" class="pmd-qc-manage-close" aria-label="Close">×</button>
+          <button type="button" class="pmd-qc-manage-close" aria-label="Close"><span class="pmd-icon pmd-icon-close" aria-hidden="true"></span></button>
         </header>
         <div class="pmd-qc-manage-cols">
           <div class="pmd-qc-manage-list-pane">
@@ -360,7 +361,7 @@ class QuickCardsManageUI {
         const x = document.createElement('button');
         x.type = 'button';
         x.className = 'pmd-qc-add-chip-x';
-        x.textContent = '×';
+        setIcon(x, 'close');
         x.addEventListener('click', () => {
           this.draftTags.splice(i, 1);
           renderChips();

@@ -30,6 +30,7 @@ import {
 } from './find-replace-plugin.js';
 import { settings } from './settings.js';
 import type { NavigationPanel } from './nav-panel.js';
+import { setIcon, type IconName } from './icons';
 
 type Mode = 'find' | 'replace';
 export type FindBarOpenOptions = { mode: Mode; sortMode: FindSortMode };
@@ -148,16 +149,16 @@ export class FindReplaceBar {
     this.countLabel.textContent = '0 of 0';
     findRow.appendChild(this.countLabel);
 
-    this.prevBtn = this.buildIconButton(findRow, '‹', 'Previous match');
-    this.nextBtn = this.buildIconButton(findRow, '›', 'Next match');
+    this.prevBtn = this.buildIconButton(findRow, 'chevron-left', 'Previous match');
+    this.nextBtn = this.buildIconButton(findRow, 'chevron-right', 'Next match');
     this.expandBtn = this.buildIconButton(
       findRow,
-      '▾',
+      'chevron-down',
       'Show matches in context',
     );
     this.expandBtn.classList.add('pmd-find-expand');
     this.expandBtn.setAttribute('aria-pressed', 'false');
-    this.closeBtn = this.buildIconButton(findRow, '×', 'Close find');
+    this.closeBtn = this.buildIconButton(findRow, 'close', 'Close find');
     this.closeBtn.classList.add('pmd-find-close');
 
     this.root.appendChild(findRow);
@@ -222,14 +223,15 @@ export class FindReplaceBar {
 
   private buildIconButton(
     parent: HTMLElement,
-    label: string,
+    iconName: IconName,
     title: string,
   ): HTMLButtonElement {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'pmd-find-icon-btn';
-    btn.textContent = label;
+    setIcon(btn, iconName);
     btn.title = title;
+    btn.setAttribute('aria-label', title);
     parent.appendChild(btn);
     return btn;
   }
@@ -278,7 +280,7 @@ export class FindReplaceBar {
     this.resultsExpanded = expanded;
     this.resultsPanel.hidden = !expanded;
     this.expandBtn.setAttribute('aria-pressed', expanded ? 'true' : 'false');
-    this.expandBtn.textContent = expanded ? '▴' : '▾';
+    setIcon(this.expandBtn, expanded ? 'chevron-up' : 'chevron-down');
     this.expandBtn.title = expanded
       ? 'Hide matches in context'
       : 'Show matches in context';

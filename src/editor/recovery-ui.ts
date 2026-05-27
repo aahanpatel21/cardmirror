@@ -18,6 +18,7 @@
  */
 
 import type { JournalEntry } from './host/index.js';
+import { setIcon } from './icons';
 
 export interface RecoverySidebarCallbacks {
   /** Called when the user clicks Save on a row. Should write the
@@ -97,7 +98,7 @@ class RecoverySidebar {
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'pmd-recovery-sidebar-close';
-    closeBtn.textContent = '×';
+    setIcon(closeBtn, 'close');
     closeBtn.title = 'Close — drafts left here will reappear next time you launch CardMirror';
     closeBtn.addEventListener('click', () => this.close());
     header.appendChild(closeBtn);

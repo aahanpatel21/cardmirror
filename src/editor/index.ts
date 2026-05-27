@@ -1755,6 +1755,13 @@ function applyReduceMotion(pref: 'auto' | 'on' | 'off'): void {
   }
 }
 
+/** Flip the app's icon set by setting `data-icons` on the document
+ *  root; `icons.css` masks the modern SVGs under `"modern"` and
+ *  falls back to the original emoji glyphs under `"classic"`. */
+function applyIconSet(set: 'modern' | 'classic'): void {
+  document.documentElement.dataset['icons'] = set;
+}
+
 function applyDisplayColors(c: DisplayColors): void {
   for (const key of DISPLAY_COLOR_KEYS) {
     document.documentElement.style.setProperty(`--pmd-color-${key}`, c[key]);
@@ -1884,6 +1891,7 @@ let lastRibbonOverrides = settings.get('ribbonKeyOverrides');
 settings.subscribe((s) => {
   applyTheme(s.theme, s.themeAppliesToDocument);
   applyShowDocNameChip(s.showDocNameChip);
+  applyIconSet(s.iconSet);
   applyReduceMotion(s.reduceMotion);
   applyReadMode(s.readMode);
   applyNavPaneVisible(s.navPaneVisible);
@@ -2079,6 +2087,7 @@ initRibbonResizer();
 
 applyTheme(settings.get('theme'), settings.get('themeAppliesToDocument'));
 applyShowDocNameChip(settings.get('showDocNameChip'));
+applyIconSet(settings.get('iconSet'));
 applyReduceMotion(settings.get('reduceMotion'));
 // Build the timer panel + button bindings. Visibility is gated
 // on `timerVisible` (transient per-window setting); the panel
@@ -4038,20 +4047,27 @@ const FLASH_DURATION_MS = 1400;
  *  fires while a previous flash is still on screen extends the
  *  flash rather than restoring the original glyph mid-animation. */
 const flashTimers = new WeakMap<HTMLElement, number>();
+/** Original inner markup of a flashing button, captured before the ✓
+ *  overwrite and restored when the flash ends (preserves the icon
+ *  `<span>`, not just text). */
+const flashOrigHtml = new WeakMap<HTMLElement, string>();
 
 function flashSavedGlyph(el: HTMLElement): void {
   const existing = flashTimers.get(el);
   if (existing !== undefined) {
     window.clearTimeout(existing);
   } else {
-    el.dataset['flashOrig'] = el.textContent ?? '';
+    // Preserve the full inner markup, not just text — these buttons now
+    // hold an icon `<span>`, which `textContent` would wipe out so the
+    // glyph never came back after the ✓ flash.
+    flashOrigHtml.set(el, el.innerHTML);
   }
   el.textContent = '✓';
   el.classList.add('pmd-save-flash');
   const id = window.setTimeout(() => {
     flashTimers.delete(el);
-    el.textContent = el.dataset['flashOrig'] ?? '';
-    delete el.dataset['flashOrig'];
+    el.innerHTML = flashOrigHtml.get(el) ?? '';
+    flashOrigHtml.delete(el);
     el.classList.remove('pmd-save-flash');
   }, FLASH_DURATION_MS);
   flashTimers.set(el, id);

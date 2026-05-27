@@ -380,6 +380,12 @@ careful library design that made this project tractable. If
 ProseMirror has been useful to you too, Marijn's work is supported
 directly at <https://marijnhaverbeke.nl/fund/>.
 
+The app's interface icons are from the
+[Untitled UI free icons](https://www.untitledui.com/free-icons),
+used under their free license. See
+[`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md) for the full
+third-party attributions and license terms.
+
 ## License
 
 CardMirror is licensed under the

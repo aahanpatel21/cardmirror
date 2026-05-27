@@ -1425,6 +1425,21 @@ specific things need to be true from the ground up:
   circuits with a Keep / Regenerate dialog when an image already
   has alt text so users don't burn tokens re-describing images
   someone has already annotated.
+- **Icon set.** All chrome glyphs are line icons (Untitled UI free
+  icons) rather than emoji/text symbols, so they inherit the theme
+  color and render identically across platforms. Each is a
+  `<span class="pmd-icon pmd-icon-NAME">` painted in `currentColor`
+  through a CSS `mask` set to a data-URL SVG. The masks live in
+  `src/editor/icons.css`, generated from the gitignored Untitled UI
+  clone by `scripts/gen-icons.mjs` (re-run after editing its `MAP`); the
+  app ships self-contained with no runtime SVG assets. `icons.ts`
+  provides `icon()` / `setIcon()` for JS-built buttons. The whole set
+  re-skins by flipping `data-icons` on the document root: `"modern"`
+  (default) uses the SVG masks, `"classic"` drops the mask and restores
+  the original emoji/text glyph via `::before`. The `iconSet` setting
+  drives the attribute (`applyIconSet`), exactly mirroring how `theme`
+  drives `data-theme` — same one-attribute-reskins-everything pattern as
+  the color variables above.
 
 ### What's deferred (but the wiring should anticipate)
 

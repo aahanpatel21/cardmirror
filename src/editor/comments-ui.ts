@@ -37,6 +37,7 @@ import {
 import { makeActivityStage, cycleActivityText } from './ai/activity-cycler.js';
 import { showToast } from './toast.js';
 import { scheduleIdle, cancelIdle, type IdleHandle } from './idle-scheduler.js';
+import { setIcon } from './icons';
 
 /** Resolve the configured AI persona (name + pronouns) from
  *  settings. Centralized here so every consumer (invokeAi,
@@ -817,7 +818,7 @@ export class CommentsColumn {
     del.type = 'button';
     del.className = 'pmd-comment-delete';
     del.title = 'Cancel';
-    del.textContent = '×';
+    setIcon(del, 'close');
     del.addEventListener('click', (e) => {
       e.stopPropagation();
       this.deleteThread(thread.id);
@@ -947,7 +948,7 @@ export class CommentsColumn {
     del.type = 'button';
     del.className = 'pmd-comment-delete';
     del.title = isRoot ? 'Delete thread' : 'Delete reply';
-    del.textContent = '×';
+    setIcon(del, 'close');
     del.addEventListener('click', (e) => {
       e.stopPropagation();
       if (isRoot) this.deleteThread(thread.id);

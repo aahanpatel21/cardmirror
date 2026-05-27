@@ -34,6 +34,7 @@ import { getHost, getElectronHost } from './host/index.js';
 import { getInstallInfo } from './install-info.js';
 import { resetTimer } from './timer-state.js';
 import { showToast } from './toast.js';
+import { setIcon } from './icons';
 
 /**
  * Available body fonts, organized into labeled groups. The dropdown
@@ -149,7 +150,7 @@ function scrollTabIntoView(tab: HTMLElement, container: HTMLElement): void {
 }
 
 /** Tab labels shown in the settings dialog, in display order. */
-const CATEGORY_TABS: { id: SettingsCategory; label: string }[] = [
+export const CATEGORY_TABS: { id: SettingsCategory; label: string }[] = [
   { id: 'general', label: 'General' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'editing', label: 'Editing' },
@@ -160,6 +161,13 @@ const CATEGORY_TABS: { id: SettingsCategory; label: string }[] = [
   // surface, separated from the everyday tabs.
   { id: 'accessibility', label: 'Accessibility' },
 ];
+
+/** A deep-link into the settings dialog: open a tab and optionally
+ *  scroll to / flash a specific setting. */
+export interface SettingsTarget {
+  category?: SettingsCategory;
+  settingKey?: keyof Settings;
+}
 
 class SettingsModal {
   private overlay: HTMLDivElement;
@@ -204,7 +212,7 @@ class SettingsModal {
     document.body.appendChild(this.overlay);
   }
 
-  open(): void {
+  open(target?: SettingsTarget): void {
     this.render();
     this.overlay.style.display = '';
     // Subscribe so toggling any "parent" setting (AI master switch,
@@ -212,6 +220,30 @@ class SettingsModal {
     // without needing a re-open.
     this.settingsUnsubscribe = settings.subscribe(() => this.refreshDependents());
     this.refreshDependents();
+    // Deep-link: jump to a tab and (optionally) scroll to one setting,
+    // e.g. when reached from the search palette's `s` shortcuts.
+    if (target?.category) this.setActiveCategory(target.category);
+    if (target?.settingKey) this.revealSetting(target.settingKey);
+  }
+
+  /** Scroll a specific setting row into view and flash it. Runs on the
+   *  next frame so the just-activated panel has laid out. */
+  private revealSetting(key: keyof Settings): void {
+    const row = this.dialog.querySelector<HTMLElement>(
+      `.pmd-settings-row[data-setting-key="${CSS.escape(key)}"]`,
+    );
+    if (!row) return;
+    requestAnimationFrame(() => {
+      row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      row.classList.remove('pmd-settings-row-flash');
+      void row.offsetWidth; // restart the animation if already applied
+      row.classList.add('pmd-settings-row-flash');
+      row.addEventListener(
+        'animationend',
+        () => row.classList.remove('pmd-settings-row-flash'),
+        { once: true },
+      );
+    });
   }
 
   close(): void {
@@ -237,7 +269,7 @@ class SettingsModal {
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'pmd-settings-close';
-    closeBtn.textContent = '×';
+    setIcon(closeBtn, 'close');
     closeBtn.title = 'Close';
     closeBtn.addEventListener('click', () => this.close());
     header.appendChild(closeBtn);
@@ -256,7 +288,7 @@ class SettingsModal {
     scrollLeftBtn.type = 'button';
     scrollLeftBtn.className = 'pmd-settings-tabs-scroll pmd-settings-tabs-scroll-left';
     scrollLeftBtn.setAttribute('aria-label', 'Scroll settings tabs left');
-    scrollLeftBtn.textContent = '◀';
+    setIcon(scrollLeftBtn, 'chevron-left');
     scrollLeftBtn.hidden = true;
     tabsBar.appendChild(scrollLeftBtn);
 
@@ -280,7 +312,7 @@ class SettingsModal {
     scrollRightBtn.type = 'button';
     scrollRightBtn.className = 'pmd-settings-tabs-scroll pmd-settings-tabs-scroll-right';
     scrollRightBtn.setAttribute('aria-label', 'Scroll settings tabs right');
-    scrollRightBtn.textContent = '▶';
+    setIcon(scrollRightBtn, 'chevron-right');
     scrollRightBtn.hidden = true;
     tabsBar.appendChild(scrollRightBtn);
 
@@ -404,6 +436,8 @@ class SettingsModal {
   private renderEntry(meta: SettingMeta): HTMLElement {
     const row = document.createElement('div');
     row.className = 'pmd-settings-row';
+    // Tag the row so the palette's settings shortcuts can scroll to it.
+    row.dataset['settingKey'] = meta.key;
 
     const label = document.createElement('label');
     label.className = 'pmd-settings-row-label';
@@ -504,6 +538,10 @@ class SettingsModal {
     } else if (meta.kind === 'theme') {
       row.appendChild(text);
       row.appendChild(buildThemeEditor());
+      return row;
+    } else if (meta.kind === 'iconSet') {
+      row.appendChild(text);
+      row.appendChild(buildIconSetEditor());
       return row;
     } else if (meta.kind === 'reduceMotion') {
       row.appendChild(text);
@@ -1123,7 +1161,7 @@ function buildLineHeightsEditor(): HTMLElement {
   const resetBtn = document.createElement('button');
   resetBtn.type = 'button';
   resetBtn.className = 'pmd-line-heights-reset-btn';
-  resetBtn.textContent = '↺';
+  setIcon(resetBtn, 'reset');
   resetBtn.title = 'Restore defaults';
   resetBtn.setAttribute('aria-label', 'Restore line spacing defaults');
   resetBtn.addEventListener('click', () => {
@@ -1274,7 +1312,7 @@ function buildReadersEditor(): HTMLElement {
       const upBtn = document.createElement('button');
       upBtn.type = 'button';
       upBtn.className = 'pmd-reader-move';
-      upBtn.textContent = '↑';
+      setIcon(upBtn, 'arrow-up');
       upBtn.title = 'Move up';
       upBtn.disabled = idx === 0;
       upBtn.addEventListener('click', () => {
@@ -1288,7 +1326,7 @@ function buildReadersEditor(): HTMLElement {
       const downBtn = document.createElement('button');
       downBtn.type = 'button';
       downBtn.className = 'pmd-reader-move';
-      downBtn.textContent = '↓';
+      setIcon(downBtn, 'arrow-down');
       downBtn.title = 'Move down';
       downBtn.disabled = idx === readers.length - 1;
       downBtn.addEventListener('click', () => {
@@ -1302,7 +1340,7 @@ function buildReadersEditor(): HTMLElement {
       const delBtn = document.createElement('button');
       delBtn.type = 'button';
       delBtn.className = 'pmd-reader-delete';
-      delBtn.textContent = '×';
+      setIcon(delBtn, 'close');
       delBtn.title = 'Remove reader';
       delBtn.addEventListener('click', () => {
         const next = settings.get('readers').filter((_, i) => i !== idx);
@@ -1664,6 +1702,36 @@ function buildTimerPrepLabelEditor(): HTMLElement {
   return wrap;
 }
 
+/** Two-button segmented control for the `iconSet` setting, visually
+ *  parallel to the theme editor. Modern (Untitled UI) / Classic (emoji). */
+function buildIconSetEditor(): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'pmd-theme-editor';
+  const options: { value: 'modern' | 'classic'; label: string }[] = [
+    { value: 'modern', label: 'Modern' },
+    { value: 'classic', label: 'Classic' },
+  ];
+  for (const o of options) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pmd-theme-editor-btn';
+    btn.textContent = o.label;
+    btn.dataset['value'] = o.value;
+    btn.addEventListener('click', () => settings.set('iconSet', o.value));
+    wrap.appendChild(btn);
+  }
+  function refresh(): void {
+    const cur = settings.get('iconSet');
+    for (const btn of wrap.querySelectorAll<HTMLButtonElement>('.pmd-theme-editor-btn')) {
+      btn.setAttribute('aria-pressed', btn.dataset['value'] === cur ? 'true' : 'false');
+    }
+  }
+  refresh();
+  const unsub = settings.subscribe(refresh);
+  onDetached(wrap, () => unsub());
+  return wrap;
+}
+
 /** Three-button segmented control for the `reduceMotion` setting,
  *  visually parallel to the theme editor. System / On / Off. */
 function buildReduceMotionEditor(): HTMLElement {
@@ -1747,7 +1815,7 @@ function buildColorSlotsEditor(key: keyof Settings): HTMLElement {
       const trash = document.createElement('button');
       trash.type = 'button';
       trash.className = 'pmd-color-slot-trash';
-      trash.textContent = '✕';
+      setIcon(trash, 'close');
       trash.title = 'Remove this slot';
       trash.disabled = slots.length <= 1;
       trash.addEventListener('click', () => {
@@ -1918,7 +1986,7 @@ function buildColorOverridesEditor(): HTMLElement {
     const reset = document.createElement('button');
     reset.type = 'button';
     reset.className = 'pmd-color-override-reset';
-    reset.textContent = '↺';
+    setIcon(reset, 'reset');
     reset.title = 'Reset to default';
 
     function refresh(): void {
@@ -2001,7 +2069,7 @@ function buildFindCategoryOrderEditor(): HTMLElement {
       const upBtn = document.createElement('button');
       upBtn.type = 'button';
       upBtn.className = 'pmd-find-category-order-btn';
-      upBtn.textContent = '↑';
+      setIcon(upBtn, 'arrow-up');
       upBtn.title = 'Move up';
       upBtn.disabled = i === 0;
       upBtn.addEventListener('click', () => swap(i, i - 1));
@@ -2009,7 +2077,7 @@ function buildFindCategoryOrderEditor(): HTMLElement {
       const downBtn = document.createElement('button');
       downBtn.type = 'button';
       downBtn.className = 'pmd-find-category-order-btn';
-      downBtn.textContent = '↓';
+      setIcon(downBtn, 'arrow-down');
       downBtn.title = 'Move down';
       downBtn.disabled = i === order.length - 1;
       downBtn.addEventListener('click', () => swap(i, i + 1));
@@ -2290,7 +2358,7 @@ function buildShrinkProtectionsEditor(): HTMLElement {
       const delBtn = document.createElement('button');
       delBtn.type = 'button';
       delBtn.className = 'pmd-shrink-protection-delete';
-      delBtn.textContent = '×';
+      setIcon(delBtn, 'close');
       delBtn.title = 'Remove protection';
       delBtn.addEventListener('click', () => {
         const next = settings
@@ -2342,7 +2410,7 @@ function buildShrinkProtectionsEditor(): HTMLElement {
 
 let singleton: SettingsModal | null = null;
 
-export function openSettings(): void {
+export function openSettings(target?: SettingsTarget): void {
   if (!singleton) singleton = new SettingsModal();
-  singleton.open();
+  singleton.open(target);
 }

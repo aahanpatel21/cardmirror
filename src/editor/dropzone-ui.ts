@@ -40,6 +40,7 @@ import {
 } from './drag-controller.js';
 import { dropzoneStore, deriveDropzoneLabel, type DropzoneItem } from './dropzone-store.js';
 import { schema } from '../schema/index.js';
+import { setIcon } from './icons';
 
 interface DropzoneMountOptions {
   parent: HTMLElement;
@@ -247,7 +248,7 @@ export class DropzoneController {
     del.className = 'pmd-dropzone-row-delete';
     del.title = 'Remove from shelf';
     del.setAttribute('aria-label', 'Remove');
-    del.textContent = '×';
+    setIcon(del, 'close');
     del.addEventListener('click', (e) => {
       e.stopPropagation();
       void dropzoneStore.remove(item.id);

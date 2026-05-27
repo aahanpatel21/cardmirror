@@ -10,8 +10,11 @@
  * search-everything / transclude / quick cards / dropzone / index):
  *   - `q ` → search quick cards only
  *   - `d ` → search the dropzone only
- *   - no prefix → search EVERYTHING (quick cards + dropzone), but show
- *     nothing until the user types a query
+ *   - `c ` → search ribbon commands only
+ *   - `s ` → search settings (top-level tabs + individual settings);
+ *            selecting one opens that tab and scrolls to the setting
+ *   - no prefix → search EVERYTHING, but show nothing until the user
+ *     types a query
  * With a prefix present, an empty query browses that source.
  *
  * Insertion reuses `insertSpeechSlice`; the mid-text confirm is gated
@@ -24,7 +27,9 @@
 import type { EditorView } from 'prosemirror-view';
 import { Slice } from 'prosemirror-model';
 import { schema } from '../schema/index.js';
-import { settings } from './settings.js';
+import { settings, SETTING_METADATA, type SettingsCategory } from './settings.js';
+import { openSettings, CATEGORY_TABS, type SettingsTarget } from './settings-ui.js';
+import { getHost } from './host/index.js';
 import { showToast } from './toast.js';
 import { insertSpeechSlice } from './speech-doc-send.js';
 import { quickCardsStore, distinctTags, normalizeTag } from './quick-cards-store.js';
@@ -45,11 +50,13 @@ export interface QuickCardSearchOptions {
   runCommand: (id: RibbonCommandId) => void;
 }
 
-/** A unified palette row — a quick card, dropzone item, or command. */
+/** A unified palette row — a quick card, dropzone item, command, or
+ *  settings shortcut. */
 interface PaletteResult {
-  source: 'quickcard' | 'dropzone' | 'command';
+  source: 'quickcard' | 'dropzone' | 'command' | 'settings';
   name: string;
-  /** Right-aligned secondary text: card tags / command keybinding. */
+  /** Right-aligned secondary text: card tags / command keybinding /
+   *  the settings tab a setting lives under. */
   meta: string;
   matchedName: boolean;
   snippet: string | null;
@@ -57,20 +64,23 @@ interface PaletteResult {
   sliceJson?: unknown;
   /** Command to run (command source). */
   commandId?: RibbonCommandId;
+  /** Settings deep-link (settings source). */
+  settingsTarget?: SettingsTarget;
 }
 
-type Prefix = 'q' | 'd' | 'c' | null;
+type Prefix = 'q' | 'd' | 'c' | 's' | null;
 
 function activeTagSet(): Set<string> {
   return new Set(settings.get('quickCardActiveTags').map(normalizeTag));
 }
 
-/** Split a leading single-letter prefix (`q `/`d `/`c `) off the query. */
+/** Split a leading single-letter prefix (`q `/`d `/`c `/`s `) off the query. */
 function parsePrefix(raw: string): { prefix: Prefix; query: string } {
   const m = raw.match(/^([a-zA-Z])\s+(.*)$/);
   if (m) {
     const p = m[1]!.toLowerCase();
-    if (p === 'q' || p === 'd' || p === 'c') return { prefix: p, query: m[2]! };
+    if (p === 'q' || p === 'd' || p === 'c' || p === 's')
+      return { prefix: p, query: m[2]! };
   }
   return { prefix: null, query: raw };
 }
@@ -143,6 +153,56 @@ function searchCommandSource(query: string): PaletteResult[] {
   }));
 }
 
+const categoryLabel = (id: SettingsCategory): string =>
+  CATEGORY_TABS.find((c) => c.id === id)?.label ?? '';
+
+/** Settings source — top-level tabs AND individual settings, matched on
+ *  label. Selecting a tab opens it; selecting a setting opens its tab
+ *  and scrolls to the row. Electron-only settings are hidden off
+ *  Electron so the palette never offers a row that won't render. */
+function searchSettingsSource(query: string): PaletteResult[] {
+  const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const match = (label: string): boolean =>
+    tokens.length === 0 || tokens.every((t) => label.toLowerCase().includes(t));
+
+  // Top-level tabs first.
+  const results: PaletteResult[] = CATEGORY_TABS.filter(({ label }) => match(label)).map(
+    ({ id, label }) => ({
+      source: 'settings' as const,
+      name: label,
+      meta: 'Section',
+      matchedName: true,
+      snippet: null,
+      settingsTarget: { category: id },
+    }),
+  );
+
+  // Then individual settings, ranked by where the first token hits.
+  const hostKind = getHost().kind;
+  const items = SETTING_METADATA.filter(
+    (m) => (!m.electronOnly || hostKind === 'electron') && match(m.label),
+  );
+  const t0 = tokens[0];
+  items.sort((a, b) => {
+    if (t0) {
+      const d = a.label.toLowerCase().indexOf(t0) - b.label.toLowerCase().indexOf(t0);
+      if (d !== 0) return d;
+    }
+    return a.label.localeCompare(b.label);
+  });
+  for (const m of items) {
+    results.push({
+      source: 'settings',
+      name: m.label,
+      meta: categoryLabel(m.category),
+      matchedName: true,
+      snippet: null,
+      settingsTarget: { category: m.category, settingKey: m.key },
+    });
+  }
+  return results;
+}
+
 class QuickCardSearchUI {
   private root: HTMLDivElement | null = null;
   private input!: HTMLInputElement;
@@ -173,7 +233,7 @@ class QuickCardSearchUI {
       <div class="pmd-qcs-results" role="listbox"></div>
       <div class="pmd-qcs-tagfilter" hidden></div>
       <input class="pmd-qcs-input" type="text" spellcheck="false" autocomplete="off"
-             placeholder="Search…  (q cards · d dropzone · c commands)" aria-label="Search" />
+             placeholder="Search…  (q cards · d dropzone · c commands · s settings)" aria-label="Search" />
       <div class="pmd-qcs-hints">
         <span>↑↓ navigate</span><span>↵ insert</span><span>⌥↵ at end</span><span>⇥ tags</span><span>esc</span>
       </div>`;
@@ -275,16 +335,21 @@ class QuickCardSearchUI {
     } else if (prefix === 'c') {
       this.results = searchCommandSource(query);
       this.emptyText = 'No matching commands.';
+    } else if (prefix === 's') {
+      this.results = searchSettingsSource(query);
+      this.emptyText = 'No matching settings.';
     } else if (query.trim() === '') {
       // No prefix, nothing typed — don't preview anything.
       this.results = [];
-      this.emptyText = 'Type to search everything · q cards · d dropzone · c commands';
+      this.emptyText =
+        'Type to search everything · q cards · d dropzone · c commands · s settings';
     } else {
-      // No prefix — search everything (cards, dropzone, then commands).
+      // No prefix — search everything (cards, dropzone, commands, settings).
       this.results = [
         ...searchQuickCardSource(query),
         ...searchDropzoneSource(query),
         ...searchCommandSource(query),
+        ...searchSettingsSource(query),
       ];
       this.emptyText = 'No matches.';
     }
@@ -321,7 +386,13 @@ class QuickCardSearchUI {
       const badge = document.createElement('span');
       badge.className = `pmd-qcs-row-badge pmd-qcs-badge-${r.source}`;
       badge.textContent =
-        r.source === 'quickcard' ? 'QC' : r.source === 'dropzone' ? 'DZ' : 'CMD';
+        r.source === 'quickcard'
+          ? 'QC'
+          : r.source === 'dropzone'
+            ? 'DZ'
+            : r.source === 'command'
+              ? 'CMD'
+              : 'SET';
       top.appendChild(badge);
       const name = document.createElement('span');
       name.className = 'pmd-qcs-row-name';
@@ -366,6 +437,14 @@ class QuickCardSearchUI {
       const id = result.commandId!;
       this.close();
       this.runCommand(id);
+      return;
+    }
+    // Settings: close the palette, then open the dialog to the tab and
+    // scroll to the setting. atEnd is irrelevant.
+    if (result.source === 'settings') {
+      const target = result.settingsTarget;
+      this.close();
+      openSettings(target);
       return;
     }
     const view = this.view;

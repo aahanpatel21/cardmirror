@@ -24,6 +24,7 @@ import {
   TYPE_LABEL,
   type HeadingEntry,
 } from './headings.js';
+import { setIcon } from './icons';
 
 /** Minimum nav-pane width. Has to fit the 4 level-buttons + the
  *  close (×) button + the row padding. With the previous 150px
@@ -156,7 +157,7 @@ export class NavigationPanel {
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'pmd-nav-close';
-    closeBtn.textContent = '×';
+    setIcon(closeBtn, 'close');
     closeBtn.title = 'Hide navigation pane';
     closeBtn.setAttribute('aria-label', 'Hide navigation pane');
     closeBtn.addEventListener('click', () => {
@@ -542,7 +543,7 @@ export class NavigationPanel {
       const chevron = document.createElement('span');
       chevron.className = 'pmd-nav-chevron';
       if (hasChildren) {
-        chevron.textContent = collapsed ? '▶' : '▼';
+        setIcon(chevron, collapsed ? 'chevron-right' : 'chevron-down');
         chevron.classList.add('pmd-nav-chevron-active');
         chevron.addEventListener('click', (e) => {
           e.stopPropagation();

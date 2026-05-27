@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CardMirror</title>
     <link rel="stylesheet" href="/src/editor/style.css" />
+    <link rel="stylesheet" href="/src/editor/icons.css" />
   </head>
   <body>
     <header id="ribbon">
@@ -16,45 +17,45 @@
       <section id="timer-panel" class="ribbon-section pmd-timer-panel" hidden></section>
       <div class="ribbon-section ribbon-left">
         <div class="ribbon-button-stack">
-          <button id="open-btn" type="button" title="Open a document" aria-label="Open">📂</button>
-          <button id="new-btn" type="button" title="New document" aria-label="New document">🆕</button>
-          <button id="export-btn" type="button" disabled title="Save" aria-label="Save">💾</button>
+          <button id="open-btn" type="button" title="Open a document" aria-label="Open"><span class="pmd-icon pmd-icon-open" aria-hidden="true"></span></button>
+          <button id="new-btn" type="button" title="New document" aria-label="New document"><span class="pmd-icon pmd-icon-new" aria-hidden="true"></span></button>
+          <button id="export-btn" type="button" disabled title="Save" aria-label="Save"><span class="pmd-icon pmd-icon-save" aria-hidden="true"></span></button>
           <button id="autosave-btn" type="button" aria-pressed="false"
-                  title="Autosave is off — click to turn on" aria-label="Toggle autosave">⏱</button>
+                  title="Autosave is off — click to turn on" aria-label="Toggle autosave"><span class="pmd-icon pmd-icon-autosave" aria-hidden="true"></span></button>
         </div>
         <!-- Speech-doc buttons. Same 2-row stack rhythm as the file
              buttons so they line up. Visible only in multi-doc mode
              (a CSS rule hides the whole stack in single-doc — the
              commands don't make sense without a second pane). Order
              with `grid-auto-flow: row` so HTML reads:
-                 🎤 (new)   📌 (mark/unmark)
-                 ➤  (send-cursor)   ⤓ (send-end)         -->
+                 new          mark/unmark
+                 send-cursor  send-end          -->
         <div id="speech-stack" class="ribbon-button-stack ribbon-speech-stack">
           <button id="speech-new-btn" type="button"
-                  title="New speech document" aria-label="New speech document">🎤</button>
+                  title="New speech document" aria-label="New speech document"><span class="pmd-icon pmd-icon-mic" aria-hidden="true"></span></button>
           <button id="speech-mark-btn" type="button"
                   aria-pressed="false" title="Mark / unmark the active doc as the speech doc"
-                  aria-label="Mark active doc as speech doc">📌</button>
+                  aria-label="Mark active doc as speech doc"><span class="pmd-icon pmd-icon-speech-mark" aria-hidden="true"></span></button>
           <button id="speech-send-cursor-btn" type="button"
-                  title="Send to speech doc at cursor (`)" aria-label="Send to speech at cursor">➤</button>
+                  title="Send to speech doc at cursor (`)" aria-label="Send to speech at cursor"><span class="pmd-icon pmd-icon-send-cursor" aria-hidden="true"></span></button>
           <button id="speech-send-end-btn" type="button"
-                  title="Send to speech doc at end (Alt-`)" aria-label="Send to speech at end">⤓</button>
+                  title="Send to speech doc at end (Alt-`)" aria-label="Send to speech at end"><span class="pmd-icon pmd-icon-send-end" aria-hidden="true"></span></button>
         </div>
         <!-- Quick Cards 2×2 cluster (row-major):
-               🔍 (search)        🏷️ (tag picker)
-               🗂️ (manage)        ➕ (add)
+               search   tag picker
+               manage   add
              Visible in BOTH single- and multi-doc (quick cards work
              everywhere). Search / Tag Picker / Manage are stubbed for
              now; Add is live. -->
         <div id="quickcards-stack" class="ribbon-button-stack ribbon-quickcards-stack" role="group" aria-label="Quick Cards">
           <button id="qc-search-btn" type="button"
-                  title="Search quick cards (coming soon)" aria-label="Search quick cards">🔍</button>
+                  title="Search quick cards" aria-label="Search quick cards"><span class="pmd-icon pmd-icon-search" aria-hidden="true"></span></button>
           <button id="qc-tagpicker-btn" type="button"
-                  title="Filter quick cards by tag (coming soon)" aria-label="Quick card tag picker">🏷️</button>
+                  title="Filter quick cards by tag" aria-label="Quick card tag picker"><span class="pmd-icon pmd-icon-tag" aria-hidden="true"></span></button>
           <button id="qc-manage-btn" type="button"
-                  title="Manage quick cards (coming soon)" aria-label="Manage quick cards">🗂️</button>
+                  title="Manage quick cards" aria-label="Manage quick cards"><span class="pmd-icon pmd-icon-manage" aria-hidden="true"></span></button>
           <button id="qc-add-btn" type="button"
-                  title="Add quick card from selection" aria-label="Add quick card">➕</button>
+                  title="Add quick card from selection" aria-label="Add quick card"><span class="pmd-icon pmd-icon-add" aria-hidden="true"></span></button>
         </div>
         <div id="formatting-panel" class="ribbon-formatting-panel" role="group" aria-label="Formatting panel">
           <!-- Column-major order so the 3×2 grid lays out as:
@@ -82,19 +83,19 @@
                the bottom reflecting the active selection. -->
           <div class="ribbon-color-control" data-control="highlight">
             <button id="highlight-btn" class="ribbon-color-main" type="button" title="Highlight (F11)">
-              <span class="ribbon-color-glyph">✎</span>
+              <span class="ribbon-color-glyph pmd-icon pmd-icon-highlight" aria-hidden="true"></span>
               <span class="ribbon-color-bar" id="highlight-bar"></span>
             </button>
             <button id="highlight-picker-btn" class="ribbon-color-arrow" type="button" title="Highlight color"
-                    aria-haspopup="true" aria-expanded="false">▾</button>
+                    aria-haspopup="true" aria-expanded="false"><span class="pmd-icon pmd-icon-chevron-down" aria-hidden="true"></span></button>
           </div>
           <div class="ribbon-color-control" data-control="shading">
             <button id="shading-btn" class="ribbon-color-main" type="button" title="Background color">
-              <span class="ribbon-color-glyph">🪣</span>
+              <span class="ribbon-color-glyph pmd-icon pmd-icon-shading" aria-hidden="true"></span>
               <span class="ribbon-color-bar" id="shading-bar"></span>
             </button>
             <button id="shading-picker-btn" class="ribbon-color-arrow" type="button" title="Background color"
-                    aria-haspopup="true" aria-expanded="false">▾</button>
+                    aria-haspopup="true" aria-expanded="false"><span class="pmd-icon pmd-icon-chevron-down" aria-hidden="true"></span></button>
           </div>
           <div class="ribbon-color-control" data-control="fontcolor">
             <button id="fontcolor-btn" class="ribbon-color-main" type="button" title="Font color">
@@ -102,7 +103,7 @@
               <span class="ribbon-color-bar" id="fontcolor-bar"></span>
             </button>
             <button id="fontcolor-picker-btn" class="ribbon-color-arrow" type="button" title="Font color"
-                    aria-haspopup="true" aria-expanded="false">▾</button>
+                    aria-haspopup="true" aria-expanded="false"><span class="pmd-icon pmd-icon-chevron-down" aria-hidden="true"></span></button>
           </div>
           <!-- Font size split-control: input for the current pt
                (Enter / blur applies), arrow opens a preset-size
@@ -113,15 +114,15 @@
                    inputmode="numeric" autocomplete="off" spellcheck="false"
                    aria-label="Font size at cursor" title="Font size — Enter to apply" />
             <button id="font-size-picker-btn" class="ribbon-color-arrow" type="button" title="Font size"
-                    aria-haspopup="true" aria-expanded="false">▾</button>
+                    aria-haspopup="true" aria-expanded="false"><span class="pmd-icon pmd-icon-chevron-down" aria-hidden="true"></span></button>
           </div>
           <!-- 3rd column: increment/decrement font size of selection. -->
           <button id="font-size-up-btn" class="ribbon-font-size-step" type="button"
                   title="Increase font size" aria-label="Increase font size"
-                  ><span>A</span><span class="ribbon-font-size-step-arrow ribbon-font-size-step-up-arrow">▴</span></button>
+                  ><span>A</span><span class="ribbon-font-size-step-arrow ribbon-font-size-step-up-arrow pmd-icon pmd-icon-chevron-up" aria-hidden="true"></span></button>
           <button id="font-size-down-btn" class="ribbon-font-size-step" type="button"
                   title="Decrease font size" aria-label="Decrease font size"
-                  ><span>A</span><span class="ribbon-font-size-step-arrow">▾</span></button>
+                  ><span>A</span><span class="ribbon-font-size-step-arrow pmd-icon pmd-icon-chevron-down" aria-hidden="true"></span></button>
         </div>
         <!-- Document/card-level utility menus. "Doc" holds doc-wide
              operations (Verbatim's Doc menu — standardize highlighting
@@ -131,9 +132,9 @@
              two-button panels. -->
         <div id="doc-menu-panel" class="ribbon-doc-menu-panel" role="group" aria-label="Document utilities">
           <button id="doc-menu-btn" class="ribbon-doc-menu-btn" type="button"
-                  title="Document utilities" aria-haspopup="true" aria-expanded="false">Doc <span class="ribbon-doc-menu-arrow">▾</span></button>
+                  title="Document utilities" aria-haspopup="true" aria-expanded="false">Doc <span class="ribbon-doc-menu-arrow pmd-icon pmd-icon-chevron-down" aria-hidden="true"></span></button>
           <button id="card-menu-btn" class="ribbon-doc-menu-btn" type="button"
-                  title="Card utilities" aria-haspopup="true" aria-expanded="false">Card <span class="ribbon-doc-menu-arrow">▾</span></button>
+                  title="Card utilities" aria-haspopup="true" aria-expanded="false">Card <span class="ribbon-doc-menu-arrow pmd-icon pmd-icon-chevron-down" aria-hidden="true"></span></button>
         </div>
         <!-- Normal-formatting panel: Table dropdown on top, three small
              inline-formatting toggles (super / sub / strikethrough)
@@ -142,9 +143,9 @@
              neighbors so the chrome grid stays aligned. -->
         <div id="format-menu-panel" class="ribbon-format-menu-panel" role="group" aria-label="Formatting utilities">
           <button id="table-menu-btn" class="ribbon-doc-menu-btn ribbon-format-table-btn" type="button"
-                  title="Table operations" aria-haspopup="true" aria-expanded="false">Table <span class="ribbon-doc-menu-arrow">▾</span></button>
+                  title="Table operations" aria-haspopup="true" aria-expanded="false">Table <span class="ribbon-doc-menu-arrow pmd-icon pmd-icon-chevron-down" aria-hidden="true"></span></button>
           <button id="insert-image-btn" class="ribbon-format-inline-btn ribbon-format-image-btn" type="button"
-                  title="Insert image at cursor" aria-label="Insert image">🖼</button>
+                  title="Insert image at cursor" aria-label="Insert image"><span class="pmd-icon pmd-icon-image" aria-hidden="true"></span></button>
           <div class="ribbon-format-inline-row" role="group" aria-label="Inline marks">
             <button id="superscript-btn" class="ribbon-format-inline-btn" type="button"
                     title="Superscript">x<sup>2</sup></button>
@@ -159,7 +160,7 @@
                F3's default condense behavior; T below arms F2's plain-
                paste mode (next Ctrl/Cmd+V strips formatting). -->
           <button id="paragraph-integrity-btn" class="ribbon-doc-ops-btn" type="button"
-                  aria-pressed="true" title="Paragraph Integrity">¶</button>
+                  aria-pressed="true" title="Paragraph Integrity"><span class="pmd-icon pmd-icon-paragraph-integrity" aria-hidden="true"></span></button>
           <button id="plain-paste-toggle-btn" class="ribbon-doc-ops-btn" type="button"
                   aria-pressed="false" title="Paste Text (F2) — when on, Ctrl/Cmd+V pastes as unformatted text">T</button>
         </div>
@@ -170,20 +171,20 @@
                counter) since they answer the same family of
                question. -->
           <button id="read-mode-btn" class="ribbon-doc-ops-btn" type="button"
-                  title="Read mode" aria-label="Read mode">👁</button>
+                  title="Read mode" aria-label="Read mode"><span class="pmd-icon pmd-icon-read-mode" aria-hidden="true"></span></button>
           <button id="nav-pane-toggle-btn" class="ribbon-doc-ops-btn" type="button"
                   aria-pressed="true" title="Show / hide the navigation pane"
-                  aria-label="Toggle nav pane">☰</button>
+                  aria-label="Toggle nav pane"><span class="pmd-icon pmd-icon-nav-toggle" aria-hidden="true"></span></button>
         </div>
         <div id="comments-ops-panel" class="ribbon-doc-ops-panel" role="group" aria-label="Comments">
-          <!-- 💬 toggles the side column, + adds a comment to the
-               selection. The AI explainer used to live next to + as
-               a 🤖 button; it's now keyboard-only (Mod-Shift-Q by
-               default, rebindable). -->
+          <!-- The comments button toggles the side column; the + adds
+               a comment to the selection. The AI explainer used to
+               live next to + as its own button; it's now keyboard-only
+               (Mod-Shift-Q by default, rebindable). -->
           <button id="comments-toggle-btn" class="ribbon-doc-ops-btn" type="button"
-                  aria-pressed="false" title="Show/hide comments" aria-label="Show or hide comments">💬</button>
+                  aria-pressed="false" title="Show/hide comments" aria-label="Show or hide comments"><span class="pmd-icon pmd-icon-comments" aria-hidden="true"></span></button>
           <button id="comments-add-btn" class="ribbon-doc-ops-btn" type="button"
-                  title="Add a comment on the selection" aria-label="Add comment">+</button>
+                  title="Add a comment on the selection" aria-label="Add comment"><span class="pmd-icon pmd-icon-plus" aria-hidden="true"></span></button>
         </div>
       </div>
       <div class="ribbon-section ribbon-center">
@@ -206,23 +207,23 @@
       </div>
       <div class="ribbon-section ribbon-right">
         <!-- 2×2 grid (row-major):
-                📖 shortcuts   ⚙ settings
-                ⏱ timer        🏠 home
+                shortcuts   settings
+                timer       home
              Home is single-doc only — CSS hides it in multi-doc,
              which leaves the timer alone in the bottom row. -->
         <div class="ribbon-right-grid">
-          <button id="reference-btn" type="button" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">📖</button>
-          <button id="settings-btn" type="button" title="Settings" aria-label="Settings">⚙</button>
+          <button id="reference-btn" type="button" title="Keyboard shortcuts" aria-label="Keyboard shortcuts"><span class="pmd-icon pmd-icon-shortcuts" aria-hidden="true"></span></button>
+          <button id="settings-btn" type="button" title="Settings" aria-label="Settings"><span class="pmd-icon pmd-icon-settings" aria-hidden="true"></span></button>
           <button id="timer-toggle-btn" type="button" aria-pressed="false"
-                  title="Show / hide the timer panel" aria-label="Toggle timer panel">⏱</button>
+                  title="Show / hide the timer panel" aria-label="Toggle timer panel"><span class="pmd-icon pmd-icon-timer" aria-hidden="true"></span></button>
           <button id="home-btn" type="button" class="ribbon-home-btn"
-                  title="Home" aria-label="Home">🏠</button>
+                  title="Home" aria-label="Home"><span class="pmd-icon pmd-icon-home" aria-hidden="true"></span></button>
         </div>
       </div>
     </header>
     <div id="nav-panel"></div>
     <div id="speech-doc-banner" hidden>
-      <span class="pmd-speech-doc-banner-icon" aria-hidden="true">🎤</span>
+      <span class="pmd-speech-doc-banner-icon pmd-icon pmd-icon-mic" aria-hidden="true"></span>
       <span class="pmd-speech-doc-banner-label">Speech document</span>
     </div>
     <main id="app">
@@ -250,7 +251,7 @@
       </div>
     </main>
     <button id="nav-pane-pull-tab" type="button"
-            title="Show navigation pane" aria-label="Show navigation pane">›</button>
+            title="Show navigation pane" aria-label="Show navigation pane"><span class="pmd-icon pmd-icon-chevron-right" aria-hidden="true"></span></button>
     <div id="status-bar">
       <button id="word-count-btn" class="status-bar-btn" type="button"
               title="Word Count Selection" aria-label="Word count selection summary">Σ</button>
@@ -268,10 +269,10 @@
       </div>
       <div class="status-spacer"></div>
       <div class="zoom-controls" title="Zoom">
-        <button id="zoom-out-btn" type="button" aria-label="Zoom out">−</button>
+        <button id="zoom-out-btn" type="button" aria-label="Zoom out"><span class="pmd-icon pmd-icon-minus" aria-hidden="true"></span></button>
         <span id="zoom-pct">100%</span>
-        <button id="zoom-in-btn" type="button" aria-label="Zoom in">+</button>
-        <button id="zoom-reset-btn" type="button" aria-label="Reset zoom to 100%" title="Reset to 100%">↺</button>
+        <button id="zoom-in-btn" type="button" aria-label="Zoom in"><span class="pmd-icon pmd-icon-plus" aria-hidden="true"></span></button>
+        <button id="zoom-reset-btn" type="button" aria-label="Reset zoom to 100%" title="Reset to 100%"><span class="pmd-icon pmd-icon-reset" aria-hidden="true"></span></button>
       </div>
     </div>
     <script type="module" src="/src/editor/index.ts"></script>

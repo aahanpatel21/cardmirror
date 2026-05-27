@@ -75,6 +75,7 @@ import {
   notifyCommentsForActiveTransaction,
   sendViewToDropzone,
 } from './index.js';
+import { icon, setIcon } from './icons';
 
 type SlotId = 'slot1' | 'slot2' | 'slot3';
 const SLOT_IDS: SlotId[] = ['slot1', 'slot2', 'slot3'];
@@ -450,7 +451,7 @@ class Slot {
     this.chipStackBtn.type = 'button';
     this.chipStackBtn.className = 'pmd-pane-chip-stack';
     this.chipStackBtn.title = 'Switch document in this slot';
-    this.chipStackBtn.textContent = '▾';
+    setIcon(this.chipStackBtn, 'chevron-down');
     this.chipStackBtn.hidden = true;
     this.chipStackBtn.addEventListener('mousedown', (e) => e.preventDefault());
     this.chipStackBtn.addEventListener('click', (e) => {
@@ -475,7 +476,7 @@ class Slot {
     this.chipExpandBtn.type = 'button';
     this.chipExpandBtn.className = 'pmd-pane-chip-expand';
     this.chipExpandBtn.title = 'Expand this pane to fill the workspace (Ctrl+Shift+F)';
-    this.chipExpandBtn.textContent = '⛶';
+    setIcon(this.chipExpandBtn, 'expand');
     this.chipExpandBtn.setAttribute('aria-pressed', 'false');
     this.chipExpandBtn.addEventListener('mousedown', (e) => e.preventDefault());
     this.chipExpandBtn.addEventListener('click', (e) => {
@@ -487,7 +488,7 @@ class Slot {
     this.chipCloseBtn.type = 'button';
     this.chipCloseBtn.className = 'pmd-pane-chip-close';
     this.chipCloseBtn.title = 'Close this document';
-    this.chipCloseBtn.textContent = '×';
+    setIcon(this.chipCloseBtn, 'close');
     this.chipCloseBtn.addEventListener('mousedown', (e) => e.preventDefault());
     this.chipCloseBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -788,7 +789,11 @@ class Slot {
   refreshChip(): void {
     const multi = this.stack.length > 1;
     this.chipStackBtn.hidden = !multi;
-    this.chipStackBtn.textContent = multi ? `▾ ${this.stack.length}` : '▾';
+    if (multi) {
+      this.chipStackBtn.replaceChildren(icon('chevron-down'), document.createTextNode(` ${this.stack.length}`));
+    } else {
+      setIcon(this.chipStackBtn, 'chevron-down');
+    }
   }
 
   /** Re-render the chip's filename label from the visible record.
@@ -846,7 +851,7 @@ class Slot {
       const close = document.createElement('button');
       close.type = 'button';
       close.className = 'pmd-pane-chip-dropdown-close';
-      close.textContent = '×';
+      setIcon(close, 'close');
       close.title = 'Close this document';
       close.addEventListener('mousedown', (e) => e.preventDefault());
       close.addEventListener('click', (e) => {

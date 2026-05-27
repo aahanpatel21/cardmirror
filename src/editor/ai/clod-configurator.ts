@@ -10,6 +10,7 @@
  */
 
 import { settings } from '../settings.js';
+import { setIcon } from '../icons';
 import {
   CLOD_ACTIVITIES_BY_TIME,
   DEFAULT_CLOD_TIME_PERIODS,
@@ -44,7 +45,7 @@ export function openClodConfigurator(): void {
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'pmd-clod-close';
-  closeBtn.textContent = '×';
+  setIcon(closeBtn, 'close');
   closeBtn.title = 'Close';
   closeBtn.addEventListener('click', close);
   header.appendChild(closeBtn);

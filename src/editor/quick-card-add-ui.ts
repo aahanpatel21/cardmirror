@@ -14,6 +14,7 @@
  */
 
 import { normalizeTag, type QuickCard } from './quick-cards-store.js';
+import { setIcon } from './icons';
 
 export interface QuickCardAddResult {
   name: string;
@@ -227,7 +228,7 @@ class QuickCardAddModal {
       const x = document.createElement('button');
       x.type = 'button';
       x.className = 'pmd-qc-add-chip-x';
-      x.textContent = '×';
+      setIcon(x, 'close');
       x.setAttribute('aria-label', `Remove tag ${tag}`);
       x.addEventListener('click', () => this.removeTag(i));
       chip.appendChild(x);

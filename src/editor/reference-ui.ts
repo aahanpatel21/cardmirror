@@ -15,6 +15,7 @@ import {
 } from './ribbon-commands.js';
 import { RIBBON_GROUPS } from './ribbon-groups.js';
 import { settings } from './settings.js';
+import { setIcon } from './icons';
 
 
 class ReferenceModal {
@@ -66,7 +67,7 @@ class ReferenceModal {
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'pmd-reference-close';
-    closeBtn.textContent = '×';
+    setIcon(closeBtn, 'close');
     closeBtn.title = 'Close';
     closeBtn.addEventListener('click', () => this.close());
     header.appendChild(closeBtn);

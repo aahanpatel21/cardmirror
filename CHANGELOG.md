@@ -9,6 +9,20 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Added
 
+- **Settings shortcuts in the search palette** — type `s ` in the
+  search bar (or just search everything) to find settings. Results
+  include both the top-level settings sections (General, Appearance,
+  …) and individual settings by name; pick one to open Settings to the
+  right tab, scrolled to and briefly highlighting that setting.
+
+- **Modern icons** — the toolbar, banners, dialogs, and status bar now
+  use a clean line-icon set (Untitled UI) that takes on the active
+  theme color, replacing the old mix of emoji and text symbols. New
+  under Settings → Appearance → **Icon style**: pick **Modern** (the
+  new default) or **Classic** to bring back the original emoji/text
+  glyphs. The choice affects the app's chrome only — your documents are
+  untouched.
+
 - **Bulk convert** (desktop) — a Home-screen button (under its own
   "Convert" heading, beside Quick Cards) that batch-converts between
   `.docx` and `.cmir`. Choose the direction, an input (a single file or

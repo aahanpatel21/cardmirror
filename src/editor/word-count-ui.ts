@@ -9,6 +9,7 @@
 import type { EditorView } from 'prosemirror-view';
 import { settings } from './settings.js';
 import { countReadAloudWords, formatReadTime, formatNumber } from './word-count.js';
+import { setIcon } from './icons';
 
 class WordCountModal {
   private overlay: HTMLDivElement;
@@ -53,7 +54,7 @@ class WordCountModal {
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'pmd-settings-close';
-    closeBtn.textContent = '×';
+    setIcon(closeBtn, 'close');
     closeBtn.addEventListener('click', () => this.close());
     header.appendChild(closeBtn);
     this.dialog.appendChild(header);

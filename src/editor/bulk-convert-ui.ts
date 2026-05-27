@@ -15,6 +15,7 @@
 import JSZip from 'jszip';
 import { fromDocxFull, parseNative, serializeNative, toDocx } from '../index.js';
 import { getHost, getElectronHost } from './host/index.js';
+import { setIcon } from './icons';
 
 type Direction = 'docx2cmir' | 'cmir2docx';
 type Output = 'files' | 'zip';
@@ -115,7 +116,7 @@ class BulkConvertModal {
     const close = document.createElement('button');
     close.type = 'button';
     close.className = 'pmd-bulk-close';
-    close.textContent = '×';
+    setIcon(close, 'close');
     close.title = 'Close';
     close.addEventListener('click', () => this.close());
     header.appendChild(close);

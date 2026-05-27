@@ -34,6 +34,7 @@ import {
 } from './ribbon-commands.js';
 import { RIBBON_GROUPS } from './ribbon-groups.js';
 import { settings } from './settings.js';
+import { setIcon } from './icons';
 
 function getOverrides(): Partial<Record<RibbonCommandId, string | string[]>> {
   return settings.get('ribbonKeyOverrides');
@@ -290,7 +291,7 @@ export function buildKeybindingsEditor(): HTMLElement {
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.className = 'pmd-keybinding-chip-remove';
-        remove.textContent = '×';
+        setIcon(remove, 'close');
         remove.title = 'Remove this binding';
         remove.addEventListener('click', () => {
           removeKeyFromCommand(id, key);
@@ -316,7 +317,7 @@ export function buildKeybindingsEditor(): HTMLElement {
     const resetBtn = document.createElement('button');
     resetBtn.type = 'button';
     resetBtn.className = 'pmd-keybinding-reset';
-    resetBtn.textContent = '↺';
+    setIcon(resetBtn, 'reset');
     resetBtn.title = 'Restore defaults for this command';
     resetBtn.addEventListener('click', () => clearOverride(id));
     row.appendChild(resetBtn);

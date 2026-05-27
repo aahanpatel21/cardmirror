@@ -7,7 +7,10 @@ built on ProseMirror (<https://prosemirror.net/>), the rich-text
 editor framework by Marijn Haverbeke (<https://marijnhaverbeke.nl/>),
 used under the MIT License. ProseMirror's copyright notices are
 preserved in the project's `node_modules/` and acknowledged in the
-README.
+README. The application's interface icons are from the Untitled UI
+free icons (<https://www.untitledui.com/free-icons>), © Untitled UI,
+used under their free license. Third-party attributions and license
+terms are collected in `THIRD-PARTY-NOTICES.md`.
 
 ----
 

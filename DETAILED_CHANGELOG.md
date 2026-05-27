@@ -7,6 +7,61 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Search palette: a settings source (`s` prefix).** The command
+  palette gains a fourth source alongside quick cards (`q`), the
+  dropzone (`d`), and commands (`c`): settings (`s`), also folded into
+  the no-prefix "search everything". `searchSettingsSource` surfaces
+  two kinds of rows — the top-level tabs from `CATEGORY_TABS` (opening
+  the tab) and every individual setting from `SETTING_METADATA` (opening
+  its tab and scrolling to it), ranked by where the query hits the
+  label and respecting `electronOnly` so web never offers a row that
+  won't render. Selecting a settings row calls a new
+  `openSettings(target)` overload; `SettingsModal.open` then activates
+  the target tab and `revealSetting` scrolls the row (now tagged with
+  `data-setting-key`) into view and runs a one-shot highlight
+  animation. Rows carry a `SET` badge.
+
+- **Fix: the save button's icon vanished after the saved-✓ flash.**
+  `flashSavedGlyph` swapped the button's `textContent` to `✓` and back,
+  which worked when the glyph was text but wiped the new icon `<span>`
+  for good once the chrome moved to masked icons. It now snapshots and
+  restores the button's inner markup (via a `flashOrigHtml` WeakMap),
+  so the floppy-disk icon returns after the flash in both icon modes.
+
+- **Icon system: Untitled UI line icons with a Modern/Classic toggle.**
+  The app chrome's glyphs (ribbon buttons, the speech-doc banner,
+  dialog close/reset/reorder buttons, status-bar zoom, nav-tree
+  chevrons, etc.) were a mix of emoji and Unicode symbols that rendered
+  inconsistently across platforms and ignored the theme. They're now a
+  single line-icon set drawn from the Untitled UI free icons.
+  - **Mechanism.** Each icon is a `<span class="pmd-icon pmd-icon-NAME">`
+    painted in `currentColor` via a CSS `mask` whose image is a
+    data-URL SVG (so the icon inherits text color and theme for free).
+    `scripts/gen-icons.mjs` reads the source SVGs from the gitignored
+    `reference-docs/untitled-ui-icons` clone and generates the
+    committed `src/editor/icons.css` (the app ships self-contained — no
+    SVG files at runtime). The generator's `MAP` pairs each pmd icon
+    name with its Untitled UI filename and a classic-fallback glyph.
+    `src/editor/icons.ts` exposes `icon(name)` / `setIcon(el, name)` for
+    JS-created buttons; static markup uses the span directly.
+  - **Toggle.** A new `iconSet: 'modern' | 'classic'` setting (default
+    `'modern'`) resolves to a `data-icons` attribute on the document
+    root, applied at boot and on change (`applyIconSet` in index.ts,
+    alongside the theme/motion appliers). `icons.css` masks the SVG
+    under `[data-icons="modern"]`; under `"classic"` it drops the mask
+    and renders the original emoji/text glyph via `::before`, releasing
+    the fixed 1em box so wide emoji size and center exactly as the old
+    text nodes did. The setting lives under Appearance as a two-button
+    segmented control parallel to the theme picker.
+  - **Licensing.** Untitled UI's free icons are © Untitled UI, used
+    under their free license (not MIT, despite the upstream package's
+    metadata). Attribution and the license terms are recorded in a new
+    `THIRD-PARTY-NOTICES.md`, referenced from `LICENSE` and the README;
+    the generator/CSS headers point there too. The upstream `.svg`
+    files and the set as a whole stay in the gitignored reference clone
+    and are not committed — only the specific glyphs the app uses are
+    baked into `icons.css`.
+
 - **Dropzone moved to the editor's bottom-left corner.** It used to be
   pinned at the bottom of the nav pane, where dragging onto it landed
   in the outline list's auto-scroll zone and scrolled the outline.

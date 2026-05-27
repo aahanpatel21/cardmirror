@@ -15,6 +15,7 @@
 
 import { getElectronHost } from './host/index.js';
 import { showToast } from './toast.js';
+import { setIcon } from './icons';
 
 let openOverlay: HTMLDivElement | null = null;
 
@@ -123,7 +124,7 @@ export async function openSelectSpeechDocModal(): Promise<void> {
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'pmd-select-speech-close';
-  closeBtn.textContent = '×';
+  setIcon(closeBtn, 'close');
   closeBtn.title = 'Close';
   closeBtn.addEventListener('click', () => closeModal());
   header.appendChild(closeBtn);

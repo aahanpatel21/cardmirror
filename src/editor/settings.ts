@@ -220,6 +220,13 @@ export interface Settings {
    *  when running dark mode. Turn on to make the document area
    *  follow the chrome theme as well. */
   themeAppliesToDocument: boolean;
+  /** Icon style for the app chrome (ribbon buttons, banners,
+   *  dialog glyphs). `'modern'` (default) uses the Untitled UI
+   *  line-icon set, painted in `currentColor` via CSS masks;
+   *  `'classic'` falls back to the original emoji/text glyphs.
+   *  Resolves to the `data-icons` attribute on the document
+   *  root, consumed by `icons.css`. */
+  iconSet: 'modern' | 'classic';
   /** Show a pill in the center of the ribbon displaying the
    *  active doc's filename. Off by default — the OS title bar
    *  carries this info on most platforms. Useful when the
@@ -756,6 +763,7 @@ const DEFAULTS: Settings = {
   prefixPresetSaveFilenames: true,
   theme: 'system',
   themeAppliesToDocument: false,
+  iconSet: 'modern',
   showDocNameChip: false,
   checkForUpdatesOnLaunch: false,
   commentsColumnWidth: 320,
@@ -923,6 +931,7 @@ export interface SettingMeta {
     | 'colorSlots'
     | 'colorOverrides'
     | 'theme'
+    | 'iconSet'
     | 'reduceMotion'
     | 'timerProfile'
     | 'timerProfileDurations'
@@ -1083,6 +1092,14 @@ export const SETTING_METADATA: SettingMeta[] = [
     description:
       "Off by default: when the theme is dark (or system-resolved dark), only the chrome — ribbon, nav, status bar — goes dark. The document area stays light, so cards still read like paper. Turn on to make the document itself follow the theme.",
     kind: 'toggle',
+    category: 'appearance',
+  },
+  {
+    key: 'iconSet',
+    label: 'Icon style',
+    description:
+      "Modern (default) draws the toolbar, banner, and dialog icons from the Untitled UI line-icon set, tinted to match the theme. Classic reverts to the original emoji / text glyphs. Affects the app chrome only — the document is untouched.",
+    kind: 'iconSet',
     category: 'appearance',
   },
   {
@@ -1557,6 +1574,9 @@ function sanitize(s: Settings): Settings {
     theme:
       s.theme === 'light' || s.theme === 'dark' ? s.theme : 'system',
     themeAppliesToDocument: !!s.themeAppliesToDocument,
+    // Default-on (modern): only an explicit `'classic'` reverts to the
+    // original emoji/text glyphs (survives upgrades from before this existed).
+    iconSet: s.iconSet === 'classic' ? 'classic' : 'modern',
     showDocNameChip: !!s.showDocNameChip,
     checkForUpdatesOnLaunch: !!s.checkForUpdatesOnLaunch,
     commentsColumnWidth:

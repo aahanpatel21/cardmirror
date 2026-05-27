@@ -10,6 +10,7 @@
 
 import { settings } from '../settings.js';
 import { DEFAULT_AI_CITE_PROMPT } from './cite-creator.js';
+import { setIcon } from '../icons';
 
 export function openCitePromptEditor(): void {
   if (document.querySelector('.pmd-prompt-overlay')) return;
@@ -36,7 +37,7 @@ export function openCitePromptEditor(): void {
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'pmd-prompt-close';
-  closeBtn.textContent = '×';
+  setIcon(closeBtn, 'close');
   closeBtn.title = 'Close';
   closeBtn.addEventListener('click', close);
   header.appendChild(closeBtn);

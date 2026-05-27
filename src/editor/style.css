@@ -1075,7 +1075,7 @@ body.pmd-host-browser #autosave-btn { display: none; }
    color panel, stacked. Match the doc-ops button size so the column
    widths read uniformly across the ribbon. */
 #ribbon .ribbon-font-size-step {
-  width: 1.5rem;
+  width: 1.75rem;
   height: 1.45rem;
   font-size: 0.7rem;
   line-height: 1;
@@ -3714,6 +3714,24 @@ html.pmd-nav-flat .pmd-nav-type-analytic:hover .pmd-nav-label {
 
 .pmd-settings-row:last-child {
   border-bottom: none;
+}
+
+/* Brief highlight when a setting is reached via the palette's `s`
+ * shortcuts — draws the eye to the row scrolled into view. */
+.pmd-settings-row-flash {
+  animation: pmd-settings-row-flash 1.4s ease-out;
+  border-radius: 6px;
+}
+@keyframes pmd-settings-row-flash {
+  0%,
+  30% {
+    background: var(--pmd-c-accent-soft, color-mix(in srgb, var(--pmd-c-accent) 18%, transparent));
+    box-shadow: 0 0 0 2px var(--pmd-c-accent) inset;
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 2px transparent inset;
+  }
 }
 
 /* Greyed-out row state for AI-dependent settings when the AI master
@@ -6498,6 +6516,10 @@ body.pmd-recovery-active.pmd-multi-doc #app {
 .pmd-qcs-badge-dropzone {
   color: var(--pmd-c-drop, var(--pmd-c-accent));
   border-color: var(--pmd-c-drop, var(--pmd-c-accent));
+}
+.pmd-qcs-badge-settings {
+  color: var(--pmd-c-accent);
+  border-color: var(--pmd-c-accent);
 }
 .pmd-qcs-row-name {
   font-size: 0.92rem;

@@ -21,6 +21,7 @@
  */
 
 import { settings } from './settings.js';
+import { setIcon } from './icons';
 
 export type SaveAsFormat = 'cmir' | 'docx';
 
@@ -133,7 +134,7 @@ class SaveAsModal {
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'pmd-save-as-close';
-    closeBtn.textContent = '×';
+    setIcon(closeBtn, 'close');
     closeBtn.title = 'Cancel';
     closeBtn.addEventListener('click', () => this.cancel());
     header.appendChild(closeBtn);
