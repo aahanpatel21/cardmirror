@@ -82,9 +82,9 @@ see `DETAILED_CHANGELOG.md`.
   produces a thinner, lighter glyph consistent with the rest
   of the OS. Low-DPI displays keep the browser-default
   subpixel rendering, which is crisper at that resolution.
-- **Dropzone shelf** — opt-in floating pill at the bottom of the
-  nav pane (Settings → Appearance → "Show dropzone shelf in nav
-  pane"; **default off**). When enabled, drag any card or
+- **Dropzone shelf** — opt-in floating pill in the editor's
+  bottom-left corner (Settings → Appearance → "Show dropzone shelf in
+  nav pane"; **default off**). When enabled, drag any card or
   heading onto the pill to absorb it into a cross-window shelf;
   click the pill to expand the shelf in place, click an item to
   insert it at the cursor (Alt+click to insert at end of doc),

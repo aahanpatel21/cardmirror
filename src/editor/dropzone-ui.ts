@@ -1,10 +1,12 @@
 /**
  * Dropzone bubble — cross-window scratch shelf for dragged content.
- * Pinned to the bottom of the nav pane.
+ * A single instance, anchored to the editor's bottom-left corner
+ * (positioned by `positionDropzone` in index.ts — NOT the nav pane,
+ * whose bottom edge sat in the outline's auto-scroll zone).
  *
  * The whole element morphs between two states:
- *   - Closed: small grey pill anchored at the bottom of the nav
- *     pane (icon + item count).
+ *   - Closed: small grey pill in the editor's bottom-left corner
+ *     (icon + item count).
  *   - Open: the same element expands UPWARD to become a panel
  *     hosting the item list. The bottom row of the panel keeps
  *     the icon + count + clear button as the click-to-collapse
@@ -24,8 +26,8 @@
  *   `dragController.begin(...)` on pointerdown + threshold move.
  *
  * Store: `dropzoneStore` (electron-aware) holds the cross-window
- *   state. One DropzoneController per nav-pane; they all share
- *   content through the store.
+ *   state. A single DropzoneController is mounted at boot
+ *   (index.ts); `getFocusedView` resolves the active editor view.
  */
 
 import { Slice } from 'prosemirror-model';

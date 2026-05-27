@@ -2571,12 +2571,6 @@ html.pmd-home-active #speech-doc-banner {
 html.pmd-dropzone-pill-hidden .pmd-dropzone-root {
   display: none !important;
 }
-/* When the pill is hidden, also drop the nav list's reserved
-   bottom padding (it exists so the floating bubble doesn't overlay
-   the last heading row). */
-html.pmd-dropzone-pill-hidden .pmd-nav-list {
-  padding-bottom: 0;
-}
 
 /* ---- Dropzone shelf (cross-window scratch space) ----
    The visible "pill" is `.pmd-dropzone-bar`. The surrounding
@@ -2587,21 +2581,22 @@ html.pmd-dropzone-pill-hidden .pmd-nav-list {
    is the pill morphing into the bottom of a shelf panel.
    Drag-over: blue accept-state via --pmd-c-drop tokens. */
 .pmd-dropzone-root {
-  position: absolute;
-  /* Raised off the nav-pane's bottom edge (to the search palette's
-     ~6rem height) so dragging onto the pill no longer lands in the
-     list's bottom auto-scroll zone and scrolls the outline. */
-  bottom: 6rem;
-  left: 0.5rem;
-  right: 0.5rem;
-  max-height: calc(100% - 6.5rem);
+  /* Anchored to the editor's bottom-left corner (NOT the nav pane —
+     a nav-bottom pill sat in the outline's auto-scroll zone). Fixed
+     so it floats over the editor; `positionDropzone` (index.ts) sets
+     left/bottom from the editor element's live rect. The values here
+     are a sane fallback before the first positioning pass. */
+  position: fixed;
+  bottom: 0.5rem;
+  left: calc(var(--nav-width) + 0.5rem);
+  right: auto;
+  max-height: 60vh;
   pointer-events: auto;
   z-index: 12;
   display: flex;
   flex-direction: column;
-  /* Closed: bar is the only visible element; center it
-     horizontally so the pill sits in the middle of the nav pane. */
-  align-items: center;
+  /* Left-anchored pill; the bar sizes to content. */
+  align-items: flex-start;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 10px;
@@ -2964,11 +2959,6 @@ body.pmd-nav-resize-active {
   overscroll-behavior: contain;
   /* Leave room on the right so the scrollbar doesn't run into the handle. */
   padding-right: 8px;
-  /* Bottom space for the floating dropzone bubble (`.pmd-dropzone-
-     root` is `position: absolute; bottom: 0.5rem` inside the nav
-     panel). Without this padding the bubble overlays the last
-     heading row when the list is scrolled to the end. */
-  padding-bottom: 2.75rem;
   list-style: none;
   margin: 0;
   padding-top: 0.5rem;

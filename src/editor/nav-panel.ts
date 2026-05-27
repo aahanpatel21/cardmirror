@@ -16,7 +16,6 @@ import { type Node as PMNode, DOMSerializer } from 'prosemirror-model';
 import { NodeSelection, TextSelection } from 'prosemirror-state';
 import { settings } from './settings.js';
 import { dragController, type DragItem, type DragSurface } from './drag-controller.js';
-import { DropzoneController } from './dropzone-ui.js';
 import { preciseScrollIntoView } from './precise-scroll.js';
 import {
   collectHeadings,
@@ -52,7 +51,6 @@ function applyNavWidthCss(px: number): void {
 export class NavigationPanel {
   private root: HTMLElement;
   private view: EditorView | null = null;
-  private dropzone: DropzoneController | null = null;
   private listEl: HTMLOListElement;
   private emptyEl: HTMLElement;
   private currentDoc: PMNode | null = null;
@@ -180,7 +178,6 @@ export class NavigationPanel {
 
     applyNavWidthCss(settings.get('navWidth'));
     this.installResizeHandle();
-    this.installDropzone();
 
     // Re-render when relevant settings change.
     this.unsubscribeSettings = settings.subscribe((s) => {
@@ -197,17 +194,6 @@ export class NavigationPanel {
    * the `--nav-width` CSS custom property so both the panel and #app's
    * left margin update in lockstep. Persisted in localStorage.
    */
-  /** Anchor the cross-window dropzone bubble at the bottom of the
-   *  nav pane. One DropzoneController per nav-panel; they all share
-   *  state through `dropzoneStore` (which is electron-aware). */
-  private installDropzone(): void {
-    this.dropzone = new DropzoneController();
-    this.dropzone.mount({
-      parent: this.root,
-      getFocusedView: () => this.view,
-    });
-  }
-
   private installResizeHandle(): void {
     const handle = document.createElement('div');
     handle.className = 'pmd-nav-resize-handle';

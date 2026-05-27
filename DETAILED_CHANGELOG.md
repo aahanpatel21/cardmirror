@@ -7,6 +7,19 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Dropzone moved to the editor's bottom-left corner.** It used to be
+  pinned at the bottom of the nav pane, where dragging onto it landed
+  in the outline list's auto-scroll zone and scrolled the outline.
+  Now a SINGLE `DropzoneController` is mounted at boot (index.ts) into
+  `document.body`, `position: fixed`, with `positionDropzone()`
+  anchoring it to the editor element's live rect — `#app` in
+  single-doc (so it tracks nav-width / status-bar / nav-hidden), the
+  leftmost visible `.pmd-pane-body` in multi-pane. Repositioned on
+  window resize + a `ResizeObserver` on `#app` + after the multi-pane
+  shell mounts. `getFocusedView` now resolves via `getActiveView()`.
+  Removed the per-nav-panel `installDropzone` (was one pill per
+  nav-pane) and the nav-list's bottom-padding reserve.
+
 - **Bulk convert utility (desktop).** Home-screen button in its own
   labeled "Convert" group beside the Quick Cards group (shown only when
   `getHost().kind === 'electron'`), opening `bulk-convert-ui.ts`'s

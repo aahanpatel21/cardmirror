@@ -42,6 +42,7 @@ import { createReference } from './create-reference.js';
 import { showToast } from './toast.js';
 import { openSelectSpeechDocModal } from './select-speech-doc-ui.js';
 import { dropzoneStore, deriveDropzoneLabel } from './dropzone-store.js';
+import { DropzoneController } from './dropzone-ui.js';
 import {
   quickCardsStore,
   buildQuickCard,
@@ -4541,9 +4542,49 @@ installIncomingSpeechSliceHandler();
 // changes. Done at boot (not on first UI mount) so the add command and
 // search palette work the instant they're invoked, in either layout.
 void quickCardsStore.init();
+
+// Single cross-window dropzone pill, anchored to the editor's
+// bottom-left corner (NOT the nav pane — dragging onto a nav-bottom
+// pill scrolled the outline). `positionDropzone` tracks the editor
+// element's rect, so it follows nav-width changes, the status bar, and
+// (multi-pane) the leftmost pane.
+const dropzoneController = new DropzoneController();
+dropzoneController.mount({
+  parent: document.body,
+  getFocusedView: () => getActiveView(),
+});
+requestAnimationFrame(positionDropzone);
+window.addEventListener('resize', positionDropzone);
+{
+  const appEl = document.getElementById('app');
+  if (appEl && typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(() => positionDropzone()).observe(appEl);
+  }
+}
+
+/** Anchor the dropzone pill to the bottom-left of the editor area —
+ *  `#app` in single-doc, the leftmost visible pane body in multi-pane
+ *  — from the target's live rect (so it tracks nav-width changes, the
+ *  status bar, and layout). Inline left/bottom; CSS provides a sane
+ *  fallback before the first run. */
+function positionDropzone(): void {
+  const root = document.querySelector<HTMLElement>('.pmd-dropzone-root');
+  if (!root) return;
+  const target = document.body.classList.contains('pmd-multi-doc')
+    ? document.querySelector<HTMLElement>('.pmd-pane:not([hidden]) .pmd-pane-body')
+    : document.getElementById('app');
+  if (!target) return;
+  const r = target.getBoundingClientRect();
+  if (r.width === 0 || r.height === 0) return;
+  root.style.left = `${Math.max(4, Math.round(r.left + 8))}px`;
+  root.style.bottom = `${Math.max(4, Math.round(window.innerHeight - r.bottom + 8))}px`;
+}
 if (BOOT_MULTI_DOC_WORKSPACE) {
   void import('./multi-pane-shell.js').then(async (m) => {
     m.mountMultiPaneShell();
+    // The dropzone pill now anchors to the leftmost pane; reposition
+    // once the shell's panes are in the DOM.
+    requestAnimationFrame(positionDropzone);
     // Home screen is available in multi-pane too (reachable via the
     // Home button). Its actions route through the shell's slot
     // picker rather than loading in-place. Not auto-shown on
