@@ -130,6 +130,20 @@ in each release, see `CHANGELOG.md`.
   - Settings: `quickCardActiveTags` (the global tag filter; edited via
     the Tag Picker, not a settings row) and
     `quickCardSkipMidTextInsertConfirm` (Editing tab, default off).
+  - Prefix system (first slice of the eventual full set): `parsePrefix`
+    splits a leading `q `/`d ` off the query. `q ` searches quick
+    cards, `d ` the dropzone (`searchDropzoneSource` — multi-token
+    substring over item labels, newest first), no prefix searches
+    EVERYTHING (quick cards + dropzone) but shows nothing until the
+    user types. Results are a unified `PaletteResult` (source badge
+    QC/DZ); both insert their `sliceJson` through the same path.
+  - Re-triggering the open hotkey while open toggles the palette
+    closed. The bar sits higher (`bottom: 6rem`) and its width clamps
+    to the target pane (`min(540, paneWidth − 24)`, floor 240) so it
+    shrinks gracefully in narrow / multi-pane windows; hints wrap.
+  - The tag picker (inline + ribbon popover) is keyboard-navigable:
+    auto-selects the best match, ↑/↓ move, Enter toggles, Tab /
+    Shift-Tab / Esc return to the query.
 
 - **Select Current Heading / Copy Current Heading commands.** Two new
   ribbon commands (`selectCurrentHeading`, `copyCurrentHeading`) that

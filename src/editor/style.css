@@ -6435,7 +6435,7 @@ body.pmd-recovery-active.pmd-multi-doc #app {
 /* ─── Quick Cards — search palette ────────────────────────────────── */
 .pmd-qcs {
   position: fixed;
-  bottom: 2rem;
+  bottom: 6rem;
   transform: translateX(-50%);
   width: 540px;
   max-width: 92vw;
@@ -6481,6 +6481,22 @@ body.pmd-recovery-active.pmd-multi-doc #app {
   align-items: baseline;
   gap: 0.5rem;
 }
+.pmd-qcs-row-badge {
+  flex: 0 0 auto;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+  color: var(--pmd-c-text-muted);
+  background: var(--pmd-c-surface-soft);
+  border: 1px solid var(--pmd-c-border-soft);
+  align-self: center;
+}
+.pmd-qcs-badge-dropzone {
+  color: var(--pmd-c-drop, var(--pmd-c-accent));
+  border-color: var(--pmd-c-drop, var(--pmd-c-accent));
+}
 .pmd-qcs-row-name {
   font-size: 0.92rem;
   font-weight: 500;
@@ -6522,7 +6538,8 @@ body.pmd-recovery-active.pmd-multi-doc #app {
 }
 .pmd-qcs-hints {
   display: flex;
-  gap: 0.85rem;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.85rem;
   padding: 0.3rem 0.75rem;
   border-top: 1px solid var(--pmd-c-divider-faint);
   font-size: 0.72rem;
@@ -6574,6 +6591,9 @@ body.pmd-recovery-active.pmd-multi-doc #app {
 }
 .pmd-qctags-row:hover {
   background: var(--pmd-c-hover);
+}
+.pmd-qctags-row-active {
+  background: var(--pmd-c-accent-soft);
 }
 .pmd-qctags-empty {
   font-size: 0.8rem;
