@@ -6641,9 +6641,10 @@ body.pmd-recovery-active.pmd-multi-doc #app {
   flex-direction: column;
   font-family: var(--pmd-ui-font);
 }
+/* While converting, block stray interaction without dimming the
+   dialog (the opacity read like the window losing focus). */
 .pmd-bulk-dialog.pmd-bulk-busy {
   pointer-events: none;
-  opacity: 0.75;
 }
 .pmd-bulk-header {
   display: flex;
