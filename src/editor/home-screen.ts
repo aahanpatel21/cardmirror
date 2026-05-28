@@ -26,6 +26,7 @@ import {
 } from './recents-store.js';
 import { learnStore, localToday } from './learn-store-host.js';
 import { openLearnSession } from './learn-session-ui.js';
+import { openLearnManage } from './learn-manage-ui.js';
 import type { Scope } from './learn-store.js';
 
 export interface HomeScreenCallbacks {
@@ -322,6 +323,13 @@ class HomeScreen {
           ? `${dueAll} due · ${totalAll} total`
           : `All caught up · ${totalAll} total`,
         () => openLearnSession({ kind: 'all' }, { title: 'Review — all' }),
+      ),
+    );
+    actions.appendChild(
+      this.actionCard(
+        'Manage cards',
+        'Browse, edit, suspend, and delete your flashcards by file.',
+        () => openLearnManage(),
       ),
     );
     this.learnEl.appendChild(actions);

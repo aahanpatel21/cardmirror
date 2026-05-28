@@ -54,7 +54,8 @@ import { quickCardsManageUI } from './quick-cards-manage-ui.js';
 import { quickCardSearchUI, openQuickCardTagPicker } from './quick-card-search-ui.js';
 import { learnStore, loadLearnStore, localToday } from './learn-store-host.js';
 import { buildDescriptor } from './learn-anchor.js';
-import { openCreateFlashcard } from './learn-create-ui.js';
+import { openCardEditor } from './learn-create-ui.js';
+import { openLearnManage } from './learn-manage-ui.js';
 import { openBulkConvert } from './bulk-convert-ui.js';
 import { homeScreen, type HomeScreenCallbacks } from './home-screen.js';
 import { recordRecent, removeRecent, type RecentFile } from './recents-store.js';
@@ -845,15 +846,27 @@ const ribbonContext: RibbonContext = {
     }
     const descriptor = buildDescriptor(view.state.doc, sel.from, sel.to);
     void (async () => {
-      const def = await openCreateFlashcard({ selectedText: descriptor.quote });
+      const def = await openCardEditor({ selectedText: descriptor.quote });
       if (!def) return;
       const docId = ensureActiveDocId();
       const cardId = crypto.randomUUID();
       const today = localToday();
       learnStore.upsertCard({ id: cardId, type: def.type, front: def.front, back: def.back }, today);
       learnStore.setAnchor(cardId, docId, descriptor);
+      // Register the doc (even unsaved/Untitled) so the card's file shows
+      // up immediately in the Home breakdown + manage GUI.
+      const f = activeFile();
+      learnStore.registerDoc({
+        docId,
+        path: typeof f.handle === 'string' ? f.handle : null,
+        name: f.filename ?? 'Untitled',
+        format: f.format,
+      });
       showToast('Flashcard created.');
     })();
+  },
+  manageFlashcards: () => {
+    openLearnManage();
   },
   newDocument: () => {
     void onNewDocClicked();

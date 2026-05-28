@@ -3278,6 +3278,7 @@ export type RibbonCommandId =
   | 'aiAskAboutSelection'
   | 'aiCreateCite'
   | 'createFlashcard'
+  | 'manageFlashcards'
   | 'wordCountSelection'
   | 'openShortcutsReference'
   | 'selectSimilar'
@@ -3408,6 +3409,7 @@ export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
   'aiAskAboutSelection',
   'aiCreateCite',
   'createFlashcard',
+  'manageFlashcards',
   'wordCountSelection',
   'openShortcutsReference',
   'selectSimilar',
@@ -3516,6 +3518,7 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   aiAskAboutSelection: 'Ask AI About Selection',
   aiCreateCite: 'Format Cite From Selection',
   createFlashcard: 'Create Flashcard From Selection',
+  manageFlashcards: 'Manage Flashcards',
   wordCountSelection: 'Word Count Selection',
   openShortcutsReference: 'Open Keyboard Shortcuts',
   selectSimilar: 'Select Similar Formatting',
@@ -3633,6 +3636,7 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   aiAskAboutSelection: 'Mod-Shift-q',
   aiCreateCite: 'Mod-Shift-x',
   createFlashcard: '',
+  manageFlashcards: '',
   wordCountSelection: '',
   openShortcutsReference: '',
   selectSimilar: '',
@@ -3804,6 +3808,7 @@ export interface RibbonContext {
   aiAskAboutSelection: () => void;
   aiCreateCite: () => void;
   createFlashcard: () => void;
+  manageFlashcards: () => void;
   /** File-level commands. These work regardless of whether the editor
    *  is mounted / has a doc loaded — they always run the same handler
    *  the corresponding ribbon button uses. */
@@ -3914,6 +3919,7 @@ const DEFAULT_RIBBON_CONTEXT: RibbonContext = {
   aiAskAboutSelection: () => {},
   aiCreateCite: () => {},
   createFlashcard: () => {},
+  manageFlashcards: () => {},
   newDocument: () => {},
   openFile: () => {},
   save: () => {},
@@ -4076,6 +4082,12 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
         if (state.selection.empty) return false;
         if (!dispatch) return true;
         ctx.createFlashcard();
+        return true;
+      };
+    case 'manageFlashcards':
+      return (_state, dispatch) => {
+        if (!dispatch) return true;
+        ctx.manageFlashcards();
         return true;
       };
     case 'wordCountSelection':

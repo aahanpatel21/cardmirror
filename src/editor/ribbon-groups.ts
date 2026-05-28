@@ -171,7 +171,7 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
   },
   {
     title: 'Learn',
-    commands: ['createFlashcard'],
+    commands: ['createFlashcard', 'manageFlashcards'],
   },
   {
     title: 'Select',

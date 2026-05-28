@@ -162,6 +162,14 @@ export class LearnStore {
   listDocs(): DocRegistryEntry[] {
     return [...this.docs.values()];
   }
+  /** Every card (content only) — for the manage GUI. */
+  listCards(): CardDef[] {
+    return [...this.cards.values()];
+  }
+  /** Every card↔file grounding — for the manage GUI's by-file grouping. */
+  listAnchors(): CardAnchor[] {
+    return [...this.anchors];
+  }
   /** Anchors (card↔file grounding) for a doc. */
   anchorsForDoc(docId: string): CardAnchor[] {
     return this.anchors.filter((a) => a.docId === docId);
@@ -250,6 +258,33 @@ export class LearnStore {
       this.schedules.set(cardId, { ...s, state: 'suspended' });
       this.changed();
     }
+  }
+
+  /** Suspend or resume a single card (manage GUI). Resume restores it to
+   *  'review' if it has reps, else 'new' — keeping its due date so a
+   *  previously-due card stays due. */
+  setSuspended(cardId: string, suspended: boolean): void {
+    const s = this.schedules.get(cardId);
+    if (!s) return;
+    if (suspended) {
+      if (s.state === 'suspended') return;
+      this.schedules.set(cardId, { ...s, state: 'suspended' });
+    } else {
+      if (s.state !== 'suspended') return;
+      this.schedules.set(cardId, { ...s, state: s.reps > 0 ? 'review' : 'new' });
+    }
+    this.changed();
+  }
+
+  /** Permanently delete a card: content, schedule, every file anchor,
+   *  deck membership, and review log (manage GUI). */
+  deleteCard(cardId: string): void {
+    this.cards.delete(cardId);
+    this.schedules.delete(cardId);
+    this.anchors = this.anchors.filter((a) => a.cardId !== cardId);
+    for (const d of this.decks) d.cardIds = d.cardIds.filter((c) => c !== cardId);
+    this.log = this.log.filter((l) => l.cardId !== cardId);
+    this.changed();
   }
 
   /** Archive (suspend) or delete all of a file's cards/threads — culls stale

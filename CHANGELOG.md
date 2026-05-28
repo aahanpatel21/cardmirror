@@ -21,6 +21,12 @@ see `DETAILED_CHANGELOG.md`.
     today. A session shows one card at a time — Space reveals the
     answer, then **1 = Forgot** / **2 = Remembered** (binary grading).
     A forgotten card comes back later in the same session.
+  - **Manage cards** (Home → Learn, or the command palette): browse every
+    card grouped by the file it's anchored to — so you can see which
+    cards belong to which document — filter by text, edit a card's
+    question/answer, suspend/resume it, or delete it. Cards shared across
+    files (via Save As) are marked, and an "Unanchored" group collects
+    cards whose text reference is gone.
   - Flashcards live in a **private, per-user layer on your machine** —
     they are never written into the document and never travel in
     comments, so sharing a `.docx`/`.cmir` never leaks your cards.

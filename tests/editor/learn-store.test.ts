@@ -72,6 +72,41 @@ describe('forgetDoc', () => {
   });
 });
 
+describe('manage GUI: list / suspend / delete', () => {
+  it('listCards + listAnchors expose content + grounding', () => {
+    const s = store();
+    s.upsertCard(card('c1'), TODAY);
+    s.setAnchor('c1', 'docA', desc('x'));
+    s.setAnchor('c1', 'docB', desc('x'));
+    expect(s.listCards().map((c) => c.id)).toEqual(['c1']);
+    expect(s.listAnchors().map((a) => a.docId).sort()).toEqual(['docA', 'docB']);
+  });
+
+  it('setSuspended toggles a single card without losing it', () => {
+    const s = store();
+    s.upsertCard(card('c1'), TODAY);
+    s.setSuspended('c1', true);
+    expect(s.getSchedule('c1')?.state).toBe('suspended');
+    expect(s.dueCount({ kind: 'all' }, TODAY)).toBe(0);
+    s.setSuspended('c1', false); // never reviewed → back to 'new'
+    expect(s.getSchedule('c1')?.state).toBe('new');
+    expect(s.dueCount({ kind: 'all' }, TODAY)).toBe(1);
+  });
+
+  it('deleteCard removes content, schedule, anchors, deck membership', () => {
+    const s = store();
+    s.upsertCard(card('c1'), TODAY);
+    s.setAnchor('c1', 'docA', desc('x'));
+    s.createDeck('D', 'd1', NOW);
+    s.setDeckMembership('d1', 'c1', true);
+    s.deleteCard('c1');
+    expect(s.getCard('c1')).toBeUndefined();
+    expect(s.getSchedule('c1')).toBeUndefined();
+    expect(s.anchorsForDoc('docA')).toEqual([]);
+    expect(s.queue({ kind: 'deck', deckId: 'd1' }, TODAY)).toEqual([]);
+  });
+});
+
 describe('decks', () => {
   it('membership defines a deck scope', () => {
     const s = store();

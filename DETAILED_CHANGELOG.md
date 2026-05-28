@@ -44,12 +44,23 @@ in each release, see `CHANGELOG.md`.
     Cloze cards blank `{{deletion}}` on the front and highlight it on the
     reveal.
   - **Home Learn section.** `home-screen.ts` rebuilds from the store (on
-    change + each show): a "Review all due" card plus a per-file /
-    per-deck breakdown of scopes with cards due today, each opening a
-    scoped session.
+    change + each show): "Review all due" + "Manage cards" cards plus a
+    per-file / per-deck breakdown of scopes with cards due today, each
+    opening a scoped session.
+  - **Manage cards.** `learn-manage-ui.ts` (the `manageFlashcards`
+    command, or the Home button) lists every card grouped by the file
+    it's anchored to — built from new store reads `listCards()` /
+    `listAnchors()` — with a text filter, a show-suspended toggle, and
+    per-card edit (reuses `openCardEditor` with an `initial`),
+    suspend/resume (`setSuspended`), and a two-click delete
+    (`deleteCard`; native confirm is unavailable in Electron). Cards
+    shared across files are flagged; an "Unanchored" group collects cards
+    with no anchor. `openCreateFlashcard` was generalized to
+    `openCardEditor({ selectedText? , initial? })` to serve both create
+    and edit.
   - Deferred to later steps: rendering anchored cards in the comments
-    column + the unanchored/re-ground list, and migrating Ask-AI threads
-    into the same local layer.
+    column + the in-doc re-ground flow, deck management, and migrating
+    Ask-AI threads into the same local layer.
 
 - **Command palette: file search (`f` prefix) — a first slice of corpus
   search.** Two on-demand stages, no persistent index yet (see

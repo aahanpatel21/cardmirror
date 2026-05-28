@@ -14,7 +14,17 @@ export interface NewCardDef {
   back: string;
 }
 
-export function openCreateFlashcard(opts: { selectedText: string }): Promise<NewCardDef | null> {
+/**
+ * Open the card editor. `selectedText` (create) seeds the anchor note +
+ * prefills the answer / cloze sentence; `initial` (edit) prefills the
+ * type + front + back of an existing card. Returns the edited definition
+ * or null on cancel.
+ */
+export function openCardEditor(
+  opts: { selectedText?: string; initial?: NewCardDef; title?: string } = {},
+): Promise<NewCardDef | null> {
+  const isEdit = !!opts.initial;
+  const seed = (opts.selectedText ?? '').trim();
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
     overlay.className = 'pmd-route-overlay';
@@ -23,19 +33,22 @@ export function openCreateFlashcard(opts: { selectedText: string }): Promise<New
 
     const header = document.createElement('div');
     header.className = 'pmd-route-header';
-    header.textContent = 'New flashcard';
+    header.textContent = opts.title ?? (isEdit ? 'Edit flashcard' : 'New flashcard');
     dialog.appendChild(header);
 
-    const anchorNote = document.createElement('div');
-    anchorNote.className = 'pmd-learn-create-anchor';
-    const snippet = opts.selectedText.replace(/\s+/g, ' ').trim();
-    anchorNote.textContent = `Anchored to: "${snippet.length > 90 ? snippet.slice(0, 90) + '…' : snippet}"`;
-    dialog.appendChild(anchorNote);
+    // Anchor note only on create-from-selection (edit keeps its anchor).
+    if (opts.selectedText !== undefined) {
+      const anchorNote = document.createElement('div');
+      anchorNote.className = 'pmd-learn-create-anchor';
+      const snippet = seed.replace(/\s+/g, ' ');
+      anchorNote.textContent = `Anchored to: "${snippet.length > 90 ? snippet.slice(0, 90) + '…' : snippet}"`;
+      dialog.appendChild(anchorNote);
+    }
 
     // Type toggle (Q&A / Cloze), mirroring the segmented controls.
     const types = document.createElement('div');
     types.className = 'pmd-theme-editor pmd-learn-create-type';
-    let type: 'qa' | 'cloze' = 'qa';
+    let type: 'qa' | 'cloze' = opts.initial?.type ?? 'qa';
     const mkType = (value: 'qa' | 'cloze', label: string): HTMLButtonElement => {
       const b = document.createElement('button');
       b.type = 'button';
@@ -56,11 +69,17 @@ export function openCreateFlashcard(opts: { selectedText: string }): Promise<New
     mkType('cloze', 'Cloze');
     dialog.appendChild(types);
 
+    // Prefills: edit uses the existing card; create seeds the answer
+    // (Q&A) / sentence (cloze) with the selected text.
+    const qaFront = opts.initial?.type === 'qa' ? opts.initial.front : '';
+    const qaBack = opts.initial?.type === 'qa' ? opts.initial.back : seed;
+    const clozeSeed = opts.initial?.type === 'cloze' ? opts.initial.front : seed;
+
     // Q&A fields.
     const qaWrap = document.createElement('div');
     qaWrap.className = 'pmd-learn-create-fields';
-    const front = textarea('Question', '');
-    const back = textarea('Answer', opts.selectedText.trim());
+    const front = textarea('Question', qaFront);
+    const back = textarea('Answer', qaBack);
     qaWrap.append(front.wrap, back.wrap);
     dialog.appendChild(qaWrap);
 
@@ -68,7 +87,7 @@ export function openCreateFlashcard(opts: { selectedText: string }): Promise<New
     const clozeWrap = document.createElement('div');
     clozeWrap.className = 'pmd-learn-create-fields';
     clozeWrap.hidden = true;
-    const cloze = textarea('Cloze sentence — wrap the deletion in {{double braces}}', opts.selectedText.trim());
+    const cloze = textarea('Cloze sentence — wrap the deletion in {{double braces}}', clozeSeed);
     clozeWrap.append(cloze.wrap);
     dialog.appendChild(clozeWrap);
 
@@ -99,7 +118,7 @@ export function openCreateFlashcard(opts: { selectedText: string }): Promise<New
     const create = document.createElement('button');
     create.type = 'button';
     create.className = 'pmd-text-prompt-ok';
-    create.textContent = 'Create';
+    create.textContent = isEdit ? 'Save' : 'Create';
     create.addEventListener('click', submit);
     buttons.append(cancel, create);
     dialog.appendChild(buttons);
@@ -147,7 +166,9 @@ export function openCreateFlashcard(opts: { selectedText: string }): Promise<New
 
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
-    setTimeout(() => front.input.focus(), 0);
+    // Show the right field group for the initial type (matters when
+    // editing a cloze card) and focus its first input.
+    applyMode();
   });
 }
 
