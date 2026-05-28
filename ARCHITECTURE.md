@@ -1514,3 +1514,68 @@ retrofitting it later is high and tends not to happen.
   minimum *preserve* comments on round-trip without rendering them.
 - **Localization** beyond English. No non-English debate communities
   in scope right now.
+
+## 19. Learn (spaced-repetition)
+
+Flashcards (and, in a later step, Ask-AI threads) are a **per-user
+annotation layer that never enters the document.** This is the load-
+bearing decision: a debater works in `.docx` and shares files freely,
+so anything written into the document body or its comment XML would
+leak the user's private study material. The layer lives only on the
+user's machine. See `reference-docs/mnemonic-medium/SPEC-learn-system.md`
+for the full spec.
+
+**Storage.** `LearnStore` (`learn-store.ts`) is a host-agnostic,
+unit-testable model with persistence injected. The renderer wires it
+(`learn-store-host.ts`) to a single whole-blob host KV
+(`read/writeLearnStore` → `{userData}/learn-store.json` on desktop,
+`localStorage` on web), debounced like the other stores. Review reads
+entirely from here — no file I/O.
+
+**Document identity.** Because the cards live outside the file, the file
+needs a stable id to re-associate with. Each document carries a hidden
+`cmirDocId`: a top-level field in `.cmir`, and for `.docx` a custom
+document property in `docProps/custom.xml` (FMTID
+`{D5CDD505-2E9C-101B-9397-08002B2CF9AE}`, `cmirDocId`) — verified to
+survive a real Word open/edit/save. `index.ts` mints it lazily on first
+annotation (`ensureDocId`, rekeying the in-memory session uid via
+`rekeyDoc`), backfills it on open/save, and forks a copy's annotations
+on Save As (`copyDocAnnotations`).
+
+**Split identity.** Identity is deliberately split so a file-copy shares
+one logical card and one schedule while each file keeps its own
+grounding:
+
+- per `cardId`: `CardDef` (content) + `ScheduleEntry` (schedule)
+- per (`cardId`, `docId`): `CardAnchor` (how the card is grounded in a
+  file)
+- per (`threadId`, `docId`): `AiThread`
+
+So the same card reviewed once counts once across every file it appears
+in, but breaking the text reference in one file (or deleting that file)
+never touches the card's schedule.
+
+**Anchoring.** `learn-anchor.ts` builds a Hypothesis-style descriptor
+(exact quote + a window of prefix/suffix context + approximate
+position) and re-resolves it against an edited document, disambiguating
+duplicate quotes by context then nearest position. An anchor that can't
+resolve becomes "unanchored" — which (per the spec) must not affect the
+card's schedule or file association.
+
+**Scheduling.** `learn-scheduler.ts` is a pure binary ladder (no ease
+factor; FSRS-ready fields reserved). Grading is Orbit-style: a
+remembered card advances along the interval ladder; a forgotten card
+relearns *and* is retried later in the same session (`gradeCard`
+returns `retryInSession`). Days are local-day buckets.
+
+**UI.** `learn-create-ui.ts` (anchor a Q&A or cloze card to the
+selection, via the `createFlashcard` ribbon command / command palette),
+`learn-session-ui.ts` (the review overlay, driven by
+`learnStore.queue(scope, today)`), and the Home screen's Learn section
+(`home-screen.ts`, rebuilt from the store: review-all + per-file /
+per-deck due breakdown). Multi-pane create/review is gated off pending
+per-pane docId threading.
+
+**Deferred.** Rendering anchored cards in the comments column + an
+unanchored / re-ground list; migrating Ask-AI threads from round-tripped
+comments into this same local layer.

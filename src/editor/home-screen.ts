@@ -24,6 +24,9 @@ import {
   clearRecents,
   type RecentFile,
 } from './recents-store.js';
+import { learnStore, localToday } from './learn-store-host.js';
+import { openLearnSession } from './learn-session-ui.js';
+import type { Scope } from './learn-store.js';
 
 export interface HomeScreenCallbacks {
   newDoc: () => void;
@@ -43,6 +46,7 @@ export interface HomeScreenCallbacks {
 class HomeScreen {
   private root!: HTMLDivElement;
   private recentsEl!: HTMLDivElement;
+  private learnEl!: HTMLDivElement;
   private backBtn!: HTMLButtonElement;
   private callbacks: HomeScreenCallbacks | null = null;
   private unsubscribe: (() => void) | null = null;
@@ -170,34 +174,26 @@ class HomeScreen {
     qcSection.appendChild(qcGrid);
     inner.appendChild(qcSection);
 
-    // Learn — placeholder for the forthcoming spaced-repetition study
-    // section. Non-interactive; here only to preview the layout.
+    // Learn — spaced-repetition review. Content is rebuilt from the
+    // local learn store (due counts per scope) and re-rendered on
+    // store changes + each show.
     const learnSection = document.createElement('section');
     learnSection.className = 'pmd-home-learn-section';
     const learnTitle = document.createElement('h2');
     learnTitle.className = 'pmd-home-section-title';
     learnTitle.textContent = 'Learn';
     learnSection.appendChild(learnTitle);
-    const learnActions = document.createElement('div');
-    learnActions.className = 'pmd-home-qc-actions';
-    const learnCard = document.createElement('div');
-    learnCard.className = 'pmd-home-action pmd-home-action-placeholder';
-    learnCard.setAttribute('aria-disabled', 'true');
-    const learnT = document.createElement('span');
-    learnT.className = 'pmd-home-action-title';
-    learnT.textContent = 'Review flashcards';
-    const learnS = document.createElement('span');
-    learnS.className = 'pmd-home-action-sub';
-    learnS.textContent = 'Spaced-repetition study — coming soon.';
-    learnCard.append(learnT, learnS);
-    learnActions.appendChild(learnCard);
-    learnSection.appendChild(learnActions);
+    this.learnEl = document.createElement('div');
+    this.learnEl.className = 'pmd-home-learn';
+    learnSection.appendChild(this.learnEl);
     inner.appendChild(learnSection);
 
     parent.appendChild(this.root);
 
     this.unsubscribe = subscribeRecents(() => this.renderRecents());
+    learnStore.subscribe(() => this.renderLearn());
     this.renderRecents();
+    this.renderLearn();
   }
 
   /** Show the home screen. `canReturnToDoc` (default false) is set
@@ -218,8 +214,10 @@ class HomeScreen {
     document.documentElement.classList.add('pmd-home-active');
     document.addEventListener('keydown', this.onKeyDown);
     // Recents may have changed since last shown (another window
-    // opened a file); re-read.
+    // opened a file); re-read. Same for the learn counts (cards may
+    // have been created while a doc was open).
     this.renderRecents();
+    this.renderLearn();
   }
 
   hide(): void {
@@ -287,6 +285,78 @@ class HomeScreen {
     }
     for (const r of recents) {
       this.recentsEl.appendChild(this.recentRow(r));
+    }
+  }
+
+  /** Rebuild the Learn section from the local store: an "all due"
+   *  action card plus a per-file / per-deck breakdown of anything with
+   *  cards due today. Empty when no flashcards exist yet. */
+  private renderLearn(): void {
+    if (!this.learnEl) return;
+    const today = localToday();
+    this.learnEl.innerHTML = '';
+
+    const totalAll = learnStore.totalCount({ kind: 'all' });
+    if (totalAll === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'pmd-home-action pmd-home-action-placeholder';
+      empty.setAttribute('aria-disabled', 'true');
+      const t = document.createElement('span');
+      t.className = 'pmd-home-action-title';
+      t.textContent = 'No flashcards yet';
+      const s = document.createElement('span');
+      s.className = 'pmd-home-action-sub';
+      s.textContent = 'Select text in a document and choose Create Flashcard.';
+      empty.append(t, s);
+      this.learnEl.appendChild(empty);
+      return;
+    }
+
+    const dueAll = learnStore.dueCount({ kind: 'all' }, today);
+    const actions = document.createElement('div');
+    actions.className = 'pmd-home-qc-actions';
+    actions.appendChild(
+      this.actionCard(
+        dueAll > 0 ? `Review all due (${dueAll})` : 'Review all',
+        dueAll > 0
+          ? `${dueAll} due · ${totalAll} total`
+          : `All caught up · ${totalAll} total`,
+        () => openLearnSession({ kind: 'all' }, { title: 'Review — all' }),
+      ),
+    );
+    this.learnEl.appendChild(actions);
+
+    // Per-scope breakdown — only scopes with something due today, to
+    // keep the list short and actionable.
+    const rows: Array<{ label: string; due: number; scope: Scope }> = [];
+    for (const doc of learnStore.listDocs()) {
+      const due = learnStore.dueCount({ kind: 'file', docId: doc.docId }, today);
+      if (due > 0) rows.push({ label: doc.lastName, due, scope: { kind: 'file', docId: doc.docId } });
+    }
+    for (const deck of learnStore.listDecks()) {
+      const due = learnStore.dueCount({ kind: 'deck', deckId: deck.deckId }, today);
+      if (due > 0) rows.push({ label: deck.name, due, scope: { kind: 'deck', deckId: deck.deckId } });
+    }
+    if (rows.length > 0) {
+      rows.sort((a, b) => b.due - a.due);
+      const list = document.createElement('div');
+      list.className = 'pmd-home-learn-rows';
+      for (const r of rows) {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'pmd-home-learn-row';
+        const badge = document.createElement('span');
+        badge.className = 'pmd-home-learn-badge';
+        badge.textContent = String(r.due);
+        const name = document.createElement('span');
+        name.className = 'pmd-home-learn-name';
+        name.textContent = stripKnownExt(r.label);
+        name.title = r.label;
+        row.append(badge, name);
+        row.addEventListener('click', () => openLearnSession(r.scope, { title: `Review — ${stripKnownExt(r.label)}` }));
+        list.appendChild(row);
+      }
+      this.learnEl.appendChild(list);
     }
   }
 

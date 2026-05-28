@@ -9,6 +9,27 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Added
 
+- **Learn — flashcards & review (early).** Turn evidence into spaced-
+  repetition flashcards without leaving the editor.
+  - **Create Flashcard** (command palette / ribbon → Learn): with text
+    selected, anchor a new card to it. Pick **Q & A** (a question and an
+    answer) or **Cloze** (one sentence with the deletion wrapped in
+    `{{double braces}}`). The answer field pre-fills with the selected
+    text. Cards are due immediately.
+  - **Review** from the Home screen's **Learn** section: a "Review all
+    due" card plus a per-file / per-deck breakdown of whatever's due
+    today. A session shows one card at a time — Space reveals the
+    answer, then **1 = Forgot** / **2 = Remembered** (binary grading).
+    A forgotten card comes back later in the same session.
+  - Flashcards live in a **private, per-user layer on your machine** —
+    they are never written into the document and never travel in
+    comments, so sharing a `.docx`/`.cmir` never leaks your cards.
+    Documents keep a stable hidden id (it survives a round-trip through
+    Word) so your cards re-associate with the right file; **Save As**
+    forks a copy's cards alongside the new file.
+  - Multi-pane review/creation isn't wired up yet — use a single
+    document window for now.
+
 - **Modern icons** — the toolbar, banners, dialogs, and status bar now
   use a clean line-icon set (Untitled UI) that takes on the active
   theme color, replacing the old mix of emoji and text symbols. New

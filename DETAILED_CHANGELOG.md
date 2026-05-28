@@ -7,6 +7,45 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Learn: create→review loop over a local annotation layer.** First
+  user-facing slice of the spaced-repetition system (SPEC-learn-system).
+  Flashcards never enter the document — they live in a per-user
+  `LearnStore` (`learn-store.ts`) persisted as a single host KV blob
+  (`learn-store-host.ts` → `read/writeLearnStore`), keyed by a stable
+  per-document id.
+  - **Identity.** A document carries a hidden `cmirDocId`: a `.cmir`
+    field and, for `.docx`, a custom document property
+    (`docProps/custom.xml`) that survives a real Word round-trip. The
+    store splits identity so file-copies share one logical card + one
+    schedule while each file keeps its own grounding: `CardDef` +
+    `ScheduleEntry` per `cardId`; `CardAnchor` per (`cardId`,`docId`).
+    `index.ts` mints the id lazily (`ensureDocId`, rekeying the session
+    uid), backfills it on open/save, and forks annotations on Save As
+    (`copyDocAnnotations`). Multi-pane is gated off until per-pane docId
+    threading lands.
+  - **Create Flashcard.** New ribbon command (`createFlashcard`, in the
+    Learn group; reachable from the command palette) anchors a card to
+    the selection: `buildDescriptor` (`learn-anchor.ts`, Hypothesis-style
+    quote+context+position) captures the grounding, `learn-create-ui.ts`
+    collects Q&A or cloze content, and the store gets a `CardDef` +
+    due-today `ScheduleEntry` + `CardAnchor` keyed to
+    `activeAnnotationDocId()`.
+  - **Review.** `learn-session-ui.ts` is a full-screen overlay driven by
+    `learnStore.queue(scope, today)`. Front → reveal → binary grade;
+    grading goes through the Orbit-style scheduler (`learn-scheduler.ts`,
+    binary interval ladder, no ease factor) which reports
+    `retryInSession`, so a forgotten card is re-queued for later in the
+    same session while its schedule is updated and persisted per grade.
+    Cloze cards blank `{{deletion}}` on the front and highlight it on the
+    reveal.
+  - **Home Learn section.** `home-screen.ts` rebuilds from the store (on
+    change + each show): a "Review all due" card plus a per-file /
+    per-deck breakdown of scopes with cards due today, each opening a
+    scoped session.
+  - Deferred to later steps: rendering anchored cards in the comments
+    column + the unanchored/re-ground list, and migrating Ask-AI threads
+    into the same local layer.
+
 - **Command palette: file search (`f` prefix) — a first slice of corpus
   search.** Two on-demand stages, no persistent index yet (see
   ARCHITECTURE.md §11):

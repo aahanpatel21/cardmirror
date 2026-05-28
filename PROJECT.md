@@ -93,6 +93,12 @@ referenced files.
   and exporter are one tightly-coupled project. The Stylepox normalizer
   is genuinely separable (and the user already maintains a working
   version). — `ARCHITECTURE.md` §2-3.
+- **Learn lives in a per-user layer outside the document.** Flashcards
+  (and, later, Ask-AI threads) never enter the file body or its comment
+  XML — debaters share `.docx` freely, so private study material must
+  not travel with the file. Cards re-associate via a hidden, round-trip-
+  safe document id; identity is split so file-copies share one schedule
+  while each file keeps its own grounding. — `ARCHITECTURE.md` §19.
 
 ## Open questions deliberately deferred
 

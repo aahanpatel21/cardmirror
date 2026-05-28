@@ -116,6 +116,9 @@ export class LearnStore {
     this.log = b.log ?? [];
     this.decks = b.decks ?? [];
     this.docs = new Map((b.docs ?? []).map((d) => [d.docId, d]));
+    // Notify (but don't persist) so subscribers mounted before the
+    // async boot load — e.g. the Home screen's Learn section — refresh.
+    this.notify();
   }
 
   toJson(): string {
@@ -132,9 +135,13 @@ export class LearnStore {
     return JSON.stringify(b);
   }
 
+  private notify(): void {
+    for (const fn of this.listeners) fn();
+  }
+
   private changed(): void {
     this.persist(this.toJson());
-    for (const fn of this.listeners) fn();
+    this.notify();
   }
 
   subscribe(fn: () => void): () => void {
