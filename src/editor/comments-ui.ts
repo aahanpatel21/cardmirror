@@ -1352,29 +1352,31 @@ export class CommentsColumn {
   private scrollToRange(range: { from: number; to: number }): void {
     const view = this.getView();
     if (!view) return;
-    // Move the editor cursor to the start of the range. The
-    // selection-watching dispatch handler in `editor/index.ts`
-    // then keeps the active thread in sync as the cursor moves
-    // — so clicking a card naturally lights up the right thread
-    // and any neighbor displacement follows.
+    // Move the editor cursor to the start of the range (drives the
+    // cursor → active-thread tracking in `editor/index.ts`).
     const TextSelection = (view.state.selection.constructor as unknown) as {
       create: (doc: PMNode, from: number, to?: number) => never;
     };
     try {
-      view.dispatch(
-        view.state.tr
-          .setSelection(TextSelection.create(view.state.doc, range.from))
-          .scrollIntoView(),
-      );
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, range.from)));
     } catch {
       // Cursor placement may fail if the position isn't inside an
-      // inline-content block (e.g. a table cell selection that
-      // wraps an entire block). Fall back to a DOM-level scroll.
-      const dom = view.domAtPos(range.from);
-      const el = dom?.node instanceof Element ? dom.node : dom?.node?.parentElement;
-      if (el && 'scrollIntoView' in el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+      // inline-content block — skip the caret move, still scroll below.
+    }
+    // Scroll the EDITOR to the anchored text. A direct DOM scroll on the
+    // text element reliably scrolls the editor's scroll container (the
+    // comments column is now a separate fixed panel, and PM's
+    // `tr.scrollIntoView()` wasn't moving the page here).
+    try {
+      const at = view.domAtPos(range.from);
+      const node: Node | null = at.node ?? null;
+      const el =
+        node && node.nodeType === Node.ELEMENT_NODE
+          ? (node as Element)
+          : (node?.parentElement ?? null);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } catch {
+      // Position detached / not yet laid out — ignore.
     }
   }
 
