@@ -8174,8 +8174,20 @@ textarea.pmd-text-prompt-input {
   font-size: 0.8rem;
   color: var(--pmd-c-text-muted);
 }
-.pmd-learn-manage-review {
+.pmd-learn-manage-new {
   margin-left: auto;
+  background: transparent;
+  color: var(--pmd-c-text);
+  border: 1px solid var(--pmd-c-border);
+  border-radius: 6px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+}
+.pmd-learn-manage-new:hover { background: var(--pmd-c-hover); }
+.pmd-learn-manage-review {
   background: var(--pmd-c-accent);
   color: var(--pmd-c-text-on-accent);
   border: 1px solid var(--pmd-c-accent);

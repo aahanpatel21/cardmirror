@@ -39,6 +39,23 @@ export function openLearnManage(): void {
   title.textContent = 'Flashcards';
   const count = document.createElement('span');
   count.className = 'pmd-learn-manage-count';
+  const newCard = document.createElement('button');
+  newCard.type = 'button';
+  newCard.className = 'pmd-learn-manage-new';
+  newCard.textContent = 'New card';
+  newCard.title = 'Create a flashcard not tied to any document';
+  newCard.addEventListener('click', () => {
+    void (async () => {
+      const def = await openCardEditor();
+      if (!def) return;
+      // Unanchored: a card with no CardAnchor. Still scheduled + reviewable
+      // (the 'all' scope covers every card); appears in the Unanchored group.
+      learnStore.upsertCard(
+        { id: crypto.randomUUID(), type: def.type, front: def.front, back: def.back },
+        localToday(),
+      );
+    })();
+  });
   const reviewAll = document.createElement('button');
   reviewAll.type = 'button';
   reviewAll.className = 'pmd-learn-manage-review';
@@ -50,7 +67,7 @@ export function openLearnManage(): void {
   close.setAttribute('aria-label', 'Close');
   close.textContent = '✕';
   close.addEventListener('click', cleanup);
-  bar.append(title, count, reviewAll, close);
+  bar.append(title, count, newCard, reviewAll, close);
 
   const toolbar = document.createElement('div');
   toolbar.className = 'pmd-learn-manage-toolbar';

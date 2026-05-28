@@ -47,15 +47,17 @@ in each release, see `CHANGELOG.md`.
     change + each show): "Review all due" + "Manage cards" cards plus a
     per-file / per-deck breakdown of scopes with cards due today, each
     opening a scoped session.
-  - **Manage cards.** `learn-manage-ui.ts` (the `manageFlashcards`
+  - **Manage flashcards.** `learn-manage-ui.ts` (the `manageFlashcards`
     command, or the Home button) lists every card grouped by the file
     it's anchored to — built from new store reads `listCards()` /
     `listAnchors()` — with a text filter, a show-suspended toggle, and
     per-card edit (reuses `openCardEditor` with an `initial`),
     suspend/resume (`setSuspended`), and a two-click delete
-    (`deleteCard`; native confirm is unavailable in Electron). Cards
-    shared across files are flagged; an "Unanchored" group collects cards
-    with no anchor. `openCreateFlashcard` was generalized to
+    (`deleteCard`; native confirm is unavailable in Electron). A **New
+    card** action creates a standalone card with no `CardAnchor` (still
+    scheduled + reviewable under the 'all' scope). Cards shared across
+    files are flagged; an "Unanchored" group collects standalone cards
+    and any whose anchor is gone. `openCreateFlashcard` was generalized to
     `openCardEditor({ selectedText? , initial? })` to serve both create
     and edit.
   - Deferred to later steps: rendering anchored cards in the comments
