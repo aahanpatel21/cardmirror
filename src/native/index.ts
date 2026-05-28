@@ -55,6 +55,10 @@ export interface NativeFile {
   doc: unknown;
   /** Comment threads, if any. Omitted from the file when empty. */
   threads?: Thread[];
+  /** Stable per-document UUID linking the local Learn annotation layer
+   *  (flashcards / AI threads / schedule) to this doc across renames and
+   *  format changes. Minted on first save; absent on older files. */
+  docId?: string;
 }
 
 export interface SerializeNativeOptions {
@@ -64,6 +68,9 @@ export interface SerializeNativeOptions {
   /** App version string written into `createdBy`. Defaults to a
    *  generic "CardMirror" if not supplied. */
   appVersion?: string;
+  /** Stable per-document UUID (see `NativeFile.docId`). Written only
+   *  when provided, so callers that don't track it are unaffected. */
+  docId?: string;
 }
 
 /** Serialize a ProseMirror doc + optional threads to bytes in the
@@ -82,6 +89,9 @@ export function serializeNative(
   if (opts.threads && opts.threads.length > 0) {
     file.threads = [...opts.threads];
   }
+  if (opts.docId) {
+    file.docId = opts.docId;
+  }
   // Pretty-print for diffability + manual inspection. JSON whitespace
   // is recoverable on the next save anyway, so the cost is minimal.
   const json = JSON.stringify(file, null, 2);
@@ -92,6 +102,8 @@ export interface ParseNativeResult {
   doc: PMNode;
   /** Empty array when the file had no threads. */
   threads: Thread[];
+  /** Stable per-document UUID, or null on files that predate it. */
+  docId: string | null;
   meta: {
     createdBy: string;
     createdAt: string;
@@ -136,6 +148,7 @@ export function parseNative(bytes: Uint8Array): ParseNativeResult {
   return {
     doc,
     threads: Array.isArray(file.threads) ? file.threads : [],
+    docId: typeof file.docId === 'string' && file.docId ? file.docId : null,
     meta: {
       createdBy: typeof file.createdBy === 'string' ? file.createdBy : '',
       createdAt: typeof file.createdAt === 'string' ? file.createdAt : '',

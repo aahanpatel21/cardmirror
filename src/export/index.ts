@@ -43,5 +43,11 @@ export async function toDocx(doc: PMNode, opts: ExportOptions = {}): Promise<Uin
       },
     ]);
   }
+  // Stable per-document identity for the Learn annotation layer. Written
+  // only when the caller supplies one, so doc-id-unaware callers (and the
+  // round-trip tests) are unaffected.
+  if (opts.docId) {
+    await docx.writeDocId(opts.docId);
+  }
   return docx.toBuffer();
 }

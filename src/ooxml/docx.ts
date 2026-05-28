@@ -19,7 +19,7 @@
 
 import JSZip from 'jszip';
 import { CANONICAL_STYLES_XML } from './styles.js';
-import { XML_PROLOG } from './xml.js';
+import { XML_PROLOG, escText } from './xml.js';
 
 /** Loaded docx — an in-memory zip we can read parts from and modify. */
 export class Docx {
@@ -97,6 +97,49 @@ export class Docx {
       .join('');
     const updated = ct.replace('</Types>', `${additions}</Types>`);
     this.writeText('[Content_Types].xml', updated);
+  }
+
+  /** Write the CardMirror `docId` as a custom document property
+   *  (`docProps/custom.xml`) — verified to survive a real Word round-trip.
+   *  Adds the part, its content-type override, and a package relationship.
+   *  Idempotent-ish: if a custom.xml already exists we replace it (we only
+   *  store the one property). */
+  async writeDocId(docId: string): Promise<void> {
+    const propsXml = `${XML_PROLOG}
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="2" name="cmirDocId"><vt:lpwstr>${escText(docId)}</vt:lpwstr></property></Properties>`;
+    this.writeText('docProps/custom.xml', propsXml);
+
+    const ct = await this.readText('[Content_Types].xml');
+    if (ct && !ct.includes('docProps/custom.xml')) {
+      this.writeText(
+        '[Content_Types].xml',
+        ct.replace(
+          '</Types>',
+          '<Override PartName="/docProps/custom.xml" ContentType="application/vnd.openxmlformats-officedocument.custom-properties+xml"/></Types>',
+        ),
+      );
+    }
+
+    const rels = await this.readText('_rels/.rels');
+    if (rels && !rels.includes('custom-properties')) {
+      const ids = [...rels.matchAll(/Id="rId(\d+)"/g)].map((m) => Number(m[1]));
+      const nextId = `rId${(ids.length ? Math.max(...ids) : 0) + 1}`;
+      this.writeText(
+        '_rels/.rels',
+        rels.replace(
+          '</Relationships>',
+          `<Relationship Id="${nextId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties" Target="docProps/custom.xml"/></Relationships>`,
+        ),
+      );
+    }
+  }
+
+  /** Read the CardMirror `docId` custom property, or null if absent. */
+  async readDocId(): Promise<string | null> {
+    const xml = await this.readText('docProps/custom.xml');
+    if (!xml) return null;
+    const m = xml.match(/name="cmirDocId"[^>]*>\s*<vt:lpwstr>([^<]*)<\/vt:lpwstr>/);
+    return m ? m[1]! : null;
   }
 
   /** Get the raw zip for advanced operations. */

@@ -65,6 +65,10 @@ export interface ExportOptions {
    *  `<w:commentRangeStart/End>` brackets regardless of what marks
    *  the doc tree carries. */
   threads?: readonly Thread[];
+  /** Stable per-document UUID. When provided, `toDocx` writes it as a
+   *  custom document property (`docProps/custom.xml`) for the Learn
+   *  annotation layer. `exportDoc` itself ignores it. */
+  docId?: string;
 }
 
 /** Map common image MIME types to file extensions. */

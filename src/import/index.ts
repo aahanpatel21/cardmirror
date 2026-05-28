@@ -66,7 +66,7 @@ export async function fromDocx(bytes: Uint8Array | ArrayBuffer): Promise<PMNode>
  *  about the doc structure can keep using `fromDocx`. */
 export async function fromDocxFull(
   bytes: Uint8Array | ArrayBuffer,
-): Promise<{ doc: PMNode; threads: Thread[] }> {
+): Promise<{ doc: PMNode; threads: Thread[]; docId: string | null }> {
   const docx = await Docx.load(bytes);
   const documentXml = await docx.readText('word/document.xml');
   if (!documentXml) throw new Error('docx is missing word/document.xml');
@@ -88,5 +88,6 @@ export async function fromDocxFull(
   const commentsXml = await docx.readText('word/comments.xml');
   const commentsExtendedXml = await docx.readText('word/commentsExtended.xml');
   const threads = importComments(commentsXml, commentsExtendedXml);
-  return { doc, threads };
+  const docId = await docx.readDocId();
+  return { doc, threads, docId };
 }
