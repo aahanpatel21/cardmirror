@@ -225,9 +225,10 @@ export class CommentsColumn {
    *  focused multi-pane record). Flashcards for this id are resolved +
    *  rendered when the column is open. */
   private getDocId: () => string;
-  /** Active subscription to the learn store while the column is open,
-   *  so a card created / edited / deleted elsewhere re-resolves +
-   *  re-renders. Null when the column is closed. */
+  /** Permanent subscription to the learn store (set in the constructor)
+   *  so a card created / edited / deleted / re-grounded anywhere
+   *  re-resolves + re-renders. `refreshFlashcardAnchors` no-ops while
+   *  the column is hidden, so the subscription is cheap when closed. */
   private learnUnsub: (() => void) | null = null;
 
   constructor(root: HTMLElement, getView: () => EditorView | null, getDocId: () => string = () => '') {
@@ -262,6 +263,12 @@ export class CommentsColumn {
         });
       });
     }
+    // Permanent subscription: re-resolve + re-render whenever a card is
+    // created / edited / deleted / re-grounded anywhere. Must NOT be
+    // gated on `setVisible` — on boot the column is shown by setting
+    // `hidden` directly (in mountView), so setVisible may never run.
+    // `refreshFlashcardAnchors` no-ops while the column is hidden.
+    this.learnUnsub = learnStore.subscribe(() => this.refreshFlashcardAnchors());
   }
 
   /** Add a drag handle on the column's LEFT edge so users can
@@ -402,20 +409,10 @@ export class CommentsColumn {
     }
     settings.set('commentsVisible', visible);
     if (visible) {
-      // Lazy re-anchoring (SPEC §4.2): resolve this doc's flashcards
-      // only when the column is actually shown. Subscribe so cards
-      // created / edited elsewhere re-resolve + re-render while open.
+      // Resolve this doc's flashcards on show. (The constructor's
+      // permanent store subscription keeps them current thereafter.)
       this.refreshFlashcardAnchors();
-      if (!this.learnUnsub) {
-        // Re-resolve + re-render when a card is created/edited/deleted
-        // elsewhere (refreshFlashcardAnchors renders for us).
-        this.learnUnsub = learnStore.subscribe(() => this.refreshFlashcardAnchors());
-      }
     } else {
-      if (this.learnUnsub) {
-        this.learnUnsub();
-        this.learnUnsub = null;
-      }
       // Drop the highlights when the column closes (resolved fresh on
       // the next open).
       const v = this.getView();
