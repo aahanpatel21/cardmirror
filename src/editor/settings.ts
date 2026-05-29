@@ -1564,6 +1564,35 @@ export class SettingsStore {
     return { ...this.values };
   }
 
+  /** Snapshot for export: every persisted setting EXCEPT transient
+   *  (per-window) keys and the Anthropic API key, which is never
+   *  exported. */
+  exportObject(): Record<string, unknown> {
+    const out: Record<string, unknown> = { ...this.values };
+    delete out['anthropicApiKey'];
+    for (const key of TRANSIENT_SETTING_KEYS) delete out[key];
+    return out;
+  }
+
+  /** Overwrite ALL settings from an imported (untrusted) object. Runs
+   *  through `sanitize({ ...DEFAULTS, ...raw })` — the same boundary as
+   *  load — so it tolerates schema drift: fields added since the export
+   *  fall back to defaults, fields removed since are dropped, and bad
+   *  values are coerced/clamped. The current API key (never exported)
+   *  and transient per-window values are preserved, not wiped. */
+  replaceAll(raw: unknown): void {
+    const parsed = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+    const preserved: Record<string, unknown> = {
+      anthropicApiKey: this.values.anthropicApiKey,
+    };
+    for (const key of TRANSIENT_SETTING_KEYS) {
+      preserved[key] = (this.values as unknown as Record<string, unknown>)[key];
+    }
+    this.values = sanitize({ ...DEFAULTS, ...parsed, ...preserved } as Settings);
+    this.persist();
+    this.notify();
+  }
+
   /** Subscribe to any settings change. Returns an unsubscribe function. */
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener);

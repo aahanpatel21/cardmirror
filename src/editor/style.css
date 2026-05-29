@@ -3727,6 +3727,34 @@ html.pmd-nav-flat .pmd-nav-type-analytic:hover .pmd-nav-label {
    block from the user-editable settings above; the <dl> renders
    as a two-column "Label … Value" grid. Action buttons sit
    beneath the list and are only present on Electron. */
+/* Export / Import settings — bottom of the General panel. */
+.pmd-settings-backup {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--pmd-c-border-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.pmd-settings-backup-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+.pmd-settings-backup-btn {
+  padding: 0.35rem 0.7rem;
+  font: inherit;
+  font-size: 0.85rem;
+  border: 1px solid var(--pmd-c-border);
+  border-radius: 4px;
+  background: var(--pmd-c-bg);
+  color: var(--pmd-c-text);
+  cursor: pointer;
+}
+.pmd-settings-backup-btn:hover {
+  background: var(--pmd-c-info-bg);
+}
+
 .pmd-install-info-section {
   margin-top: 1.5rem;
 }

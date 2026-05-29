@@ -385,6 +385,7 @@ class SettingsModal {
       // because it isn't a user-editable setting.
       if (id === 'general') {
         panel.appendChild(buildInstallInfoSection());
+        panel.appendChild(this.buildSettingsBackupSection());
       }
       this.dialog.appendChild(panel);
       panels[id] = panel;
@@ -414,6 +415,85 @@ class SettingsModal {
       applyActive();
     };
     applyActive();
+  }
+
+  /** Export / Import settings — pinned at the bottom of General. */
+  private buildSettingsBackupSection(): HTMLElement {
+    const section = document.createElement('section');
+    section.className = 'pmd-settings-backup';
+
+    const title = document.createElement('div');
+    title.className = 'pmd-settings-row-title';
+    title.textContent = 'Back up settings';
+    section.appendChild(title);
+
+    const desc = document.createElement('div');
+    desc.className = 'pmd-settings-row-desc';
+    desc.textContent =
+      'Save all your settings — shortcuts, keyboard macros, appearance, and the rest — to a file, or import a file to replace them. Importing overwrites your current settings. Your Anthropic API key is never included.';
+    section.appendChild(desc);
+
+    const actions = document.createElement('div');
+    actions.className = 'pmd-settings-backup-actions';
+    const exportBtn = document.createElement('button');
+    exportBtn.type = 'button';
+    exportBtn.className = 'pmd-settings-backup-btn';
+    exportBtn.textContent = 'Export settings…';
+    exportBtn.addEventListener('click', () => void this.doExportSettings());
+    const importBtn = document.createElement('button');
+    importBtn.type = 'button';
+    importBtn.className = 'pmd-settings-backup-btn';
+    importBtn.textContent = 'Import settings…';
+    importBtn.addEventListener('click', () => void this.doImportSettings());
+    actions.append(exportBtn, importBtn);
+    section.appendChild(actions);
+
+    return section;
+  }
+
+  private async doExportSettings(): Promise<void> {
+    const payload = JSON.stringify(
+      { version: 1, settings: settings.exportObject() },
+      null,
+      2,
+    );
+    const bytes = new TextEncoder().encode(payload);
+    await getHost().saveAs('cardmirror-settings.json', bytes, {
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+  }
+
+  private async doImportSettings(): Promise<void> {
+    const opened = await getHost().openFile({
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (!opened) return;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(new TextDecoder().decode(opened.bytes));
+    } catch {
+      showToast(`Couldn't read “${opened.name}” as JSON.`);
+      return;
+    }
+    // Accept the wrapped `{ version, settings }` shape or a bare object.
+    const obj =
+      parsed && typeof parsed === 'object'
+        ? ((parsed as { settings?: unknown }).settings ?? parsed)
+        : null;
+    if (!obj || typeof obj !== 'object') {
+      showToast(`“${opened.name}” doesn't look like a settings export.`);
+      return;
+    }
+    if (
+      !confirm(
+        'Import settings? This replaces all your current settings (your API key is kept).',
+      )
+    ) {
+      return;
+    }
+    settings.replaceAll(obj);
+    this.render(); // rebuild the dialog so every control reflects the import
+    showToast('Settings imported.');
   }
 
   /** Re-binding handle so tab buttons can change the active panel

@@ -7,6 +7,18 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Settings export / import.** `SettingsStore.exportObject()` returns all
+  values minus the transient per-window keys and `anthropicApiKey`;
+  `replaceAll(raw)` overwrites through the same
+  `sanitize({ ...DEFAULTS, ...raw })` boundary as `load` — so it tolerates
+  schema drift (added fields → defaults, removed → dropped, bad values
+  coerced/clamped) and preserves the current API key + transient values.
+  Settings → General gains a "Back up settings" section
+  (`buildSettingsBackupSection`) with Export / Import buttons over the host
+  `saveAs` / `openFile` JSON pickers (writes `{ version: 1, settings }`,
+  also accepts a bare object). Import confirms, runs `replaceAll`, then
+  re-renders the dialog so every control reflects the imported values.
+
 - **Settings tab underline no longer clipped when the tab strip scrolls.**
   The active tab's 2px `border-bottom` is pulled 1px below
   `.pmd-settings-tabs`'s content box via `margin-bottom: -1px` (to overlap

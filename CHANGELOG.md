@@ -84,6 +84,14 @@ see `DETAILED_CHANGELOG.md`.
   insertions you'd otherwise retype by hand. A macro key takes
   precedence over any command bound to the same key.
 
+- **Export / import settings** — at the bottom of **Settings → General**,
+  **Export settings…** saves everything (keyboard shortcuts, macros,
+  appearance, and the rest) to a JSON file; **Import settings…** replaces
+  your settings from a file. Import is version-tolerant: settings added
+  since the export fall back to their defaults and ones removed since are
+  dropped, so an old export still loads cleanly. Your Anthropic API key is
+  never exported, and importing keeps your current key.
+
 - **Quick Cards** — a persistent, cross-window library of reusable
   rich-text snippets (think Verbatim's quick cards), reached from a
   new 2×2 ribbon cluster (Search / Tag Picker / Manage / Add) between
