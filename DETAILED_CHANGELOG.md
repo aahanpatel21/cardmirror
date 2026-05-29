@@ -464,12 +464,22 @@ in each release, see `CHANGELOG.md`.
     The warm cache is keyed by path + `mtimeMs` (carried on `FileEntry`
     from `host:list-cmir-files`) with an `enabledSig` so a change to the
     searchable-object set re-extracts from the cached doc without
-    re-parsing. `warmPins()` pre-warms the effective set in a sequential
-    background pass when the file list loads (already-warm files skipped,
-    rotated-out pins pruned); a dive uses a warm hit when the mtime
-    matches, else reads/parses and warms it if pinned. Usage is recorded
-    on open + dive (feeds frequents). All renderer-side — no main-process
-    store, no parser refactor (see reference-docs/SPEC-pinned-files.md).
+    re-parsing. The warm pass — `runWarmPass()`, a module-level function
+    shared by the open palette and a proactive boot-time pre-warm — walks
+    the effective set sequentially, **yielding to an idle slot
+    (`scheduleIdle`) before each synchronous `parseNative`** so a `.docx`
+    parse never lands on a keystroke (the renderer defers idle callbacks
+    until the user pauses). It runs two ways: `prewarmQuickCardFiles()`
+    fires once at boot (scheduled on idle), listing + warming the set
+    before the palette is ever opened — so the first search finds files
+    already cached rather than parsing on the first keystroke; and the
+    open palette re-runs it when its file list loads (with a `keepGoing`
+    guard so it bails if the palette closes). Both skip already-fresh
+    files and prune rotated-out pins. A dive uses a warm hit when the
+    mtime matches, else reads/parses and warms it if pinned. Usage is
+    recorded on open + dive (feeds frequents). All renderer-side — no
+    main-process store, no parser refactor (see
+    reference-docs/SPEC-pinned-files.md).
 
   - **Cached file index (main process).** `host:list-cmir-files` caches
     the recursive `.cmir` listing — with per-file mtime + size — in

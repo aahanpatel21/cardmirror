@@ -3548,7 +3548,7 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   selectCurrentHeading: 'Select Current Heading',
   copyCurrentHeading: 'Copy Current Heading',
   addQuickCard: 'Add Quick Card',
-  openQuickCardSearch: 'Search Quick Cards',
+  openQuickCardSearch: 'Search Everything',
   insertImage: 'Insert Image at Cursor',
   zoomIn: 'Zoom In',
   zoomOut: 'Zoom Out',

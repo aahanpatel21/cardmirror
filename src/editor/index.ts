@@ -51,7 +51,11 @@ import {
 } from './quick-cards-store.js';
 import { openQuickCardAdd } from './quick-card-add-ui.js';
 import { quickCardsManageUI } from './quick-cards-manage-ui.js';
-import { quickCardSearchUI, openQuickCardTagPicker } from './quick-card-search-ui.js';
+import {
+  quickCardSearchUI,
+  openQuickCardTagPicker,
+  prewarmQuickCardFiles,
+} from './quick-card-search-ui.js';
 import { learnStore, loadLearnStore, localToday } from './learn-store-host.js';
 import { buildDescriptor } from './learn-anchor.js';
 import { openCardEditor } from './learn-create-ui.js';
@@ -4896,6 +4900,10 @@ installIncomingSpeechSliceHandler();
 // changes. Done at boot (not on first UI mount) so the add command and
 // search palette work the instant they're invoked, in either layout.
 void quickCardsStore.init();
+// Pre-warm the search palette's file cache during idle, before it's ever
+// opened, so the first search's `.docx` parse is already cached and never
+// janks a keystroke. No-op off Electron / without a file-search root.
+prewarmQuickCardFiles();
 
 // Single cross-window dropzone pill, anchored to the editor's
 // bottom-left corner (NOT the nav pane — dragging onto a nav-bottom

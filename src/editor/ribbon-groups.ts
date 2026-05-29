@@ -44,7 +44,7 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
   },
   {
     title: 'Quick Cards',
-    commands: ['addQuickCard', 'openQuickCardSearch'],
+    commands: ['addQuickCard'],
   },
   {
     title: 'Structural styles',
@@ -126,6 +126,13 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
   {
     title: 'Find',
     commands: ['openFind', 'openFindReplace', 'openFindByProximity'],
+  },
+  {
+    // The command palette searches everything — cards, dropzone,
+    // commands, settings, and files — so it lives in its own group
+    // rather than under Quick Cards.
+    title: 'Search',
+    commands: ['openQuickCardSearch'],
   },
   {
     title: 'View',

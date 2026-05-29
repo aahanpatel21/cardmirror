@@ -57,6 +57,7 @@ import {
 } from './file-search.js';
 import { toggleManualPin, recordUsage, effectivePins } from './pins-store.js';
 import { listRecents } from './recents-store.js';
+import { scheduleIdle } from './idle-scheduler.js';
 
 /** Warm cache of parsed pinned files — module-level so it survives the
  *  palette opening/closing within a session (only cleared on reload).
@@ -78,6 +79,111 @@ import {
   formatKeyForDisplay,
   type RibbonCommandId,
 } from './ribbon-commands.js';
+
+// ── Warm-cache machinery (module-level, shared by the open palette and
+//    the proactive idle pre-warm) ────────────────────────────────────
+
+/** True while a warm pass is parsing files — a single global guard so
+ *  the proactive pre-warm and an open palette never double-parse. */
+let warmingFiles = false;
+
+/** Paths to keep warm: manual pins always, plus the auto set
+ *  (recents ∪ frequents) when the auto-pin setting is on. */
+function effectivePinPaths(): Set<string> {
+  const recentPaths = listRecents()
+    .map((r) => r.handle)
+    .filter((h): h is string => typeof h === 'string' && h.length > 0);
+  return effectivePins(recentPaths, settings.get('pinAutoEnabled'));
+}
+
+function enabledSet(): Set<FileObjectKind> {
+  return new Set(settings.get('fileSearchObjectTypes') as FileObjectKind[]);
+}
+
+function enabledSig(): string {
+  return (settings.get('fileSearchObjectTypes') as string[]).slice().sort().join(',');
+}
+
+/** Drop warm entries for files that are no longer pinned. */
+function pruneWarm(pins: Set<string>): void {
+  for (const key of [...warmCache.keys()]) {
+    if (!pins.has(key)) warmCache.delete(key);
+  }
+}
+
+/** Resolve on the next idle slot (setTimeout fallback). The renderer
+ *  defers idle callbacks until the user pauses, so waiting on one before
+ *  the synchronous `.docx` parse keeps it off active keystrokes. */
+function idleYield(timeout = 500): Promise<void> {
+  return new Promise((resolve) => scheduleIdle(() => resolve(), timeout));
+}
+
+/** Parse the pinned/recent files that aren't warm yet (or are stale by
+ *  mtime), one at a time, yielding to idle before each `parseNative` so
+ *  the parse never blocks a keystroke. Prunes rotated-out pins first.
+ *  Cheap on repeat passes — already-fresh files are skipped. `keepGoing`
+ *  lets a caller bail early (e.g. the palette closed). */
+async function runWarmPass(
+  electron: NonNullable<ReturnType<typeof getElectronHost>>,
+  fileList: FileEntry[],
+  keepGoing: () => boolean,
+): Promise<void> {
+  if (warmingFiles) return;
+  warmingFiles = true;
+  try {
+    const pins = effectivePinPaths();
+    pruneWarm(pins);
+    const byPath = new Map(fileList.map((f) => [f.path, f]));
+    for (const path of pins) {
+      if (!keepGoing()) break;
+      const entry = byPath.get(path);
+      if (!entry) continue; // not under the search root → unknown mtime
+      const warm = warmCache.get(path);
+      if (warm && warm.mtimeMs === entry.mtimeMs) continue; // already fresh
+      try {
+        const file = await electron.readFileAtPath(path);
+        if (!file) continue;
+        await idleYield();
+        if (!keepGoing()) break;
+        const doc = parseNative(file.bytes).doc;
+        const { objects, outline } = extractFile(doc, enabledSet());
+        warmCache.set(path, { mtimeMs: entry.mtimeMs, enabledSig: enabledSig(), doc, objects, outline });
+      } catch {
+        /* unreadable / not a valid .cmir — skip */
+      }
+    }
+  } finally {
+    warmingFiles = false;
+  }
+}
+
+/** Pre-warm pinned/recent files during idle, before the palette is ever
+ *  opened, so the first search's `.docx` parse is already cached and
+ *  never lands on a keystroke. No-op off Electron or without a
+ *  file-search root; best-effort (the palette warms on open as a
+ *  fallback). Called once at boot. */
+export function prewarmQuickCardFiles(): void {
+  const electron = getElectronHost();
+  if (!electron) return;
+  const root = settings.get('fileSearchRoot');
+  if (!root) return;
+  scheduleIdle(() => {
+    void (async () => {
+      try {
+        const list = await electron.listCmirFiles(root);
+        const fileList: FileEntry[] = list.map((it) => ({
+          path: it.path,
+          relPath: it.relPath,
+          name: baseName(it.relPath),
+          mtimeMs: it.mtimeMs,
+        }));
+        await runWarmPass(electron, fileList, () => true);
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, 2000);
+}
 
 export interface QuickCardSearchOptions {
   view: EditorView | null;
@@ -349,8 +455,6 @@ class QuickCardSearchUI {
   /** Recursive `.cmir` listing, cached for one palette session. */
   private fileList: FileEntry[] | null = null;
   private fileListLoading = false;
-  /** True while the background pre-warm pass is parsing pinned files. */
-  private warming = false;
   /** Monotonic guard so a stale async (list / read) result from a
    *  prior query or a closed palette is ignored. */
   private asyncToken = 0;
@@ -650,61 +754,13 @@ class QuickCardSearchUI {
     return effectivePins([], false);
   }
 
-  /** Paths that should be kept warm: manual pins always, plus the auto
-   *  set (recents ∪ frequents) when the auto-pin setting is on. */
-  private effectivePinPaths(): Set<string> {
-    const recentPaths = listRecents()
-      .map((r) => r.handle)
-      .filter((h): h is string => typeof h === 'string' && h.length > 0);
-    return effectivePins(recentPaths, settings.get('pinAutoEnabled'));
-  }
-
-  private enabledSet(): Set<FileObjectKind> {
-    return new Set(settings.get('fileSearchObjectTypes') as FileObjectKind[]);
-  }
-
-  private enabledSig(): string {
-    return (settings.get('fileSearchObjectTypes') as string[]).slice().sort().join(',');
-  }
-
-  /** Drop warm entries for files that are no longer pinned. */
-  private pruneWarm(pins: Set<string>): void {
-    for (const key of [...warmCache.keys()]) {
-      if (!pins.has(key)) warmCache.delete(key);
-    }
-  }
-
-  /** Background pass: parse pinned files that aren't warm yet (or are
-   *  stale by mtime), sequentially so it yields. Prunes rotated-out
-   *  pins first. Cheap on repeat opens — already-warm files are skipped. */
+  /** Background pass while the palette is open: delegate to the shared
+   *  warm pass (which yields to idle before each parse), bailing if the
+   *  palette closes mid-flight. */
   private async warmPins(): Promise<void> {
-    if (this.warming) return;
     const electron = getElectronHost();
     if (!electron || !this.fileList) return;
-    this.warming = true;
-    try {
-      const pins = this.effectivePinPaths();
-      this.pruneWarm(pins);
-      const byPath = new Map(this.fileList.map((f) => [f.path, f]));
-      for (const path of pins) {
-        if (!this.root) break; // palette closed
-        const entry = byPath.get(path);
-        if (!entry) continue; // not under the search root → unknown mtime
-        const warm = warmCache.get(path);
-        if (warm && warm.mtimeMs === entry.mtimeMs) continue; // fresh
-        try {
-          const file = await electron.readFileAtPath(path);
-          if (!file) continue;
-          const doc = parseNative(file.bytes).doc;
-          const { objects, outline } = extractFile(doc, this.enabledSet());
-          warmCache.set(path, { mtimeMs: entry.mtimeMs, enabledSig: this.enabledSig(), doc, objects, outline });
-        } catch {
-          /* unreadable / not a valid .cmir — skip */
-        }
-      }
-    } finally {
-      this.warming = false;
-    }
+    await runWarmPass(electron, this.fileList, () => !!this.root);
   }
 
   /** Toggle a file's manual pin, keeping it selected and re-warming. */
@@ -775,11 +831,11 @@ class QuickCardSearchUI {
     // the searchable-object set changed since it was warmed.
     const warm = warmCache.get(path);
     if (warm && warm.mtimeMs === mtimeMs) {
-      if (warm.enabledSig !== this.enabledSig()) {
-        const re = extractFile(warm.doc, this.enabledSet());
+      if (warm.enabledSig !== enabledSig()) {
+        const re = extractFile(warm.doc, enabledSet());
         warm.objects = re.objects;
         warm.outline = re.outline;
-        warm.enabledSig = this.enabledSig();
+        warm.enabledSig = enabledSig();
       }
       this.mountInFile(path, name, warm.doc, warm.objects, warm.outline, savedQuery);
       return;
@@ -797,7 +853,7 @@ class QuickCardSearchUI {
       const file = await electron.readFileAtPath(path);
       if (!file) throw new Error('read failed');
       doc = parseNative(file.bytes).doc;
-      ({ objects, outline } = extractFile(doc, this.enabledSet()));
+      ({ objects, outline } = extractFile(doc, enabledSet()));
     } catch {
       if (token !== this.asyncToken || !this.root) return;
       showToast(`Couldn't read "${name}".`);
@@ -806,9 +862,9 @@ class QuickCardSearchUI {
     }
     if (token !== this.asyncToken || !this.root) return;
     // Keep it warm if this file is pinned.
-    if (mtimeMs && this.effectivePinPaths().has(path)) {
-      warmCache.set(path, { mtimeMs, enabledSig: this.enabledSig(), doc, objects, outline });
-      this.pruneWarm(this.effectivePinPaths());
+    if (mtimeMs && effectivePinPaths().has(path)) {
+      warmCache.set(path, { mtimeMs, enabledSig: enabledSig(), doc, objects, outline });
+      pruneWarm(effectivePinPaths());
     }
     this.mountInFile(path, name, doc, objects, outline, savedQuery);
   }
