@@ -3641,6 +3641,13 @@ html.pmd-nav-flat .pmd-nav-type-analytic:hover .pmd-nav-label {
      is even 1px taller than the strip's content area. */
   overflow-x: hidden;
   overflow-y: hidden;
+  /* The active tab's 2px underline is pulled 1px below the strip's
+     content box (`.pmd-settings-tab` margin-bottom: -1px, to overlap the
+     bar divider). A scrolled `overflow:hidden` container clips that
+     overflow — which dropped the underline on the middle tabs that
+     `scrollTabIntoView` nudges to a non-zero scroll. 1px of bottom
+     padding keeps the underline inside the clip box at any scroll. */
+  padding-bottom: 1px;
   scroll-behavior: smooth;
 }
 

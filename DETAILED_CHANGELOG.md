@@ -7,6 +7,17 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Settings tab underline no longer clipped when the tab strip scrolls.**
+  The active tab's 2px `border-bottom` is pulled 1px below
+  `.pmd-settings-tabs`'s content box via `margin-bottom: -1px` (to overlap
+  the bar divider). That strip is a horizontal scroll container
+  (`overflow: hidden`); at scrollLeft 0 the negative-margin overflow isn't
+  clipped, but once `scrollTabIntoView` nudges a mid-strip tab to a
+  non-zero scroll the clip drops the underline — so the middle tabs
+  (Keyboard, Comments & AI) lost it while the edge tabs kept it. Added
+  `padding-bottom: 1px` to the strip so the underline stays inside the
+  clip box at any scroll position.
+
 - **Keyboard macros — bind a key to type a snippet.** New
   `keyboardMacros: KeyboardMacro[]` setting (`{ id, key, text }`;
   sanitized; default `[]`). `keyboard-macros.ts`'s `buildMacroKeymap`

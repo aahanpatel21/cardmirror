@@ -326,6 +326,12 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Fixed
 
+- **Settings: the selected-tab underline shows on every tab.** The blue
+  active-tab line could vanish on tabs the tab strip has to scroll to
+  reach (Keyboard, Comments & AI) — a scrolled tab strip was clipping the
+  1px the underline overlaps the divider by. It now shows at any window
+  width / scroll position.
+
 - **Your selection stays visible when a palette or the find bar opens.**
   Selecting text and then opening the command / search palette (or any
   panel that takes keyboard focus) used to grey out or hide the
