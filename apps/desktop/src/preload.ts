@@ -111,6 +111,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('host:list-cmir-files', root) as Promise<
       Array<{ path: string; relPath: string; mtimeMs: number; size: number }>
     >,
+  /** Background revalidation of the `.cmir` listing finished and the
+   *  tree changed — carries the fresh listing so an open palette can
+   *  swap it in live. Broadcast to every window. */
+  onCmirFileIndexUpdated(
+    handler: (payload: {
+      root: string;
+      entries: Array<{ path: string; relPath: string; mtimeMs: number; size: number }>;
+    }) => void,
+  ): () => void {
+    const listener = (
+      _evt: unknown,
+      payload: {
+        root: string;
+        entries: Array<{ path: string; relPath: string; mtimeMs: number; size: number }>;
+      },
+    ): void => handler(payload);
+    ipcRenderer.on('host:cmir-files-updated', listener);
+    return () => ipcRenderer.removeListener('host:cmir-files-updated', listener);
+  },
   writeFileAtPath: (filePath: string, bytes: Uint8Array) =>
     ipcRenderer.invoke('host:write-file-at-path', filePath, bytes),
 

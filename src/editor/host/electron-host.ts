@@ -66,6 +66,15 @@ interface ElectronAPI {
   listCmirFiles(
     root: string,
   ): Promise<Array<{ path: string; relPath: string; mtimeMs: number; size: number }>>;
+  /** Fires when main's background revalidation finds the `.cmir`
+   *  listing for `root` changed, so an open command palette can swap in
+   *  the fresh listing live instead of waiting for the next open. */
+  onCmirFileIndexUpdated(
+    handler: (payload: {
+      root: string;
+      entries: Array<{ path: string; relPath: string; mtimeMs: number; size: number }>;
+    }) => void,
+  ): () => void;
   writeFileAtPath(filePath: string, bytes: Uint8Array): Promise<void>;
   writeJournal(entry: JournalEntry): Promise<void>;
   readJournals(): Promise<JournalEntry[]>;
@@ -284,6 +293,18 @@ export class ElectronHost implements Host {
     root: string,
   ): Promise<Array<{ path: string; relPath: string; mtimeMs: number; size: number }>> {
     return api().listCmirFiles(root);
+  }
+
+  onCmirFileIndexUpdated(
+    handler: (payload: {
+      root: string;
+      entries: Array<{ path: string; relPath: string; mtimeMs: number; size: number }>;
+    }) => void,
+  ): () => void {
+    // Tolerate an older preload that predates this channel — no live
+    // refresh, but everything else still works (next open reloads fresh).
+    const fn = api().onCmirFileIndexUpdated;
+    return typeof fn === 'function' ? fn(handler) : () => {};
   }
 
   async writeFileAtPath(filePath: string, bytes: Uint8Array): Promise<void> {

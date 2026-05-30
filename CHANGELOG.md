@@ -34,6 +34,14 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Fixed
 
+- **The command bar's file search refreshes while it's open.** Opening
+  the palette kicks off a background re-scan of your `.cmir` folder, but
+  that fresh listing used to appear only after you closed and reopened
+  the bar. It now updates the open palette the moment the re-scan
+  finishes — and seamlessly: whatever you're typing, your place in the
+  results, and a file you've Tabbed into are all preserved across the
+  refresh.
+
 - **"Find: remember the last search query" now actually turns off.** The
   find bar kept the text you'd typed even after closing, so the last
   query reappeared on every open no matter how the setting was set. It

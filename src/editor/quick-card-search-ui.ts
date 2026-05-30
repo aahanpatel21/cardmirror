@@ -440,6 +440,14 @@ function badgeText(r: PaletteResult): string {
   }
 }
 
+/** Stable identity of a result, used to restore the selected row across
+ *  a re-render (e.g. a live file-index refresh) so the cursor doesn't
+ *  bounce back to the top. */
+function resultKey(r: PaletteResult): string {
+  const id = r.filePath ?? r.commandId ?? r.name;
+  return `${r.source}:${id}`;
+}
+
 /** Sources whose Enter inserts a slice (and so support Alt+Enter "at end"). */
 function isInsertSource(source: PaletteResult['source']): boolean {
   return source === 'quickcard' || source === 'dropzone' || source === 'fileobject';
@@ -498,6 +506,9 @@ class QuickCardSearchUI {
     collapsedIdx: Set<number>;
     savedQuery: string;
   } | null = null;
+  /** Unsubscribe from main's live `.cmir` index-refresh broadcasts
+   *  (Electron only); set on open, cleared on close. */
+  private fileIndexUnsub: (() => void) | null = null;
 
   open(opts: QuickCardSearchOptions): void {
     // Re-triggering the open hotkey while open toggles it closed.
@@ -542,6 +553,13 @@ class QuickCardSearchUI {
     window.addEventListener('resize', this.onResize);
     this.unsubscribe = quickCardsStore.subscribe(() => this.runSearch());
 
+    // Listen for main's background index revalidation so the open palette
+    // refreshes live instead of waiting for the next open.
+    const electronHost = getElectronHost();
+    this.fileIndexUnsub = electronHost
+      ? electronHost.onCmirFileIndexUpdated((p) => this.onFileIndexUpdated(p))
+      : null;
+
     this.runSearch();
   }
 
@@ -565,6 +583,8 @@ class QuickCardSearchUI {
     window.removeEventListener('resize', this.onResize);
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.fileIndexUnsub?.();
+    this.fileIndexUnsub = null;
     this.asyncToken++; // invalidate any in-flight list / read
     this.fileList = null;
     this.inFile = null;
@@ -837,6 +857,57 @@ class QuickCardSearchUI {
         this.fileListLoading = false;
         if (!this.inFile) this.runSearch();
       });
+  }
+
+  /** Live index refresh pushed from main's background revalidation. Swaps
+   *  in the fresh listing WITHOUT disturbing the in-progress search: the
+   *  query text is the source of truth (untouched), the selected row is
+   *  preserved by identity, and in-file mode is left alone — the fresh
+   *  list is just staged for when the user Escs back to the file list.
+   *
+   *  No `asyncToken` bump here: an index refresh must never abort an
+   *  in-flight `enterInFile` read. There's also no race with a pending
+   *  `loadFileList` — main returns the cached listing before it starts
+   *  the walk that produces this event, so the load always resolves
+   *  first. */
+  private onFileIndexUpdated(payload: {
+    root: string;
+    entries: Array<{ path: string; relPath: string; mtimeMs: number; size: number }>;
+  }): void {
+    if (!this.root) return; // closed — the next open reloads from main
+    if (payload.root !== settings.get('fileSearchRoot')) return; // not our root
+    this.fileList = payload.entries.map((it) => ({
+      path: it.path,
+      relPath: it.relPath,
+      name: baseName(it.relPath),
+      mtimeMs: it.mtimeMs,
+    }));
+    this.fileListLoading = false;
+    void this.warmPins(); // re-warm pins against the new mtimes
+    // In-file mode shows a file's objects, not the listing — leave the
+    // visible results untouched; the swap above is ready for when the
+    // user returns to the file list.
+    if (this.inFile) return;
+    // Only the file (`f`) and non-empty everything views read `fileList`;
+    // for other prefixes a re-run would needlessly churn the results.
+    const { prefix, query } = parsePrefix(this.input.value);
+    const fileVisible = prefix === 'f' || (prefix === null && query.trim() !== '');
+    if (!fileVisible) return;
+    const sel = this.results[this.selected];
+    const prevKey = sel ? resultKey(sel) : null;
+    this.runSearch();
+    this.restoreSelection(prevKey);
+  }
+
+  /** Re-point the selection at the row matching `key` after a re-render,
+   *  so a background refresh doesn't bounce the cursor to the top. */
+  private restoreSelection(key: string | null): void {
+    if (!key) return;
+    const at = this.results.findIndex((r) => resultKey(r) === key);
+    if (at > 0) {
+      this.selected = at;
+      this.renderResults();
+    }
   }
 
   /** Tab from a selected file → enter in-file mode with the bar cleared.

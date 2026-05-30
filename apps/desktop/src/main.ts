@@ -519,9 +519,18 @@ function cmirListingsDiffer(a: CmirFileEntry[], b: CmirFileEntry[]): boolean {
   return b.some((e) => prev.get(e.path) !== e.mtimeMs);
 }
 
+/** Push a freshly-revalidated listing to every window so an open
+ *  command palette can swap it in live (it filters by `root`). */
+function broadcastCmirIndexUpdated(root: string, entries: CmirFileEntry[]): void {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send('host:cmir-files-updated', { root, entries });
+  }
+}
+
 /** Background refresh — updates the cache (+ disk) only if the tree
- *  changed. Coalesced per-root so concurrent searches don't pile up
- *  walks. The freshened list is picked up on the next palette open. */
+ *  changed, then broadcasts the fresh listing so any open palette
+ *  refreshes live (and it's also ready for the next open). Coalesced
+ *  per-root so concurrent searches don't pile up walks. */
 function revalidateCmirIndex(root: string): void {
   if (cmirRevalidating.has(root)) return;
   cmirRevalidating.add(root);
@@ -532,6 +541,7 @@ function revalidateCmirIndex(root: string): void {
       if (!prev || cmirListingsDiffer(prev, fresh)) {
         cmirIndexMem.set(root, fresh);
         void persistCmirIndex();
+        broadcastCmirIndexUpdated(root, fresh);
       }
     })
     .catch(() => cmirRevalidating.delete(root));

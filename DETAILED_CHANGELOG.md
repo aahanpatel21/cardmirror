@@ -7,6 +7,34 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Command-bar file search refreshes the open palette live.** The
+  background `.cmir` revalidation in main (`revalidateCmirIndex`,
+  `apps/desktop/src/main.ts`) updated its cache but never told the
+  renderer, so the comment's "picked up on the next palette open" was
+  literally the only way to see fresh results. Now, when the re-scan
+  finds the listing changed, main `broadcastCmirIndexUpdated(root,
+  entries)` to every window via `host:cmir-files-updated`. The preload
+  exposes `onCmirFileIndexUpdated(handler)` (mirroring
+  `onDropzoneChanged`), surfaced on the `ElectronAPI` interface +
+  `ElectronHost` class (guarded so an older preload degrades to no live
+  refresh). `QuickCardSearchUI` subscribes on open / unsubscribes on
+  close and handles the event in `onFileIndexUpdated`, designed so an
+  in-progress search is never disrupted:
+  - filters by `root` (ignores broadcasts for a different search
+    folder) and bails if the palette is closed;
+  - swaps `this.fileList` to the fresh listing and re-warms pins against
+    the new mtimes, but does NOT bump `asyncToken` — so it can't abort
+    an in-flight `enterInFile` read (and there's no `loadFileList` race:
+    main returns the cached listing before starting the walk that emits
+    the event, so the load always resolves first);
+  - if the user has Tab'd into a file (`inFile`), leaves the visible
+    object results untouched — the fresh listing is just staged for when
+    they Esc back;
+  - otherwise re-runs the current query (the input text is the source of
+    truth, untouched) only when files are actually on screen (prefix `f`
+    or a non-empty everything search), and restores the selection by
+    identity (`resultKey`) so the cursor doesn't bounce to the top.
+
 - **Edge autoscroll while selecting text.** Dragging a text selection to
   the top/bottom of the viewport now scrolls the document so the
   selection can extend past the originally visible area. Built into
