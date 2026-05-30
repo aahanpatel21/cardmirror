@@ -7,6 +7,15 @@ see `DETAILED_CHANGELOG.md`.
 
 ## Unreleased
 
+### Fixed
+
+- **The home screen's Learn section no longer locks you out of Manage
+  when you have no flashcards.** Previously the whole section greyed
+  out until your first card existed — but Manage is where you import
+  flashcards from a file, so there was no way in. Now only "Review
+  all" is greyed out when there's nothing to review; "Manage
+  flashcards" stays live so you can import.
+
 ## 0.1.0-alpha.6 — 2026-05-30
 
 ### Added

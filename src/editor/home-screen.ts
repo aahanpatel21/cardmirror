@@ -110,9 +110,9 @@ class HomeScreen {
           openLearnSession({ kind: 'all' }, { title: 'Review — all' });
         }
       },
-      () => {
-        if (learnStore.totalCount({ kind: 'all' }) > 0) openLearnManage();
-      },
+      // Manage is always reachable — even with zero cards, the user
+      // may want to import flashcards from a file.
+      () => openLearnManage(),
     ];
     const actions = document.createElement('div');
     actions.className = 'pmd-home-actions';
@@ -270,7 +270,12 @@ class HomeScreen {
 
   // ---- Rendering ----------------------------------------------------
 
-  private actionCard(title: string, sub: string, onClick: () => void): HTMLButtonElement {
+  private actionCard(
+    title: string,
+    sub: string,
+    onClick: () => void,
+    opts?: { disabled?: boolean },
+  ): HTMLButtonElement {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'pmd-home-action';
@@ -282,7 +287,12 @@ class HomeScreen {
     s.className = 'pmd-home-action-sub';
     s.textContent = sub;
     btn.appendChild(s);
-    btn.addEventListener('click', onClick);
+    if (opts?.disabled) {
+      btn.classList.add('pmd-home-action-disabled');
+      btn.disabled = true;
+    } else {
+      btn.addEventListener('click', onClick);
+    }
     return btn;
   }
 
@@ -311,17 +321,27 @@ class HomeScreen {
 
     const totalAll = learnStore.totalCount({ kind: 'all' });
     if (totalAll === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'pmd-home-action pmd-home-action-placeholder';
-      empty.setAttribute('aria-disabled', 'true');
-      const t = document.createElement('span');
-      t.className = 'pmd-home-action-title';
-      t.textContent = 'No flashcards yet';
-      const s = document.createElement('span');
-      s.className = 'pmd-home-action-sub';
-      s.textContent = 'Select text in a document and choose Create Flashcard.';
-      empty.append(t, s);
-      this.learnEl.appendChild(empty);
+      // No cards yet: there's nothing to review, but Manage is still
+      // reachable so the user can import flashcards from a file. Grey
+      // out Review all only — keep Manage live.
+      const actions = document.createElement('div');
+      actions.className = 'pmd-home-qc-actions';
+      actions.appendChild(
+        this.actionCard(
+          'Review all',
+          'No flashcards yet — select text in a document and choose Create Flashcard.',
+          () => {},
+          { disabled: true },
+        ),
+      );
+      actions.appendChild(
+        this.actionCard(
+          'Manage flashcards',
+          'Import flashcards from a file, or browse once you have some.',
+          () => openLearnManage(),
+        ),
+      );
+      this.learnEl.appendChild(actions);
       return;
     }
 

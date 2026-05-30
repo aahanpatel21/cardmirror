@@ -7,6 +7,21 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Learn section keeps Manage reachable with zero flashcards.**
+  `renderLearn` in `src/editor/home-screen.ts` used to replace the
+  whole section with a single muted placeholder card when
+  `totalCount({ kind: 'all' }) === 0`. But "Manage flashcards" opens
+  the manage UI, which carries the Import button — the only way to
+  bring in cards from a file — so the empty state was a dead end for
+  anyone trying to import. The empty branch now renders the same
+  two-card row as the populated state: a disabled "Review all" card
+  (new `{ disabled }` option on `actionCard` — sets `btn.disabled`,
+  adds `.pmd-home-action-disabled`, skips the click listener) and a
+  live "Manage flashcards" card. The keyboard-shortcut runner for
+  Manage lost its `totalCount > 0` guard for the same reason. The
+  orphaned `.pmd-home-action-placeholder` CSS was repurposed into
+  `.pmd-home-action-disabled` (muted opacity, neutral hover).
+
 ## 0.1.0-alpha.6 — 2026-05-30
 
 - **`.cmir` loader stamps fresh ids on id-less headings at parse
