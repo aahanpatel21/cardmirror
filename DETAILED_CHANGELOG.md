@@ -7,6 +7,34 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **OS "Open with…" routes into the workspace in multi-pane mode.**
+  `openExternalFile` (main) always did `createWindow({ initialDoc })`,
+  but the renderer's multi-pane boot never read `getInitialDoc()` (only
+  single-doc boot did), so an externally-opened `.docx`/`.cmir` produced
+  a blank workspace window. Fix has two halves:
+  - Main keeps a `multiPaneWindows` set, populated/cleared by a new
+    `host:register-multipane` IPC the renderer calls at boot (true in
+    multi-pane boot, false in single-pane boot — so it survives the
+    reload a workspace-mode toggle triggers, and is cleared on window
+    `closed`). `openExternalFile` now `pickMultiPaneTarget()`s a
+    multi-pane window (focused first, else any) and forwards the path
+    via `host:external-open` (focusing/restoring it) instead of
+    spawning; with no multi-pane window it falls back to the existing
+    read-and-`createWindow` path — so single-pane is byte-for-byte
+    unchanged, and cold launch still spawns.
+  - The renderer (multi-pane boot) registers, subscribes to
+    `host:external-open` (→ `openFileByPath` → `routeOpenedFile` → slot
+    picker), and runs `routeInitialDocIntoWorkspace()` — reading any
+    spawn payload and routing it through `routeOpenedFile` (slot picker)
+    rather than booting blank; recovery is skipped when a payload was
+    consumed, mirroring single-doc. New bridge methods
+    `registerMultipane` / `onExternalOpen` on the preload, `ElectronAPI`
+    interface, and `ElectronHost` class (guarded for older preloads).
+  - Net behavior (the user's choice): a workspace window already open —
+    populated or empty — is reused and shows the slot picker (no new
+    window); only when no workspace window exists does it open one and
+    show the picker there. Single-pane keeps spawning a window per file.
+
 - **Command-bar file search refreshes the open palette live.** The
   background `.cmir` revalidation in main (`revalidateCmirIndex`,
   `apps/desktop/src/main.ts`) updated its cache but never told the

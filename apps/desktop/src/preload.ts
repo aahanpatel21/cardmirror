@@ -146,6 +146,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readLearnStore: () => ipcRenderer.invoke('host:read-learn-store') as Promise<string | null>,
   writeLearnStore: (json: string) => ipcRenderer.invoke('host:write-learn-store', json),
 
+  /** Report this window's workspace mode to main at boot (and on the
+   *  reload a mode toggle triggers) so the OS "Open with…" path knows
+   *  which windows can take a file into their slot picker. */
+  registerMultipane: (isMultiPane: boolean) =>
+    ipcRenderer.invoke('host:register-multipane', isMultiPane),
+  /** Main forwards an OS-opened file (path) to an existing multi-pane
+   *  window so it routes through the slot picker instead of spawning a
+   *  blank window. Returns an unsubscribe. */
+  onExternalOpen(handler: (payload: { path: string }) => void): () => void {
+    const listener = (_evt: unknown, payload: { path: string }): void => handler(payload);
+    ipcRenderer.on('host:external-open', listener);
+    return () => ipcRenderer.removeListener('host:external-open', listener);
+  },
+
   /** Spawn a new BrowserWindow, optionally pre-loaded with a doc. */
   spawnWindow: (payload: {
     filename: string;

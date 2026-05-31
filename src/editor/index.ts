@@ -4019,6 +4019,41 @@ async function openFileByPath(path: string, name: string): Promise<void> {
   await routeOpenedFile({ name: file.name, bytes: file.bytes, handle: file.handle });
 }
 
+/** Subscribe to main's `host:external-open` forward (an OS "Open
+ *  with… CardMirror" routed to this existing multi-pane window). Opens
+ *  the path through the standard routing, so it lands in this window's
+ *  slot picker rather than a blank new window. */
+function installExternalOpenListener(): void {
+  const electron = getElectronHost();
+  if (!electron) return;
+  electron.onExternalOpen(({ path }) => {
+    void openFileByPath(path, path.replace(/^.*[\\/]/, ''));
+  });
+}
+
+/** A window spawned for an OS open carries an initial doc. Single-doc
+ *  boot mounts it in place; multi-pane boot can't (the workspace owns
+ *  layout), so route it through the slot picker instead of leaving the
+ *  window blank. Returns true if a payload was consumed. */
+async function routeInitialDocIntoWorkspace(): Promise<boolean> {
+  const host = getHost();
+  if (!host.canSpawnWindow) return false;
+  let payload: Awaited<ReturnType<typeof host.getInitialDoc>>;
+  try {
+    payload = await host.getInitialDoc();
+  } catch (err) {
+    console.warn('getInitialDoc failed:', err);
+    payload = null;
+  }
+  if (!payload) return false;
+  await routeOpenedFile({
+    name: payload.filename,
+    bytes: payload.bytes,
+    handle: payload.handle ?? null,
+  });
+  return true;
+}
+
 async function openRecentInPlace(recent: RecentFile): Promise<void> {
   const electron = getElectronHost();
   if (!electron || recent.handle == null) return;
@@ -4997,13 +5032,28 @@ if (BOOT_MULTI_DOC_WORKSPACE) {
     // picker rather than loading in-place. Not auto-shown on
     // multi-pane launch — the workspace is the landing surface.
     homeScreen.mount(document.body, homeCallbacks);
-    await runStartupRecovery();
+    // Tell main this window can take OS-opened files into its slot
+    // picker (so "Open with…" reuses it instead of spawning a blank
+    // window), and wire the forward channel.
+    void getElectronHost()?.registerMultipane(true);
+    installExternalOpenListener();
+    // If this window was spawned for an OS open (cold launch), route
+    // its initial doc through the slot picker instead of booting
+    // blank. Skip recovery when we did — a spawned-for-a-file window
+    // isn't the place to surface unrelated drafts (matches single-doc).
+    const routedInitialDoc = await routeInitialDocIntoWorkspace();
+    if (!routedInitialDoc) await runStartupRecovery();
   });
 } else {
   // Home screen is a single-doc-mode feature (multi-pane has its
   // own workspace layout). Mount it before boot so the overlay is
   // ready when initSingleDocBoot decides whether to show it.
   homeScreen.mount(document.body, homeCallbacks);
+  // Single-pane windows don't take OS-opened files in place — main
+  // keeps spawning a fresh window per file. Report the mode so a
+  // stale multi-pane registration (from before a mode-toggle reload)
+  // is cleared.
+  void getElectronHost()?.registerMultipane(false);
   void initSingleDocBoot();
 }
 

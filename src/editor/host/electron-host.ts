@@ -84,6 +84,13 @@ interface ElectronAPI {
   spawnWindow(payload: SpawnWindowPayload | null): Promise<void>;
   getInitialDoc(): Promise<SpawnWindowPayload | null>;
   isFirstWindow(): Promise<boolean>;
+  /** Report this window's workspace mode to main (multi-pane vs
+   *  single-pane) so the OS "Open with…" path can reuse a multi-pane
+   *  window's slot picker instead of spawning a blank window. */
+  registerMultipane(isMultiPane: boolean): Promise<void>;
+  /** Main forwards an OS-opened file (absolute path) to this window
+   *  when it's an existing multi-pane workspace. Returns unsubscribe. */
+  onExternalOpen(handler: (payload: { path: string }) => void): () => void;
   journalAndCloseOtherWindows(): Promise<void>;
   closeSelf(): Promise<void>;
   onPleaseCloseForModeSwitch(handler: () => void): () => void;
@@ -354,6 +361,17 @@ export class ElectronHost implements Host {
 
   async isFirstWindow(): Promise<boolean> {
     return await api().isFirstWindow();
+  }
+
+  async registerMultipane(isMultiPane: boolean): Promise<void> {
+    // Tolerate an older preload (no channel) — main just won't reuse
+    // this window for OS opens, falling back to spawn-a-window.
+    await api().registerMultipane?.(isMultiPane);
+  }
+
+  onExternalOpen(handler: (payload: { path: string }) => void): () => void {
+    const fn = api().onExternalOpen;
+    return typeof fn === 'function' ? fn(handler) : () => {};
   }
 
   /** Mode-switch helper. Asks main to broadcast a please-close

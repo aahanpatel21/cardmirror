@@ -34,6 +34,14 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Fixed
 
+- **"Open with… CardMirror" now works in three-pane workspace mode.**
+  Opening a file from the OS file manager (right-click → Open with) used
+  to pop a blank window in multi-pane mode — the file was silently
+  dropped. It now routes the file into the slot picker: if a workspace
+  window is already open it reuses that window (no new window); if none
+  is open it opens one and shows the picker there. Single-pane is
+  unchanged (a new window per file). Applies to both `.docx` and `.cmir`.
+
 - **The command bar's file search refreshes while it's open.** Opening
   the palette kicks off a background re-scan of your `.cmir` folder, but
   that fresh listing used to appear only after you closed and reopened

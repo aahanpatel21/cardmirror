@@ -126,22 +126,54 @@ function pickFileFromArgv(argv: readonly string[]): string | null {
   return null;
 }
 
-/** Read a file from disk and spawn a fresh window with it as
- *  the initial doc. Used by the OS-driven open paths (macOS
- *  `open-file`, Windows / Linux argv at launch or
- *  second-instance). Spawning a new window per externally-
- *  opened file mirrors VS Code / Word behavior — avoids
- *  fighting with whatever's loaded in the focused window. */
+/** Window ids whose renderer is in multi-pane (3-slot workspace)
+ *  mode. Populated/cleared by the renderer at boot via
+ *  `host:register-multipane`, so it stays accurate across the
+ *  reload a workspace-mode toggle triggers. Lets the OS-open path
+ *  reuse an existing multi-pane window (routing the file through
+ *  its slot picker) instead of spawning a blank one. Single-pane
+ *  windows are absent, so they keep the spawn-a-new-window path. */
+const multiPaneWindows = new Set<number>();
+
+/** A multi-pane window to hand an externally-opened file to — the
+ *  focused one when it's multi-pane, else any multi-pane window.
+ *  Null when none exist (single-pane session, or cold launch). */
+function pickMultiPaneTarget(): BrowserWindow | null {
+  if (multiPaneWindows.size === 0) return null;
+  const focused = BrowserWindow.getFocusedWindow();
+  if (focused && !focused.isDestroyed() && multiPaneWindows.has(focused.id)) {
+    return focused;
+  }
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed() && multiPaneWindows.has(w.id)) return w;
+  }
+  return null;
+}
+
+/** Open a file the OS handed us (macOS `open-file`, Windows / Linux
+ *  argv at launch or second-instance — e.g. "Open with… CardMirror").
+ *  Multi-pane reuses an open window and routes the file through its
+ *  slot picker (no blank new window); single-pane / cold launch spawns
+ *  a fresh window with the file as its initial doc (VS Code / Word-like,
+ *  and the single-pane behavior is unchanged). */
 async function openExternalFile(filePath: string): Promise<void> {
+  const ext = path.extname(filePath).toLowerCase();
+  const format: 'cmir' | 'docx' | null =
+    ext === '.cmir' ? 'cmir' : ext === '.docx' ? 'docx' : null;
+  if (!format) return;
+  const target = pickMultiPaneTarget();
+  if (target) {
+    // Hand off to the existing workspace — it reads the path and shows
+    // its slot picker. Bring it forward so the picker is visible.
+    target.webContents.send('host:external-open', { path: filePath });
+    if (target.isMinimized()) target.restore();
+    target.focus();
+    return;
+  }
   try {
     const buf = await fs.readFile(filePath);
-    const name = path.basename(filePath);
-    const ext = path.extname(filePath).toLowerCase();
-    const format: 'cmir' | 'docx' | null =
-      ext === '.cmir' ? 'cmir' : ext === '.docx' ? 'docx' : null;
-    if (!format) return;
     createWindow({
-      filename: name,
+      filename: path.basename(filePath),
       bytes: new Uint8Array(buf),
       handle: filePath,
       format,
@@ -248,6 +280,7 @@ function createWindow(initialDoc?: InitialDocPayload): BrowserWindow {
     if (mainWindow === win) mainWindow = null;
     pendingInitialDocs.delete(win.id);
     skipCloseConfirm.delete(win.id);
+    multiPaneWindows.delete(win.id);
   });
 
   mainWindow = win;
@@ -805,6 +838,16 @@ ipcMain.handle('host:get-initial-doc', async (event) => {
   if (!payload) return null;
   pendingInitialDocs.delete(win.id);
   return payload;
+});
+
+// The renderer reports its workspace mode at boot (and re-reports on
+// the reload a mode toggle triggers) so the OS-open path knows which
+// windows can take a file into their slot picker.
+ipcMain.handle('host:register-multipane', async (event, isMultiPane: boolean) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return;
+  if (isMultiPane) multiPaneWindows.add(win.id);
+  else multiPaneWindows.delete(win.id);
 });
 
 ipcMain.handle('host:is-first-window', async (event) => {
