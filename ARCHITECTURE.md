@@ -626,6 +626,10 @@ platform-knowledge and declarative-material fit is well grounded; the
   presentation.
 - **Real-time collaboration** (transclusion v2 and shared editing) —
   needs backend/sync infrastructure; deferred past v1.
+- **Fuller screen-reader support and accessibility presets** (§15) —
+  complete keyboard/ARIA semantics, high-contrast and colorblind palettes,
+  and a document accessibility checker, on top of the per-user
+  customization already shipped.
 
 ### Out of scope
 

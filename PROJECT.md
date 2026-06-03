@@ -54,7 +54,8 @@ autosave and crash recovery · desktop auto-update.
 
 **Planned** (rationale in `ARCHITECTURE.md`): Verbatim Flow integration ·
 a persistent corpus-wide search index · transclusion · real-time
-collaboration · numbered/bulleted lists · per-type display-spacing. The
+collaboration · numbered/bulleted lists · per-type display-spacing ·
+fuller screen-reader support and accessibility presets. The
 remaining Verbatim cleanup macros (AutoNumberTags, ReformatAllCites,
 ConvertToDefaultStyles, …) aren't planned, though several cleanup
 commands already ship.
