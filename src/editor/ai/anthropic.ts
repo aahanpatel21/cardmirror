@@ -46,6 +46,9 @@ export interface AnthropicRequest {
 
 export interface AnthropicReply {
   text: string;
+  /** The API's `stop_reason` — `'max_tokens'` means the output was
+   *  truncated by the token limit (i.e. likely invalid/cut-off JSON). */
+  stopReason?: string;
 }
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
@@ -146,5 +149,6 @@ export async function callAnthropic(req: AnthropicRequest): Promise<AnthropicRep
   if (!text) {
     throw new AnthropicError('Anthropic returned an empty response.', res.status, 'parse');
   }
-  return { text };
+  const stopReason = (json as { stop_reason?: string })?.stop_reason;
+  return { text, stopReason };
 }

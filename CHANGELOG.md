@@ -96,6 +96,14 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Fixed
 
+- **AI "Generate table from image" handles large tables.** Big tables
+  used to silently fail because the model's JSON got cut off at the token
+  limit. The format the model returns is now much more compact and the
+  token ceiling is far higher, so large tables come through intact. If a
+  reply still comes back malformed (rather than truncated), it's sent to a
+  second pass that reformats it instead of just failing; a table that's
+  genuinely too big to return in one go now says so clearly.
+
 - **Creating notes, AI comments, and flashcards is fast again on large
   documents.** Adding one of these annotations (and typing a reply) no
   longer re-scans the whole document to re-locate every annotation each

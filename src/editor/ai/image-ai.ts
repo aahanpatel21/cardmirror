@@ -346,25 +346,37 @@ interface CellSpec {
 interface RowSpec { cells: CellSpec[] }
 interface TableSpec { rows: RowSpec[] }
 
-const TABLE_SYSTEM_PROMPT = `You extract tables from images. Return ONLY valid JSON in this schema:
+/** The table JSON schema + formatting rules, shared by the extraction
+ *  prompt and the repair prompt so they can never drift apart.
+ *
+ *  The cells are kept COMPACT — only non-default fields are emitted —
+ *  because the old "always include all five keys" shape made large
+ *  tables blow past the token limit (every plain cell carried ~80 bytes
+ *  of `false`/`1` boilerplate). The validator defaults any missing
+ *  field, so `{ "text": "..." }` is a complete plain cell. */
+const TABLE_SCHEMA_AND_RULES = `the JSON schema (cells keep ONLY the fields they need):
 {
   "rows": [
-    {
-      "cells": [
-        { "text": "string", "bold": false, "italic": false, "colspan": 1, "rowspan": 1 }
-      ]
-    }
+    { "cells": [ { "text": "string", "bold": true, "italic": true, "colspan": 2, "rowspan": 2 } ] }
   ]
 }
 
 Rules:
-- One "rows" entry per visible row.
-- One "cells" entry per visible cell. OMIT cells that are spanned over by a merge from a previous cell (they are represented by colspan/rowspan on the merging cell).
+- One "rows" entry per visible row; one "cells" entry per visible cell.
+- OMIT cells that are spanned over by a merge from a previous cell (they are represented by colspan/rowspan on the merging cell).
 - "text" is the visible cell content as a plain string. Use a single space to separate words across line wraps.
-- "bold" / "italic" reflect the visible formatting of the WHOLE cell text. Default false. (Mixed runs are uncommon in debate tables — pick the dominant style.)
-- "colspan" / "rowspan" are positive integers; default 1.
-- Do NOT include keys other than the four above.
+- Keep the JSON COMPACT to avoid running out of room: include "bold"/"italic" ONLY when they are true, and "colspan"/"rowspan" ONLY when they are greater than 1. Omit them otherwise — a plain, unmerged cell is just { "text": "..." }.
+- (When you do include bold/italic, they reflect the dominant style of the whole cell.)
+- Do NOT include keys other than the five above.
 - Do NOT include any text outside the JSON.`;
+
+const TABLE_SYSTEM_PROMPT = `You extract tables from images. Return ONLY valid JSON in ${TABLE_SCHEMA_AND_RULES}`;
+
+/** Repair prompt — given a previous model's output that FAILED schema
+ *  validation, reformat it into valid JSON without inventing content. */
+const TABLE_REPAIR_SYSTEM_PROMPT = `You repair malformed table data. You are given another model's output that was supposed to be table JSON but FAILED validation (wrong shape, extra keys, markdown table, prose, truncation, etc.). Rewrite it as valid JSON matching exactly ${TABLE_SCHEMA_AND_RULES}
+
+Preserve all of the table's content and structure from the input as faithfully as possible — do not add, drop, or invent rows, cells, or text. Just fix the format. Return ONLY the corrected JSON.`;
 
 /** Extract a JSON object from a model response that may have extra
  *  prose, code fences, or trailing commentary. Returns null when no
@@ -416,6 +428,12 @@ function validateTableSpec(raw: unknown): TableSpec | null {
     rows.push({ cells });
   }
   return { rows };
+}
+
+/** Extract + validate a table spec from a raw model reply. Returns null
+ *  when the reply isn't (or doesn't contain) a valid table description. */
+function parseTableSpec(text: string): TableSpec | null {
+  return validateTableSpec(extractJsonObject(text));
 }
 
 /** Build a PM `table` node from the validated spec. */
@@ -473,10 +491,11 @@ export function runGenerateTable(
       const reply = await callAnthropic({
         apiKey,
         system: TABLE_SYSTEM_PROMPT,
-        // Give the model enough room for a sizable table — every row
-        // is JSON overhead. Tables in the typical debate doc are
-        // modest but we don't want to clip outputs.
-        maxTokens: 4096,
+        // Big headroom — a large table is a lot of JSON, and the old
+        // 4096 cap silently truncated them (stop_reason 'max_tokens',
+        // cut-off JSON that fails to parse). The compact schema above
+        // already shrinks the output a lot; this is the safety margin.
+        maxTokens: 16384,
         messages: [
           {
             role: 'user',
@@ -487,8 +506,37 @@ export function runGenerateTable(
           },
         ],
       });
-      const parsed = extractJsonObject(reply.text);
-      const spec = validateTableSpec(parsed);
+      let spec = parseTableSpec(reply.text);
+      if (!spec) {
+        if (reply.stopReason === 'max_tokens') {
+          // Truncated by the token limit — the JSON is genuinely cut off,
+          // so the data is incomplete. A repair pass can't recover missing
+          // rows, so don't pretend; tell the user it was too big.
+          showToast('That table is too large for the AI to extract in one go.');
+          return;
+        }
+        // Not truncated, just malformed (markdown, prose, wrong keys, …).
+        // Hand the broken output to a second pass to reformat into the
+        // schema — a text-only call (no image), purely a formatting fix.
+        // The "Thinking…" tooltip stays up across both calls.
+        const repair = await callAnthropic({
+          apiKey,
+          system: TABLE_REPAIR_SYSTEM_PROMPT,
+          maxTokens: 16384,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: `Previous output that failed validation:\n\n${reply.text}`,
+                },
+              ],
+            },
+          ],
+        });
+        spec = parseTableSpec(repair.text);
+      }
       if (!spec) {
         showToast('AI response wasn\'t a valid table description.');
         return;

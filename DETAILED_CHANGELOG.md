@@ -54,6 +54,23 @@ in each release, see `CHANGELOG.md`.
   empty) and same per-unit transform (analytic_unit→card, analytic→tag,
   heading id + body slots preserved).
 
+- **AI table-from-image: large tables + a repair fallback** (`image-ai.ts`,
+  `anthropic.ts`). Large tables were truncated by the 4096-token cap — the
+  dominant cause, confirmed via `stop_reason === 'max_tokens'`. Fixes:
+  - The table JSON schema (now shared between the extraction and repair
+    prompts as `TABLE_SCHEMA_AND_RULES`) is COMPACT: cells emit only
+    non-default fields, so a plain cell is `{ "text": "..." }` instead of
+    carrying `bold/italic/colspan/rowspan` defaults. `validateTableSpec`
+    already defaults missing fields, so no parse change was needed — this
+    just cuts output size ~5×.
+  - `maxTokens` raised 4096 → 16384.
+  - `callAnthropic` now returns `stopReason` (the API `stop_reason`).
+  - On validation failure: if `stopReason === 'max_tokens'` the data is
+    genuinely cut off → a clear "too large" toast (no repair, since
+    reformatting truncated JSON would silently drop rows). Otherwise (a
+    real format error) a text-only repair call (`TABLE_REPAIR_SYSTEM_PROMPT`)
+    reformats the broken output via the shared `parseTableSpec` helper.
+
 - **Extract Undertag command.** New bindable command `extractUndertag`
   (`ribbon-commands.ts`, label "Extract Undertag", no default key, card
   dropdown → Excerpt section, Editing-utilities group). Walks up from the
