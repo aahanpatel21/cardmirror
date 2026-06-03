@@ -7633,10 +7633,13 @@ body.pmd-multi-doc #status-bar {
    * with the status bar above. */
   left: 0;
 }
-/* Each pane shows its own word count in its footer, so the
- * shared status-bar word counter is redundant in multi-doc mode.
- * Hide it (and let the zoom controls right-align via the spacer). */
-body.pmd-multi-doc #word-count-display {
+/* Each pane shows its own word count (and Σ button) in its footer, so
+ * the shared status-bar word counter is redundant in multi-doc mode.
+ * Hide both the readout and the Σ button (which would otherwise sit in
+ * the corner below the nav rail), and let the zoom controls right-align
+ * via the spacer. */
+body.pmd-multi-doc #word-count-display,
+body.pmd-multi-doc #word-count-btn {
   display: none;
 }
 

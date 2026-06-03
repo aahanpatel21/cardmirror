@@ -17,7 +17,11 @@ in each release, see `CHANGELOG.md`.
   than the module-level single-pane `view`. `mousedown` is
   preventDefault'd and the click `stopPropagation`'d like the sibling
   open-file button; it no-ops when the slot is empty. Styled in
-  `style.css` like `.status-bar-btn`, scaled to the footer.
+  `style.css` like `.status-bar-btn`, scaled to the footer. The shared
+  status-bar Σ button (`#word-count-btn`) is now also hidden in
+  multi-doc mode (alongside the already-hidden `#word-count-display`) —
+  it otherwise sat in the corner below the nav rail and was redundant
+  with the per-pane buttons.
 
 - **Version / "About this install" in the command palette.** A synthetic
   settings result in `searchSettingsSource` (`quick-card-search-ui.ts`),

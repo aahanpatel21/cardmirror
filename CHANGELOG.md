@@ -83,7 +83,8 @@ see `DETAILED_CHANGELOG.md`.
   that opens the Word Count Selection summary, previously only in
   single-pane view, now appears in each pane's footer in multi-pane mode.
   Each one counts the document — and selection — in the pane it sits next
-  to.
+  to. The redundant shared button that used to sit in the corner below
+  the nav rail is gone in multi-pane mode.
 
 ### Changed
 
