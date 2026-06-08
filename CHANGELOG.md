@@ -53,6 +53,11 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Changed
 
+- **Select Current Heading now has a default shortcut: Alt-A.** The
+  command (select the current heading and everything under it) was
+  previously unbound; rebind it like any other under Settings → Keyboard
+  shortcuts.
+
 - **macOS no longer pretends to auto-update.** CardMirror can detect a
   new version on macOS but can't install it automatically, so the
   "downloading in the background" / "restart to install" prompts no

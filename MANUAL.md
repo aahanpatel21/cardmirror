@@ -1075,6 +1075,7 @@ these to extend the selection.
 | Ctrl-Left / Ctrl-Right | Previous / next word |
 | Ctrl-Up / Ctrl-Down | Previous / next paragraph |
 | PageUp / PageDown | Previous / next heading |
+| Alt-A | Select the current heading and everything under it |
 
 ### Find, files, and Quick Cards
 | Shortcut | Action |

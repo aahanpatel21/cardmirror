@@ -3897,7 +3897,7 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   sendToSpeechAtCursor: '`',
   sendToSpeechAtEnd: 'Alt-`',
   sendToDropzone: 'Mod-`',
-  selectCurrentHeading: '',
+  selectCurrentHeading: 'Alt-a',
   deleteCurrentHeading: '',
   copyCurrentHeading: '',
   addQuickCard: '',

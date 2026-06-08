@@ -7,6 +7,11 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **`selectCurrentHeading` default-bound to `Alt-a`** (`ribbon-commands.ts`
+  `DEFAULT_RIBBON_KEYS`). The command existed but shipped unbound (`''`);
+  no conflict with existing defaults. User-rebindable via
+  `ribbonKeyOverrides`.
+
 - **Drag-from-editor auto-scroll fixed** (`src/editor/drag-editor-surface.ts`).
   `maybeAutoScroll` scrolled `this.host`, but the host (`#editor` /
   `.pmd-pane-editor`) isn't the scroll container — `#app` is in single-doc,
