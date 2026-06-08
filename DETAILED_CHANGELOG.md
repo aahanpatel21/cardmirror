@@ -7,47 +7,37 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
-- **Editor spellcheck now works** (`apps/desktop/src/main.ts`, new
-  `src/editor/editor-spellcheck.ts`, `src/editor/index.ts`,
-  `src/editor/multi-pane-shell.ts`). Two layers were missing:
-  - *Engine never enabled.* The desktop app never called
-    `session.setSpellCheckerEnabled(true)` / `setSpellCheckerLanguages`,
-    so the renderer's `spellcheck="true"` attribute had no engine behind
-    it — on Windows/Linux nothing was ever checked. New `setupSpellChecker()`
-    enables the engine at launch and, off macOS (which uses the OS
-    checker), sets a language (prefers `en-US`, falling back through the
-    available list) so Hunspell fetches its dictionary. Also set
-    `webPreferences.spellcheck: true` explicitly.
-  - *Toggle needed a reload.* The toggle set `spellcheck="true"` on the
-    editable (PM doesn't revert it — its MutationObserver ignores
-    attribute mutations on `view.dom`, and the decoration diff only
-    writes on change), but Chromium only (re)evaluates an editing host on
-    focus, and the toggle lives in the Settings dialog (editor blurred).
-    `applySpellcheckToView` sets the attribute and, when enabling, bounces
-    focus to force a re-scan — now if focused, else once on next focus (a
-    de-duped one-shot listener); PM restores its selection on `focus()`.
-    Wired into the single-pane subscriber and the multi-pane shell.
-  - *Known limitations.* The built-in checker only flags text as it's
-    typed/edited; pre-existing (opened/imported) text isn't scanned until
-    edited near. And on Linux under native Wayland, Chromium doesn't paint
-    spellcheck squiggles at all (works under X11/XWayland) — an upstream
-    Electron/Chromium issue, not app logic.
-
-- **Experimental: viewport-only custom spellchecker** (new
+- **Editor spellcheck: a custom viewport-scoped checker** (new
   `src/editor/viewport-spellcheck.ts`, `src/editor/proto-dict/`, `nspell`
-  dep; off by default). A ProseMirror decoration plugin that flags ALL
-  misspellings in the *visible* range — closing the built-in checker's
-  "imported text isn't checked" gap — while staying bounded by only ever
-  scanning a screenful (re-checked after scroll/edit settles, with
-  memoized lookups). nspell + the en `.dic` are dynamically imported so a
-  normal build never bundles the ~550KB dictionary. Opt in for dev with
-  `localStorage['pmd-proto-viewport-spellcheck'] = '1'`; gated on the same
-  `editorSpellcheck` setting as the built-in checker. Perf on dense debate
-  docs: ~3µs/word, doc-size-independent (tracks words-on-screen), dict
-  build ~67ms. Not production: needs a Web Worker for the build,
-  incremental (delta-only) checking, and false-positive UX (debate
-  evidence flags many proper nouns / jargon). A probe to evaluate the
-  approach, not a shipped feature.
+  dep; `src/editor/index.ts`, `src/editor/multi-pane-shell.ts`,
+  `apps/desktop/src/main.ts`). The `editorSpellcheck` setting is now
+  served by a ProseMirror decoration plugin instead of the browser's
+  built-in checker. Why the switch: the built-in checker only flags words
+  as you *type* them (never text in opened/imported files), needed the
+  Electron session engine enabled + a language set to work at all on
+  Windows/Linux, and — decisively — does not paint squiggles under native
+  Wayland. The custom checker fixes all three.
+  - *How it works.* On scroll/edit (trailing-debounced ~120ms), it
+    hit-tests the viewport top/bottom to find the on-screen doc range,
+    tokenizes only that range, and decorates misspellings
+    (`.pmd-misspelled`, a CSS wavy underline that renders everywhere
+    incl. Wayland). Cost tracks words-on-screen, not document size; word
+    verdicts are memoized. Gated on `editorSpellcheck` (no work, and no
+    dictionary load, when off). Lands via `buildEditorPlugins`, so it
+    covers both single-doc and multi-pane.
+  - *Dictionary.* nspell (Hunspell-in-JS) over the en `.aff`/`.dic`
+    (vendored under `proto-dict/`), **dynamically imported** so the
+    ~550KB dictionary is a separate async chunk fetched only the first
+    time spellcheck is turned on — a spellcheck-off session never pays
+    for it. Build is ~67ms (one-time).
+  - *Native checker disabled.* The editable's `spellcheck` attribute is
+    now always `false`; the prior native-engine wiring
+    (`setupSpellChecker`, `webPreferences.spellcheck`, the
+    `editor-spellcheck.ts` focus-bounce) is removed.
+  - *Not yet done* (follow-ups): right-click suggestions +
+    add-to-dictionary / ignore (needed for debate evidence, which flags
+    many proper nouns and jargon), and a Web Worker for the dictionary
+    build to remove its one-time main-thread cost.
 - **Suppress the auto-update-in-progress messaging on macOS**
   (`apps/desktop/src/main.ts`, `src/editor/settings-ui.ts`). Unsigned
   macOS builds can't self-install via Squirrel.Mac, so the auto-updater

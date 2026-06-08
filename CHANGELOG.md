@@ -20,13 +20,12 @@ see `DETAILED_CHANGELOG.md`.
   intact, instead of occasionally closing every window and reopening
   none.
 
-- **Editor spellcheck actually works now.** The desktop app never
-  turned the spellchecker engine on, so misspellings were never
-  underlined even with the setting enabled. The engine is now enabled at
-  launch, and toggling the setting takes effect immediately (the browser
-  otherwise only re-checks an editor when it regains focus). Note: the
-  built-in checker flags text as you type it — words already in an opened
-  document aren't underlined until you edit near them.
+- **Editor spellcheck actually works now.** It previously did nothing
+  even with the setting on. Spellcheck now underlines misspellings in the
+  visible part of the document — including text in files you've opened,
+  not just words you're currently typing — and works on every platform
+  (the old browser checker didn't render on Linux). It's still off by
+  default; turn it on under Settings → Editing.
 
 ### Changed
 

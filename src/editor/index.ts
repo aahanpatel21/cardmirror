@@ -87,7 +87,6 @@ import {
 } from './settings.js';
 import { openSaveAs } from './save-as-ui.js';
 import { highlightColorLabel, shadingColorLabel } from './color-palette.js';
-import { applySpellcheckToView } from './editor-spellcheck.js';
 import { viewportSpellcheckPlugin } from './viewport-spellcheck.js';
 import { commentsPlugin, commentsKey, loadThreads, getCommentsState, gcOrphanThreads, newCommentId } from './comments-plugin.js';
 import { scheduleIdle, cancelIdle, type IdleHandle } from './idle-scheduler.js';
@@ -2278,13 +2277,8 @@ settings.subscribe((s) => {
       );
     }
   }
-  // Editor spellcheck toggle. Setting the attribute isn't enough on
-  // Chromium — it only re-scans an editing host on focus — so the
-  // helper bounces focus to force the change to take effect without a
-  // reload (see editor-spellcheck.ts).
-  if (view) {
-    applySpellcheckToView(view, s.editorSpellcheck);
-  }
+  // Editor spellcheck is handled by the viewport-spellcheck plugin,
+  // which subscribes to `editorSpellcheck` itself — nothing to do here.
   // Nav-rail drag, zoom, display-size changes — anything that can
   // move the editor's available width — re-sync the card-intrinsic
   // CSS variable so skipped (content-visibility) cards stay the
@@ -3488,11 +3482,9 @@ export function buildEditorPlugins(): Plugin[] {
       },
     }),
   ];
-  // PROTOTYPE: viewport-only custom spellchecker, opt-in via
-  // `localStorage['pmd-proto-viewport-spellcheck'] = '1'` (dev perf probe).
-  if (localStorage.getItem('pmd-proto-viewport-spellcheck') === '1') {
-    plugins.push(viewportSpellcheckPlugin());
-  }
+  // Editor spellcheck — viewport-scoped custom checker, gated internally
+  // on the `editorSpellcheck` setting (does nothing when off).
+  plugins.push(viewportSpellcheckPlugin());
   return plugins;
 }
 
@@ -3509,13 +3501,10 @@ function mountView(doc: PMNode, threads: Thread[] = []): void {
   view = new EditorView(editorEl, {
     state,
     editable: () => !settings.get('readMode'),
-    // Browser spellcheck on a large contenteditable is a visible
-    // per-keystroke cost (dictionary tokenization + underline
-    // overlay). Off by default via the `editorSpellcheck` setting;
-    // a settings subscriber below pushes runtime toggles into
-    // `view.dom.setAttribute` so the user can flip it without a
-    // reload.
-    attributes: { spellcheck: settings.get('editorSpellcheck') ? 'true' : 'false' },
+    // Browser's built-in spellcheck stays OFF — `editorSpellcheck` is
+    // served by the custom viewport checker (viewport-spellcheck.ts),
+    // which also catches imported text and renders under Wayland.
+    attributes: { spellcheck: 'false' },
     dispatchTransaction(tx) {
       if (!view) return;
       const prevState = view.state;

@@ -1,27 +1,23 @@
 /**
- * Viewport-only spellcheck — PROTOTYPE (perf evaluation).
+ * Editor spellcheck (viewport-scoped).
  *
- * A custom spellchecker that flags ALL misspellings in the *visible*
- * portion of the document (not just words being typed, which is the
- * browser checker's limit), while staying cheap on huge debate docs by
- * only ever processing a screenful of text — re-checked on scroll/edit.
+ * The mechanism behind the `editorSpellcheck` setting: a custom checker
+ * that flags misspellings in the *visible* part of the document — so,
+ * unlike the browser's built-in checker, it catches words in opened /
+ * imported text, not just words you're actively typing. It stays cheap
+ * on huge debate docs by only ever scanning the screenful that's on
+ * screen, re-checked after scroll/edit settles. The cost tracks
+ * words-on-screen, not document size.
  *
- * Dictionary: nspell (Hunspell-in-JS) over the en-US `.aff`/`.dic`. The
- * one-time dictionary build is the expensive part; per-check work scales
- * with the viewport, not the document.
- *
- * Opt in (dev): `localStorage.setItem('pmd-proto-viewport-spellcheck','1')`
- * then reload. Timings are logged to the console as `[viewport-spell]`.
- * This file is a throwaway probe — not wired into normal builds.
+ * Dictionary: nspell (Hunspell-in-JS) over the en `.aff`/`.dic`,
+ * dynamically imported so the ~550KB dictionary is a separate async
+ * chunk loaded only the first time spellcheck is switched on.
  */
 import { Plugin, PluginKey } from 'prosemirror-state';
 import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
 import { settings } from './settings.js';
-// nspell + the dictionary are imported DYNAMICALLY in `ensureSpell` so
-// they're a separate async chunk — a normal (flag-off) build never pulls
-// in the ~550KB dictionary or the spellchecker.
 
-const key = new PluginKey<DecorationSet>('protoViewportSpellcheck');
+const key = new PluginKey<DecorationSet>('viewportSpellcheck');
 
 /** Memoized lookups — debate text repeats words heavily, so a cache
  *  makes the second+ occurrence of every word free. */
@@ -44,15 +40,10 @@ async function ensureSpell(onReady: () => void): Promise<void> {
   try {
     const [{ default: nspell }, aff, dic] = await Promise.all([
       import('nspell'),
-      import('./proto-dict/en.aff?raw'),
-      import('./proto-dict/en.dic?raw'),
+      import('./dict/en.aff?raw'),
+      import('./dict/en.dic?raw'),
     ]);
-    const t0 = performance.now();
     spell = nspell(aff.default, dic.default);
-    console.log(
-      `[viewport-spell] dictionary built in ${(performance.now() - t0).toFixed(0)}ms ` +
-        `(.dic ${(dic.default.length / 1024).toFixed(0)}KB)`,
-    );
   } finally {
     building = false;
   }
@@ -78,11 +69,8 @@ function visibleRange(view: EditorView): { from: number; to: number } {
 
 function computeDecos(view: EditorView): DecorationSet {
   if (!spell) return DecorationSet.empty;
-  const t0 = performance.now();
   const { from, to } = visibleRange(view);
   const decos: Decoration[] = [];
-  let words = 0;
-  let flagged = 0;
   view.state.doc.nodesBetween(from, to, (node, pos) => {
     if (!node.isText || !node.text) return;
     const text = node.text;
@@ -90,21 +78,15 @@ function computeDecos(view: EditorView): DecorationSet {
     let m: RegExpExecArray | null;
     while ((m = WORD_RE.exec(text)) !== null) {
       const w = m[0];
-      words++;
       if (w.length < 3) continue; // skip a/an/etc.
       if (w === w.toUpperCase()) continue; // skip ACRONYMS / ALLCAPS
       if (isCorrect(w)) continue;
-      flagged++;
       const start = pos + m.index;
       decos.push(
-        Decoration.inline(start, start + w.length, { class: 'pmd-proto-misspelled' }),
+        Decoration.inline(start, start + w.length, { class: 'pmd-misspelled' }),
       );
     }
   });
-  const ms = performance.now() - t0;
-  console.log(
-    `[viewport-spell] ${to - from} chars · ${words} words · ${flagged} flagged · ${ms.toFixed(2)}ms`,
-  );
   return DecorationSet.create(view.state.doc, decos);
 }
 
@@ -152,8 +134,12 @@ export function viewportSpellcheckPlugin(): Plugin {
           recompute();
         }, 120);
       };
+      // Scroll container: the pane body in multi-pane, else `#app` in
+      // single-doc, else the window. Recompute when it scrolls.
       const scroller: HTMLElement | Window =
-        (view.dom.closest('#app') as HTMLElement | null) ?? window;
+        (view.dom.closest('.pmd-pane-body') as HTMLElement | null) ??
+        document.getElementById('app') ??
+        window;
       scroller.addEventListener('scroll', schedule, { passive: true });
       window.addEventListener('resize', schedule, { passive: true });
       // React to the spellcheck toggle flipping (clear when off, check

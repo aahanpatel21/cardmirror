@@ -9289,9 +9289,9 @@ html.pmd-emphasis-box .pmd-pane-editor .pmd-emphasis {
   }
 }
 
-/* PROTOTYPE: viewport-only spellcheck squiggle (see viewport-spellcheck.ts).
-   CSS-painted, so it renders under Wayland too (unlike the native checker). */
-.pmd-proto-misspelled {
+/* Editor spellcheck squiggle (see viewport-spellcheck.ts). CSS-painted,
+   so it renders under Wayland too (unlike the browser's native checker). */
+.pmd-misspelled {
   text-decoration: red wavy underline;
   text-decoration-skip-ink: none;
 }
