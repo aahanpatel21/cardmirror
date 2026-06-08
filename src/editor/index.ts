@@ -88,6 +88,7 @@ import {
 import { openSaveAs } from './save-as-ui.js';
 import { highlightColorLabel, shadingColorLabel } from './color-palette.js';
 import { applySpellcheckToView } from './editor-spellcheck.js';
+import { viewportSpellcheckPlugin } from './viewport-spellcheck.js';
 import { commentsPlugin, commentsKey, loadThreads, getCommentsState, gcOrphanThreads, newCommentId } from './comments-plugin.js';
 import { scheduleIdle, cancelIdle, type IdleHandle } from './idle-scheduler.js';
 import { CommentsColumn, addCommentToSelection, FC_PREFIX, AI_PREFIX, NOTE_PREFIX } from './comments-ui.js';
@@ -3395,7 +3396,7 @@ function makeNewDocBody(): PMNode {
  * using the exact same plugin stack as the single-doc shell.
  */
 export function buildEditorPlugins(): Plugin[] {
-  return [
+  const plugins: Plugin[] = [
     history(),
     keymap({ 'Mod-z': undo, 'Mod-y': redo, 'Mod-Shift-z': redo }),
     // Tag/analytic boundary editing rules (ARCHITECTURE.md §14.3).
@@ -3487,6 +3488,12 @@ export function buildEditorPlugins(): Plugin[] {
       },
     }),
   ];
+  // PROTOTYPE: viewport-only custom spellchecker, opt-in via
+  // `localStorage['pmd-proto-viewport-spellcheck'] = '1'` (dev perf probe).
+  if (localStorage.getItem('pmd-proto-viewport-spellcheck') === '1') {
+    plugins.push(viewportSpellcheckPlugin());
+  }
+  return plugins;
 }
 
 function mountView(doc: PMNode, threads: Thread[] = []): void {

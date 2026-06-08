@@ -33,6 +33,21 @@ in each release, see `CHANGELOG.md`.
     spellcheck squiggles at all (works under X11/XWayland) — an upstream
     Electron/Chromium issue, not app logic.
 
+- **Experimental: viewport-only custom spellchecker** (new
+  `src/editor/viewport-spellcheck.ts`, `src/editor/proto-dict/`, `nspell`
+  dep; off by default). A ProseMirror decoration plugin that flags ALL
+  misspellings in the *visible* range — closing the built-in checker's
+  "imported text isn't checked" gap — while staying bounded by only ever
+  scanning a screenful (re-checked after scroll/edit settles, with
+  memoized lookups). nspell + the en `.dic` are dynamically imported so a
+  normal build never bundles the ~550KB dictionary. Opt in for dev with
+  `localStorage['pmd-proto-viewport-spellcheck'] = '1'`; gated on the same
+  `editorSpellcheck` setting as the built-in checker. Perf on dense debate
+  docs: ~3µs/word, doc-size-independent (tracks words-on-screen), dict
+  build ~67ms. Not production: needs a Web Worker for the build,
+  incremental (delta-only) checking, and false-positive UX (debate
+  evidence flags many proper nouns / jargon). A probe to evaluate the
+  approach, not a shipped feature.
 - **Suppress the auto-update-in-progress messaging on macOS**
   (`apps/desktop/src/main.ts`, `src/editor/settings-ui.ts`). Unsigned
   macOS builds can't self-install via Squirrel.Mac, so the auto-updater
