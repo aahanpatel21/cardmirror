@@ -156,7 +156,12 @@ export class EditorDragSurface implements DragSurface {
     document.addEventListener('mousemove', this.boundOnGlobalMove);
     window.addEventListener('blur', this.boundOnBlur);
     hostEl.addEventListener('pointermove', this.boundOnHostMove);
-    hostEl.addEventListener('pointerdown', this.boundOnHostDown);
+    // Capture phase: a pickup-drag pointerdown must be intercepted
+    // BEFORE ProseMirror's own handler on the inner editable, or PM
+    // sets a (Shift/Alt-modified) text selection under the click. The
+    // handler only swallows the event when it's actually starting a
+    // drag; ordinary clicks fall through.
+    hostEl.addEventListener('pointerdown', this.boundOnHostDown, true);
     this.setupHeadingObservers();
   }
 
@@ -180,7 +185,7 @@ export class EditorDragSurface implements DragSurface {
     window.removeEventListener('blur', this.boundOnBlur);
     if (this.host) {
       this.host.removeEventListener('pointermove', this.boundOnHostMove);
-      this.host.removeEventListener('pointerdown', this.boundOnHostDown);
+      this.host.removeEventListener('pointerdown', this.boundOnHostDown, true);
       this.host.classList.remove('pmd-editor-pickup-mode');
       this.host.classList.remove('pmd-editor-dragging-mode');
     }
@@ -200,12 +205,12 @@ export class EditorDragSurface implements DragSurface {
   hitTest(clientX: number, clientY: number): { el: HTMLElement; insertPos: number; dy: number; view?: EditorView } | null {
     if (!this.host) return null;
     // For the hit-test gate, use the nearest SCROLLING ancestor — in
-    // single-doc that's the host itself (`#editor` has overflow:auto),
-    // in multi-doc that's the pane body (the host `.pmd-pane-editor`
-    // has overflow:visible and its element box is locked to the
-    // body's visible height while PM's content overflows further
-    // down). Using the host's own rect rejects every cursor below
-    // its box even though the editor content extends past it.
+    // single-doc that's `#app` (the editor's scroll container), NOT the
+    // host (`#editor`) itself; in multi-doc it's the pane body (the host
+    // `.pmd-pane-editor` has overflow:visible and its element box is
+    // locked to the body's visible height while PM's content overflows
+    // further down). Using the host's own rect rejects every cursor
+    // below its box even though the editor content extends past it.
     const gateRect = this.findScrollGate().getBoundingClientRect();
     if (clientX < gateRect.left || clientX > gateRect.right) {
       return null;
@@ -577,8 +582,14 @@ export class EditorDragSurface implements DragSurface {
     if (dragController.isActive()) return;
     if (!this.hovered || !this.view) return;
 
+    // We're starting a pickup-drag: fully swallow this pointerdown so
+    // ProseMirror (running on the inner editable) never sees it and
+    // can't place a text selection. Capture phase + stopImmediate is
+    // what makes that reliable — bubble-phase stopPropagation runs too
+    // late, after PM's target-phase handler.
     e.preventDefault();
     e.stopPropagation();
+    e.stopImmediatePropagation();
 
     const item: DragItem = {
       from: this.hovered.from,
@@ -634,10 +645,16 @@ export class EditorDragSurface implements DragSurface {
 
   private maybeAutoScroll(clientY: number): void {
     if (!this.host) return;
+    // Scroll the actual scroll container, not the host — in single-doc
+    // that's `#app`, in multi-pane the pane body; `#editor` /
+    // `.pmd-pane-editor` themselves don't scroll, so scrolling the host
+    // is a no-op (and its full-height rect makes the edge test never
+    // fire). `findScrollGate` is the same element `hitTest` gates on.
     const margin = 30;
-    const rect = this.host.getBoundingClientRect();
-    if (clientY < rect.top + margin) this.host.scrollBy({ top: -10 });
-    else if (clientY > rect.bottom - margin) this.host.scrollBy({ top: 10 });
+    const gate = this.findScrollGate();
+    const rect = gate.getBoundingClientRect();
+    if (clientY < rect.top + margin) gate.scrollBy({ top: -10 });
+    else if (clientY > rect.bottom - margin) gate.scrollBy({ top: 10 });
   }
 
   // ---- Container detection ----

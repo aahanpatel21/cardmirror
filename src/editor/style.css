@@ -3218,11 +3218,18 @@ body.pmd-nav-resize-active {
 :is(#editor, .pmd-pane-editor).pmd-editor-pickup-mode,
 :is(#editor, .pmd-pane-editor).pmd-editor-pickup-mode .ProseMirror {
   cursor: grab !important;
+  /* While the pickup chord is held, a click is a drag-pickup, not a
+     text edit — suppress the browser's text selection so the modifier
+     (Shift/Alt) doesn't leave a confusing highlighted word behind. */
+  user-select: none !important;
+  -webkit-user-select: none !important;
 }
 
 :is(#editor, .pmd-pane-editor).pmd-editor-dragging-mode,
 :is(#editor, .pmd-pane-editor).pmd-editor-dragging-mode .ProseMirror {
   cursor: grabbing !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
 }
 
 /* Hover highlight while in pickup mode — a dashed-outline overlay

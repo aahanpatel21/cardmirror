@@ -7,6 +7,17 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Drag-from-editor auto-scroll fixed** (`src/editor/drag-editor-surface.ts`).
+  `maybeAutoScroll` scrolled `this.host`, but the host (`#editor` /
+  `.pmd-pane-editor`) isn't the scroll container — `#app` is in single-doc,
+  the pane body in multi-pane — so it was a no-op and the edge test never
+  fired (the host's full-height rect has its bottom far below the
+  viewport). Now scrolls `findScrollGate()` (the same element `hitTest`
+  gates on). (A companion fix — suppressing the text selection the pickup
+  chord's Shift/Alt triggers on click, via a capture-phase pointerdown
+  interceptor + `user-select: none` in pickup mode — is in the code but
+  held out of the changelog pending macOS verification.)
+
 - **`@AI` mentions fire from comments + notes again; AI author name
   cleaned up** (`src/editor/comments-ui.ts`). The `@AI` / has-AI-history
   re-invocation check lived only in `submitReply`, so it was lost on the

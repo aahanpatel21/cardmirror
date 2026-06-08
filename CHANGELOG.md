@@ -19,6 +19,11 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Fixed
 
+- **Dragging a card out of the editor now auto-scrolls.** When you pick
+  up a card or heading from the page and drag toward the top or bottom
+  edge, the document scrolls so you can drop it past what's currently on
+  screen — previously it didn't scroll at all.
+
 - **`@AI` mentions work again in comments and notes.** Typing `@AI` now
   summons the assistant from the **first** message of a comment (not just
   replies), and works in note threads too — both had stopped firing. The
