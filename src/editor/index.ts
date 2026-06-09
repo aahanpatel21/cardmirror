@@ -1768,6 +1768,36 @@ zoomOutBtn.addEventListener('click', () => setZoom(settings.get('zoomPct') - 10)
 zoomInBtn.addEventListener('click', () => setZoom(settings.get('zoomPct') + 10));
 zoomResetBtn.addEventListener('click', () => setZoom(100));
 
+// Gesture zoom — trackpad pinch and Ctrl+mouse-wheel. Chromium delivers a
+// trackpad pinch as a `wheel` event with `ctrlKey` set (identical shape to
+// a real Ctrl+wheel), so one handler covers both. We must preventDefault on
+// the gesture or Chromium also fires its own native page-zoom on top of
+// ours (double zoom). Deltas are accumulated so a continuous pinch (many
+// tiny deltas) and a single wheel notch (one large delta) both feel right,
+// stepping `zoomPct` by 10% per threshold. Non-passive so preventDefault
+// takes effect; capture so we win before any inner scroll handler.
+let gestureZoomAccum = 0;
+const GESTURE_ZOOM_THRESHOLD = 40; // delta units per 10% step
+window.addEventListener(
+  'wheel',
+  (e: WheelEvent) => {
+    if (!e.ctrlKey || !settings.get('gestureZoom')) return;
+    e.preventDefault();
+    gestureZoomAccum += e.deltaY;
+    let steps = 0;
+    while (gestureZoomAccum <= -GESTURE_ZOOM_THRESHOLD) {
+      steps += 1; // deltaY < 0 → zoom in
+      gestureZoomAccum += GESTURE_ZOOM_THRESHOLD;
+    }
+    while (gestureZoomAccum >= GESTURE_ZOOM_THRESHOLD) {
+      steps -= 1; // deltaY > 0 → zoom out
+      gestureZoomAccum -= GESTURE_ZOOM_THRESHOLD;
+    }
+    if (steps !== 0) setZoom(settings.get('zoomPct') + steps * 10);
+  },
+  { capture: true, passive: false },
+);
+
 // Formatting panel — Verbatim-style ribbon buttons that dispatch the
 // same commands as the F4–F7 / Mod-F7 keymap. Display mode and visual
 // preview are both driven by settings (formattingPanelMode and
@@ -3493,17 +3523,16 @@ export function buildEditorPlugins(): Plugin[] {
     // extend by the right unit.
     wordSelectionPlugin,
     highlightFrequencyPlugin,
-    // When `enableTextDragDrop` is off, swallow the browser's
-    // `dragstart` on the editor's contenteditable so the user
-    // can't initiate a text-move drag from a selection. Doesn't
-    // affect the card / heading pickup-modifier drag — that
-    // system uses pointerdown directly and `preventDefault`s,
-    // so `dragstart` never fires for those gestures anyway.
+    // Swallow the browser's `dragstart` on the editor's content-
+    // editable so the user can't initiate a text-move drag from a
+    // selection. (Text drag-and-drop never worked reliably, so it's
+    // unconditionally off.) Doesn't affect the card / heading pickup-
+    // modifier drag — that system uses pointerdown directly and
+    // `preventDefault`s, so `dragstart` never fires for those gestures.
     new Plugin({
       props: {
         handleDOMEvents: {
           dragstart: (_view, event) => {
-            if (settings.get('enableTextDragDrop')) return false;
             event.preventDefault();
             return true;
           },

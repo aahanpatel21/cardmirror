@@ -903,9 +903,10 @@ Workflow and document behavior.
   Right-click a flagged word for suggestions, Add to Dictionary, or
   Ignore. Off by default — debate evidence (author names, jargon) trips a
   lot of false positives.
-- **Text drag-and-drop** — allow dragging selected text to move it (on by
-  default). Turn off if you keep dragging selections by accident; it
-  doesn't affect the card / heading pickup-drag (see [Drag-and-drop](#drag-and-drop)).
+- **Pinch / Ctrl+Scroll to zoom** — zoom the document with a trackpad
+  pinch or Ctrl + mouse-wheel, in the same 10% steps as the zoom buttons
+  and Mod-= / Mod--. Off by default; enable it if you'd rather zoom by
+  gesture.
 - **Jump to doc top when read mode toggles** — when on, toggling read
   mode scrolls to the top and puts the cursor at the start.
 - **Find: remember the last search query** — when on, the find bar
@@ -1046,8 +1047,11 @@ everyone, apply direct formatting in the document itself).
   also forces readable contrast on highlighted and shaded text
   automatically.
 - **Zoom.** **Mod-=** / **Mod--** zoom the document; the status bar shows
-  the level (click to reset). **(Desktop only:)** **Mod-Alt-=** /
-  **Mod-Alt--** scale the whole interface, not just the document.
+  the level (click to reset). You can also pinch on a trackpad or hold
+  Ctrl and scroll, once you turn that on under Settings → General →
+  **Pinch / Ctrl+Scroll to zoom** (off by default). **(Desktop only:)**
+  **Mod-Alt-=** / **Mod-Alt--** scale the whole interface, not just the
+  document.
 
 ---
 

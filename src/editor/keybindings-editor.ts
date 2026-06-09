@@ -483,6 +483,9 @@ export function buildKeybindingsEditor(): HTMLElement {
   function renderMacrosSection(): HTMLElement {
     const section = document.createElement('section');
     section.className = 'pmd-keybindings-macros';
+    // Deep-link target for the search palette's "Keyboard macros" result
+    // (revealAnchor scrolls to + flashes `[data-anchor]`).
+    section.dataset['anchor'] = 'keyboard-macros';
     // Title + description use the same classes as a settings row, so they
     // match the "Keyboard shortcuts" heading + its description above.
     const headBlock = document.createElement('div');

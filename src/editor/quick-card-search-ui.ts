@@ -374,6 +374,22 @@ function searchSettingsSource(query: string): PaletteResult[] {
     });
   }
 
+  // Keyboard macros — the macros editor lives inside the keybindings
+  // editor (Settings → Shortcuts) rather than as its own SETTING_METADATA
+  // row, so it has no auto-generated palette entry. Surface it explicitly,
+  // deep-linking to the macros section. Matched on how a user looks for it.
+  const macroKeys = ['keyboard macros', 'keyboard macro', 'macro', 'macros', 'snippet', 'text expansion'];
+  if (q.length > 0 && macroKeys.some((k) => k.startsWith(q) || q.startsWith(k))) {
+    results.unshift({
+      source: 'settings',
+      name: 'Keyboard macros',
+      meta: categoryLabel('shortcuts'),
+      matchedName: true,
+      snippet: null,
+      settingsTarget: { category: 'shortcuts', anchor: 'keyboard-macros' },
+    });
+  }
+
   // Then individual settings, ranked by where the first token hits.
   // A setting matches on its label OR any alias (aliases let queries
   // like "dark mode" surface the "Theme" row); ranking still keys on

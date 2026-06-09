@@ -9,6 +9,17 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Added
 
+- **Pinch / Ctrl+Scroll to zoom.** You can now zoom the document with a
+  trackpad pinch or by holding Ctrl and scrolling the mouse wheel, in the
+  same 10% steps as the zoom buttons and Ctrl-= / Ctrl--. Off by default;
+  enable it under Settings → General → **Pinch / Ctrl+Scroll to zoom**
+  (handy if you don't habitually scroll with Ctrl held).
+
+- **Keyboard macros are now findable in the command bar.** Searching the
+  Search Everything palette (Mod-Shift-Space) for "keyboard macros,"
+  "macro," or "snippet" now surfaces a result that jumps straight to the
+  macros editor under Settings → Keyboard shortcuts.
+
 - **Manage Flashcards button in the ribbon, with a due-today dot.** The
   ribbon's comments cluster now has a **Manage Flashcards** button (next
   to Create Flashcard) that opens the flashcard manager. It shows a small
@@ -83,6 +94,13 @@ see `DETAILED_CHANGELOG.md`.
   longer appear there. The update notice now simply points you to the
   releases page to download the new `.dmg`. Update checking, and full
   auto-update on Windows and Linux, are unchanged.
+
+### Removed
+
+- **The "Text drag-and-drop" setting.** Dragging selected text to move it
+  never worked reliably, so the toggle (which was off by default anyway)
+  has been removed; the behavior stays off. Selecting, copy/paste, and the
+  card / heading pickup-drag are unaffected.
 
 ## 0.1.0-alpha.9 — 2026-06-03
 

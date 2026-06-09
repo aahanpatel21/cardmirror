@@ -409,14 +409,6 @@ export interface Settings {
    *  files are skipped because `toDocx` is expensive enough that
    *  per-keystroke autosaves would visibly stutter the editor. */
   autosaveEnabled: boolean;
-  /** Whether the user can click-and-drag selected text to move it to
-   *  another position. On by default (matches PM / browser default).
-   *  Turning this off suppresses the browser's `dragstart` on the
-   *  editor surface — text selection still works, but the user can't
-   *  initiate a text-move drag. Doesn't affect the card / heading
-   *  pickup-modifier drag (which is its own pointerdown-driven
-   *  system) or paste / typing. */
-  enableTextDragDrop: boolean;
   /** Whether read mode is currently active (dims non-read-aloud content,
    *  blocks editing). Persisted across sessions because some users may
    *  want it to be the default state. */
@@ -436,6 +428,12 @@ export interface Settings {
    *  chromeScalePct, dial `zoomPct` down to compensate. No-op
    *  on the web edition (use the browser's own page-zoom). */
   chromeScalePct: number;
+  /** Zoom the editor with a trackpad pinch or Ctrl+mouse-wheel. Off by
+   *  default. Both gestures arrive as the same event (Chromium delivers a
+   *  trackpad pinch as a `wheel` with `ctrlKey`), so this one toggle
+   *  governs both. Adjusts `zoomPct` (the document zoom), in 10% steps,
+   *  and suppresses Chromium's own native page-zoom on the gesture. */
+  gestureZoom: boolean;
   /**
    * Readers used for read-time estimates. The full list shows up in the
    * Word Count Selection function (Ctrl+F11). The first two readers are
@@ -862,16 +860,11 @@ const DEFAULTS: Settings = {
   // .cmir format. We let the user opt in via the ribbon toggle
   // rather than silently saving in the background.
   autosaveEnabled: false,
-  // Default OFF — the user reported that PM's native click-and-drag
-  // of arbitrary selected text sometimes produces a doc edit that
-  // can't be cleanly undone, and they'd rather lose the feature
-  // than wrestle with the inconsistency. Flip on in Settings if
-  // you want the drag behavior back.
-  enableTextDragDrop: false,
   readMode: false,
   hideEmphasisBordersInReadMode: false,
   zoomPct: 100,
   chromeScalePct: 100,
+  gestureZoom: false,
   readers: [
     { name: 'Reader 1', wpm: 200 },
     { name: 'Reader 2', wpm: 250 },
@@ -1196,12 +1189,13 @@ export const SETTING_METADATA: SettingMeta[] = [
     category: 'general',
   },
   {
-    key: 'enableTextDragDrop',
-    label: 'Text drag-and-drop',
+    key: 'gestureZoom',
+    label: 'Pinch / Ctrl+Scroll to zoom',
     description:
-      "Allow click-and-drag of selected text to move it to another position. On by default. Disabling stops you (and the browser) from initiating a text-move drag — useful if you keep accidentally dragging selections. Doesn't affect the card / heading pickup-modifier drag.",
+      'Zoom the document with a trackpad pinch or Ctrl + mouse-wheel (in 10% steps, same as the zoom buttons and Ctrl-= / Ctrl-- chords). Off by default; enable for pinch / Ctrl-scroll zooming.',
     kind: 'toggle',
     category: 'general',
+    aliases: ['gesture zoom', 'pinch zoom', 'ctrl scroll', 'wheel zoom', 'trackpad zoom'],
   },
   {
     key: 'jumpToDocTopOnReadModeToggle',
@@ -1846,15 +1840,11 @@ function sanitize(s: Settings): Settings {
     flashcardDueDot: s.flashcardDueDot === false ? false : true,
     editorSpellcheck: !!s.editorSpellcheck,
     autosaveEnabled: !!s.autosaveEnabled,
-    // Default to `false` when missing — matches the persisted
-    // default. Saved settings from before this option existed
-    // explicitly opt out of text drag, since the inconsistent-undo
-    // behavior the option works around predates the option itself.
-    enableTextDragDrop: s.enableTextDragDrop === true,
     readMode: !!s.readMode,
     hideEmphasisBordersInReadMode: !!s.hideEmphasisBordersInReadMode,
     zoomPct: clamp(Math.round(s.zoomPct / 10) * 10, 50, 200),
     chromeScalePct: clamp(Math.round(s.chromeScalePct / 10) * 10, 50, 200),
+    gestureZoom: !!s.gestureZoom,
     readers: sanitizeReaders(s.readers),
     liveSelectionWordCount: s.liveSelectionWordCount === true,
     displaySizes: sanitizeDisplaySizes(s.displaySizes),

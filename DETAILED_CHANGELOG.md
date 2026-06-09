@@ -7,6 +7,37 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Gesture zoom — pinch / Ctrl+wheel** (`src/editor/index.ts`,
+  `src/editor/settings.ts`). A `window` `wheel` listener (capture,
+  non-passive) intercepts events with `ctrlKey` set — Chromium delivers a
+  trackpad pinch as exactly that, so one handler covers pinch AND
+  Ctrl+mouse-wheel. It `preventDefault`s (otherwise Chromium also fires
+  its own native page-zoom → double zoom), accumulates `deltaY`, and steps
+  `zoomPct` ±10% per ~40 delta-units via the existing `setZoom` (so the
+  gesture round-trips through settings and the multi-pane shell like the
+  buttons / `Mod-=` chords). Gated on the new `gestureZoom` setting
+  (default **false**); drives the document zoom, not chrome scale.
+
+- **Keyboard macros surfaced in the Search Everything palette**
+  (`src/editor/quick-card-search-ui.ts`, `src/editor/keybindings-editor.ts`).
+  The macros editor lives inside the keybindings editor (the
+  `ribbonKeyOverrides` row, Settings → Shortcuts) rather than as its own
+  `SETTING_METADATA` row, so it had no auto-generated palette entry. Added
+  an explicit result (same pattern as the "About this install" special)
+  matched on `keyboard macros` / `macro` / `snippet` / `text expansion`,
+  deep-linking via `settingsTarget: {category:'shortcuts',
+  anchor:'keyboard-macros'}`; the macros `<section>` now carries
+  `data-anchor="keyboard-macros"` for `revealAnchor` to scroll/flash. Also
+  added a `gesture zoom` alias to the `gestureZoom` setting.
+
+- **Removed the `enableTextDragDrop` setting** (`src/editor/settings.ts`,
+  `src/editor/index.ts`). The toggle was off by default (PM's native
+  text-move drag produced un-cleanly-undoable edits) and the feature never
+  worked reliably, so the setting is gone entirely (interface field,
+  default, metadata, sanitize). The `dragstart`-swallowing plugin now
+  `preventDefault`s unconditionally — same behavior as the old default-off
+  state. The card / heading pickup-drag (pointerdown-driven) is unaffected.
+
 - **Show-in-context closes the launching Manage overlay**
   (`src/editor/learn-session-ui.ts`, `src/editor/learn-manage-ui.ts`).
   `openLearnSession` gained an `onShowInContext` callback; the Manage
