@@ -9,6 +9,26 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Added
 
+- **Translate a selection (AI optional).** Select text and press
+  **Mod-Shift-T** (rebindable) to translate it and copy the result to the
+  clipboard — the document is left untouched. Three backends, picked under
+  Settings → Editing → **Translation**: **MyMemory** (free, no key, works
+  even with AI features off; optional email raises its daily limit),
+  **Anthropic** (used when AI features are on; highest quality), and
+  **Google Cloud Translation** (paste an API key). Source language
+  auto-detects; the target language defaults to English and is
+  configurable. Optionally (on by default) it prepends a
+  `[TRANSLATION BY …]` marker line naming the engine (the model for
+  Anthropic, MYMEMORY, or GOOGLE TRANSLATE), using the same delimiter as
+  "Condense with warning" — and those markers are protected from Shrink.
+
+- **Custom AI model (advanced).** Settings → Comments & AI → **AI model**
+  lets you point all AI features at a specific Claude model id (e.g.
+  `claude-opus-4-8`). Leave it blank to use the model built into the
+  release; set a newer id if the built-in one is ever retired so you don't
+  have to update the whole app. If the model is unavailable, CardMirror now
+  shows a clear message telling you to update or set a newer model here.
+
 - **Pinch / Ctrl+Scroll to zoom.** You can now zoom the document with a
   trackpad pinch or by holding Ctrl and scrolling the mouse wheel, in the
   same 10% steps as the zoom buttons and Ctrl-= / Ctrl--. Off by default;

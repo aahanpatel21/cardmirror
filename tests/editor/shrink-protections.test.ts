@@ -16,8 +16,9 @@ describe('compileShrinkProtections', () => {
   it('returns the built-in patterns when there are no customs', () => {
     const list = compileShrinkProtections([], '', '');
     // Built-ins: 6 omission shapes + 6 warning-marker shapes
-    // + 6 footnote shapes + 6 alt-text shapes = 24.
-    expect(list.length).toBe(24);
+    // + 6 footnote shapes + 6 alt-text shapes + 6 translation-marker
+    // shapes = 30.
+    expect(list.length).toBe(30);
     // All have `gi` flags.
     for (const r of list) {
       expect(r.flags).toContain('g');

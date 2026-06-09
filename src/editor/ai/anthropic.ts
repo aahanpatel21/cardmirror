@@ -7,6 +7,8 @@
  * features and pasting their own key.
  */
 
+import { settings } from '../settings.js';
+
 /** Anthropic multipart content blocks (vision support). A text-only
  *  message can be a plain string; messages with images use the
  *  block-array form: `[{ type: 'text', text }, { type: 'image', ... }]`.
@@ -60,19 +62,47 @@ export interface AnthropicReply {
   stopReason?: string;
 }
 
-const DEFAULT_MODEL = 'claude-sonnet-4-6';
+/** The single source of truth for which Claude model the app talks to.
+ *  Bump this one constant on a model deprecation (and ship a release);
+ *  `modelMarkerName` in `translate.ts` derives its label from the id, so
+ *  it usually needs no change. Users can also override per-install via
+ *  the `aiModelOverride` setting (see `resolveAiModel`). */
+export const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const DEFAULT_MAX_TOKENS = 1024;
 const ANTHROPIC_VERSION = '2023-06-01';
 
+/** Loosely validate a model id before trusting a user override: no
+ *  whitespace, a plausible length, and only the characters model ids use.
+ *  Garbage reverts to the default; a well-formed-but-retired id still
+ *  reaches the API, which surfaces a friendly `'model'` error. */
+function isPlausibleModelId(s: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{2,}$/.test(s);
+}
+
+/** The model the app should use: the user's `aiModelOverride` when it
+ *  looks valid, otherwise `DEFAULT_MODEL`. Single resolver so every AI
+ *  feature (cite, explain, translate, flashcards, image) stays in sync. */
+export function resolveAiModel(): string {
+  const override = (settings.get('aiModelOverride') || '').trim();
+  return isPlausibleModelId(override) ? override : DEFAULT_MODEL;
+}
+
 /** Custom error so callers can branch on AI-specific failures
- *  (missing key, auth error, rate limit, generic network) without
- *  parsing string messages. */
+ *  (missing key, auth error, rate limit, retired model, generic network)
+ *  without parsing string messages. */
 export class AnthropicError extends Error {
   constructor(
     message: string,
     /** HTTP status when the call reached the server, else `null`. */
     public readonly status: number | null,
-    public readonly kind: 'no-key' | 'auth' | 'rate-limit' | 'server' | 'network' | 'parse',
+    public readonly kind:
+      | 'no-key'
+      | 'auth'
+      | 'rate-limit'
+      | 'server'
+      | 'network'
+      | 'parse'
+      | 'model',
   ) {
     super(message);
     this.name = 'AnthropicError';
@@ -88,8 +118,9 @@ export async function callAnthropic(req: AnthropicRequest): Promise<AnthropicRep
     );
   }
 
+  const requestedModel = req.model ?? resolveAiModel();
   const body = {
-    model: req.model ?? DEFAULT_MODEL,
+    model: requestedModel,
     max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
     ...(req.system ? { system: req.system } : {}),
     messages: req.messages,
@@ -118,15 +149,33 @@ export async function callAnthropic(req: AnthropicRequest): Promise<AnthropicRep
   }
 
   if (!res.ok) {
-    const kind: AnthropicError['kind'] =
-      res.status === 401 ? 'auth' : res.status === 429 ? 'rate-limit' : 'server';
     let detail = '';
+    let errType = '';
     try {
-      const payload = await res.json() as { error?: { message?: string } };
+      const payload = (await res.json()) as { error?: { message?: string; type?: string } };
       detail = payload?.error?.message ?? '';
+      errType = payload?.error?.type ?? '';
     } catch {
       // Body wasn't JSON. Fall back to status text.
     }
+    // A retired / unknown model id comes back as a 404 not_found_error, or
+    // a 4xx whose message names the model. Surface a friendly, actionable
+    // message instead of the raw API text.
+    const looksLikeModelError =
+      errType === 'not_found_error' ||
+      res.status === 404 ||
+      (res.status >= 400 && res.status < 500 && /\bmodel\b/i.test(detail));
+    if (looksLikeModelError) {
+      throw new AnthropicError(
+        `The AI model "${requestedModel}" was rejected by Anthropic — it may have been retired. ` +
+          `Update CardMirror to the latest version, or, if you'd rather not update the whole app, ` +
+          `set a newer model under Settings → Comments & AI → AI model.`,
+        res.status,
+        'model',
+      );
+    }
+    const kind: AnthropicError['kind'] =
+      res.status === 401 ? 'auth' : res.status === 429 ? 'rate-limit' : 'server';
     throw new AnthropicError(
       `Anthropic API returned ${res.status}${detail ? `: ${detail}` : ''}`,
       res.status,

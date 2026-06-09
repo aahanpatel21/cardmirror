@@ -465,6 +465,16 @@ surface. Shipped:
   with the surrounding card as context; `@AI` in a thread re-invokes it.
 - **`aiGenerateAltText`** and **`aiGenerateTable`** (right-click an image)
   describe it as alt text or extract it into a real `table` node.
+- **`translate` (Mod-Shift-T)** translates the selection to the clipboard
+  via a pluggable backend — MyMemory (keyless, with local `tinyld` source
+  detection), Anthropic, or Google (`translate.ts`). NOT AI-gated:
+  MyMemory works with AI features off. An optional `[TRANSLATION BY …]`
+  marker is added to the clipboard and protected from Shrink.
+
+All Anthropic calls resolve their model through `resolveAiModel()` (the
+`aiModelOverride` setting when valid, else the single `DEFAULT_MODEL`
+constant); a retired/unknown model surfaces a friendly `'model'`-kind
+`AnthropicError` pointing the user at the override or an app update.
 
 ## 15. Accessibility and theming
 

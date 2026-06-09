@@ -55,6 +55,8 @@ coverage in the section linked.
   with a shared file.
 - **[AI features](#11-ai-features)** — format a cite, ask a question about
   a selection, or generate alt text and tables from an image.
+- **[Translate a selection](#11-ai-features)** — to the clipboard, with a
+  keyless backend that works even without AI features set up.
 - **[Private notes](#9-comments-and-notes)** — a personal annotation that,
   like flashcards, stays out of the file you share unless you opt in.
 - **[Cross-window Quick Cards](#6-quick-cards)** — a tagged snippet
@@ -781,8 +783,36 @@ you're offline.
 | **Generate table from image** | Right-click an image | Extracts a real, editable table from a picture of one. |
 | **Draft a flashcard** | From Create Flashcard | Drafts a question/answer or cloze from the selection. |
 
-You can set the author name AI notes are attributed under, and customize
-the cite-formatting prompt, in Settings → Comments & AI.
+You can set the author name AI notes are attributed under, customize
+the cite-formatting prompt, and point AI at a specific Claude model
+(**AI model (advanced)** — leave blank to use the model built into your
+release) in Settings → Comments & AI. If a model is ever retired, AI
+features show a message telling you to update CardMirror or set a newer
+model id there.
+
+### Translate
+
+Select text and press **Mod-Shift-T** to translate it and copy the result
+to the clipboard (your document isn't changed — paste the translation
+where you want it). Configure it under Settings → Editing → **Translation**:
+
+- **Backend** — **MyMemory** (free, needs no key, and works even with AI
+  features off; add your email to raise its daily limit), **Anthropic**
+  (used when AI features are on; highest quality), or **Google Cloud
+  Translation** (paste a Google API key). The default, *Automatic*, uses
+  Anthropic when AI is on and MyMemory otherwise.
+- **Languages** — the source auto-detects; the target defaults to English
+  and is configurable.
+- **Marker** — by default a `[TRANSLATION BY …]` line is placed above the
+  translation on the clipboard, naming the engine (the model for
+  Anthropic, MYMEMORY, or GOOGLE TRANSLATE). It uses the same delimiter as
+  "Condense with warning" and is protected from Shrink. Turn it off in the
+  same settings group.
+
+A note on Anthropic translation: the prompt directs the model to preserve
+the original meaning above all, but its output isn't deterministic —
+re-running can reword slightly. Keep that in mind in leagues or circuits
+where translated evidence needs a paper trail or reproducibility.
 
 **Clod mode.** A bit of fun, off by default (Settings → Comments & AI →
 **Enable Clod mode**). While the AI is composing a reply, the
@@ -988,6 +1018,12 @@ Behavior of the cutting and condense commands (see [Cutting and formatting cards
   off also strips direct formatting in the range.
 - **Create Reference uses Gray-50% text** — render a Reference's body
   text in gray; the heading line stays black.
+- **Translation** — backend (MyMemory / Anthropic / Google Cloud
+  Translation), source and target languages, MyMemory email, and Google
+  API key for the Translate command (Mod-Shift-T). See
+  [Translate](#11-ai-features).
+- **Prepend a "translation by" marker** — put a `[TRANSLATION BY …]` line
+  above the translated text on the clipboard. On by default.
 
 ### Keyboard shortcuts
 
@@ -1004,6 +1040,9 @@ remove one, **↺** to restore its default. A few window-level shortcuts
 - **Enable AI features** — master switch for the AI comment features;
   needs an API key (see [AI features](#11-ai-features)).
 - **Anthropic API key** — stored locally; sent only to api.anthropic.com.
+- **AI model (advanced)** — the Claude model id all AI features use; blank
+  uses the model built into your release. Set a newer id if the built-in
+  one is retired. A malformed entry is ignored.
 - **Enable Clod mode** — the playful in-flight placeholder ("Clod is
   making toast…") while the AI composes a reply.
 - **AI cite-creator prompt** — the system prompt the cite creator uses;
@@ -1106,6 +1145,7 @@ these to extend the selection.
 | Mod-Shift-N | Add note to selection |
 | Mod-Shift-Q | Ask AI about selection |
 | Mod-Shift-X | Format cite from selection |
+| Mod-Shift-T | Translate selection (to clipboard) |
 
 ### Files and view
 | Shortcut | Action |

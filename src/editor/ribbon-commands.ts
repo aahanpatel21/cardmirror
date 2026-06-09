@@ -2280,6 +2280,17 @@ const BUILTIN_PROTECTED_REGEXES: readonly RegExp[] = [
   /\[.*?ALT TEXT.*?\]/gi,
   /<.*?ALT TEXT.*?>/gi,
   /\{.*?ALT TEXT.*?\}/gi,
+  // Translator attribution markers — "TRANSLATION BY <model/service>"
+  // between any of the six delimiter shapes. The `.*?` covers every
+  // attribution (MYMEMORY, GOOGLE TRANSLATE, OPUS 4.8, …) so all
+  // possible markers stay at Normal size when protection is on. Doubles
+  // before singles so the longer match wins on overlap.
+  /\[\[.*?TRANSLATION BY .*?\]\]/gi,
+  /<<.*?TRANSLATION BY .*?>>/gi,
+  /\{\{.*?TRANSLATION BY .*?\}\}/gi,
+  /\[.*?TRANSLATION BY .*?\]/gi,
+  /<.*?TRANSLATION BY .*?>/gi,
+  /\{.*?TRANSLATION BY .*?\}/gi,
 ];
 
 const REGEX_ESCAPE_RE = /[.*+?^${}()|[\]\\]/g;
@@ -3445,6 +3456,7 @@ export type RibbonCommandId =
   | 'addNoteToSelection'
   | 'aiAskAboutSelection'
   | 'aiCreateCite'
+  | 'translate'
   | 'createFlashcard'
   | 'manageFlashcards'
   | 'wordCountSelection'
@@ -3584,6 +3596,7 @@ export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
   'addNoteToSelection',
   'aiAskAboutSelection',
   'aiCreateCite',
+  'translate',
   'createFlashcard',
   'manageFlashcards',
   'wordCountSelection',
@@ -3699,6 +3712,7 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   addNoteToSelection: 'Add Note to Selection',
   aiAskAboutSelection: 'Ask AI About Selection',
   aiCreateCite: 'Format Cite From Selection',
+  translate: 'Translate Selection (to Clipboard)',
   createFlashcard: 'Create Flashcard From Selection',
   manageFlashcards: 'Manage Flashcards',
   wordCountSelection: 'Word Count Selection',
@@ -3856,6 +3870,7 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   addNoteToSelection: 'Mod-Shift-n',
   aiAskAboutSelection: 'Mod-Shift-q',
   aiCreateCite: 'Mod-Shift-x',
+  translate: 'Mod-Shift-t',
   createFlashcard: '',
   manageFlashcards: '',
   wordCountSelection: '',
@@ -4035,6 +4050,8 @@ export interface RibbonContext {
   addNoteToSelection: () => void;
   aiAskAboutSelection: () => void;
   aiCreateCite: () => void;
+  /** Translate the selection and copy the result to the clipboard. */
+  translate: () => void;
   createFlashcard: () => void;
   manageFlashcards: () => void;
   /** File-level commands. These work regardless of whether the editor
@@ -4154,6 +4171,7 @@ const DEFAULT_RIBBON_CONTEXT: RibbonContext = {
   addNoteToSelection: () => {},
   aiAskAboutSelection: () => {},
   aiCreateCite: () => {},
+  translate: () => {},
   createFlashcard: () => {},
   manageFlashcards: () => {},
   newDocument: () => {},
@@ -4323,6 +4341,13 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
         if (state.selection.empty) return false;
         if (!dispatch) return true;
         ctx.aiCreateCite();
+        return true;
+      };
+    case 'translate':
+      return (state, dispatch) => {
+        if (state.selection.empty) return false;
+        if (!dispatch) return true;
+        ctx.translate();
         return true;
       };
     case 'createFlashcard':

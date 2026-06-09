@@ -4577,6 +4577,44 @@ html.pmd-nav-flat .pmd-nav-type-analytic:hover .pmd-nav-label {
   margin-top: 0.4rem;
 }
 
+.pmd-translation-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+.pmd-translation-editor .pmd-translation-ai-note,
+.pmd-translation-editor .pmd-translation-caveat {
+  font-style: italic;
+}
+.pmd-translation-langs {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 0.2rem;
+}
+.pmd-translation-langs > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.pmd-translation-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-top: 0.2rem;
+}
+/* The shared input/select classes use `flex: 0 0 12rem`, sized for a
+   horizontal row. Inside these column-flex fields that 12rem becomes a
+   huge HEIGHT — reset to auto height and a normal text-box width. */
+.pmd-translation-field .pmd-settings-text,
+.pmd-translation-langs .pmd-body-font-select {
+  flex: none;
+  align-self: flex-start;
+  width: 18rem;
+  max-width: 100%;
+}
+
 .pmd-condense-warning-delimiter-row,
 .pmd-multi-doc-layout-mode-row {
   display: flex;

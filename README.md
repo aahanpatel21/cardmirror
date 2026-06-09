@@ -135,6 +135,11 @@ The key is stored locally on your machine and is sent directly to
 Anthropic when you trigger an AI feature. It doesn't travel through
 a third-party server.
 
+**Translation** (Mod-Shift-T on a selection → copied to the clipboard)
+also has an Anthropic backend, but it works **without** any AI setup: the
+default MyMemory backend needs no key. You can also plug in a Google Cloud
+Translation key. Configure it under Settings → Editing → Translation.
+
 ## Run from source
 
 You only need this if you want to **build CardMirror yourself**

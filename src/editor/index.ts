@@ -93,6 +93,7 @@ import { commentsPlugin, commentsKey, loadThreads, getCommentsState, gcOrphanThr
 import { scheduleIdle, cancelIdle, type IdleHandle } from './idle-scheduler.js';
 import { CommentsColumn, addCommentToSelection, FC_PREFIX, AI_PREFIX, NOTE_PREFIX } from './comments-ui.js';
 import { runAiCreateCite } from './ai/cite-creator.js';
+import { runTranslate } from './translate.js';
 import { readModePlugin, PMD_READ_MODE_TOGGLE } from './read-mode-plugin.js';
 import { learnHighlightPlugin, flashcardRangeAt } from './learn-highlight-plugin.js';
 import { absorbPlugin } from './absorb-plugin.js';
@@ -962,6 +963,10 @@ const ribbonContext: RibbonContext = {
   aiCreateCite: () => {
     if (!view) return;
     runAiCreateCite(view);
+  },
+  translate: () => {
+    if (!view) return;
+    runTranslate(view);
   },
   createFlashcard: () => {
     if (!view) return;

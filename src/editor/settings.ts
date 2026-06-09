@@ -51,6 +51,14 @@ const TRANSIENT_SETTING_KEYS = new Set<string>([
   'navPaneVisible',
 ]);
 
+/** Secret credentials — never written to a settings export, and
+ *  preserved (not overwritten) on import. */
+const SECRET_SETTING_KEYS = new Set<string>([
+  'anthropicApiKey',
+  'googleTranslateApiKey',
+  'myMemoryEmail',
+]);
+
 /** Reader profile for read-time estimates: name + words-per-minute. */
 export interface ReaderConfig {
   name: string;
@@ -700,6 +708,11 @@ export interface Settings {
    *  one. Stored locally; never sent anywhere except direct calls
    *  to the Anthropic API. */
   anthropicApiKey: string;
+  /** Optional override for the Claude model id used by every AI feature.
+   *  Empty (or malformed) falls back to the app's built-in default; a
+   *  well-formed id is sent as-is. Lets a user move to a newer model
+   *  without updating the whole app when the default is retired. */
+  aiModelOverride: string;
   /** Master switch for AI features (the explainer comment shortcut,
    *  @AI mentions inside comments, etc.). When false, no UI for
    *  AI shows up and no API calls happen even if a key is set. */
@@ -747,6 +760,26 @@ export interface Settings {
    *  full textarea makes more sense than an inline input. Empty
    *  string falls back to `DEFAULT_AI_CITE_PROMPT`. */
   aiCitePrompt: string;
+  /** Translator backend. `'auto'` uses Anthropic when AI features are
+   *  ready, otherwise MyMemory. `'mymemory'` (no key, works with AI off),
+   *  `'anthropic'` (needs AI features), `'google'` (needs an API key). */
+  translationProvider: 'auto' | 'mymemory' | 'anthropic' | 'google';
+  /** Target language for translation (ISO 639-1). Default `'en'`. */
+  translationTargetLang: string;
+  /** Source language for translation (ISO 639-1), or `'auto'` to detect.
+   *  MyMemory needs a concrete source, so on `'auto'` we detect locally
+   *  (tinyld) first; Anthropic / Google detect server-side. */
+  translationSourceLang: string;
+  /** Optional email for MyMemory — raises its free daily char limit. */
+  myMemoryEmail: string;
+  /** Google Cloud Translation API key (only used by the `'google'`
+   *  backend). Stored locally; sent only to translation.googleapis.com. */
+  googleTranslateApiKey: string;
+  /** When on, the Translator prepends a `[TRANSLATION BY <attribution>]`
+   *  marker line (wrapped in the "Condense with warning" delimiter) to the
+   *  clipboard output — the attribution is the model for Anthropic,
+   *  MYMEMORY for MyMemory, or GOOGLE TRANSLATE for Google. */
+  prependTranslationMarker: boolean;
   /** Master switch for the multi-doc workspace shell — three slots,
    *  each holding a stack of 0+ docs. Toggling this requires a
    *  page reload to (re)build the editor shell. Comments are
@@ -911,6 +944,7 @@ const DEFAULTS: Settings = {
   commentAuthorInitials: '',
   commentsVisible: false,
   anthropicApiKey: '',
+  aiModelOverride: '',
   aiFeaturesEnabled: false,
   clodEnabled: false,
   clodActivitiesByTime: { morning: [], day: [], evening: [], night: [] },
@@ -929,6 +963,12 @@ const DEFAULTS: Settings = {
     reflexive: 'themself',
   },
   aiCitePrompt: '',
+  translationProvider: 'auto',
+  translationTargetLang: 'en',
+  translationSourceLang: 'auto',
+  myMemoryEmail: '',
+  googleTranslateApiKey: '',
+  prependTranslationMarker: true,
   multiDocWorkspace: false,
   multiDocLayoutMode: 'compact',
   quickCardActiveTags: [],
@@ -1004,6 +1044,7 @@ export interface SettingMeta {
     | 'password'
     | 'clod'
     | 'aiCitePrompt'
+    | 'translationConfig'
     | 'multiDocLayoutMode';
   /** Which tab this setting lives under in the settings dialog. */
   category: SettingsCategory;
@@ -1534,6 +1575,24 @@ export const SETTING_METADATA: SettingMeta[] = [
     kind: 'toggle',
     category: 'editing',
   },
+  {
+    key: 'translationProvider',
+    label: 'Translation',
+    description:
+      'Translate the selected text and copy the result to the clipboard (the document is left unchanged). Pick a backend, the source and target languages, and any keys below.',
+    kind: 'translationConfig',
+    category: 'editing',
+    aliases: ['translate', 'translator', 'language', 'mymemory', 'google translate', 'deepl'],
+  },
+  {
+    key: 'prependTranslationMarker',
+    label: 'Prepend a “translation by” marker',
+    description:
+      'When on, the Translator puts a marker line — e.g. [TRANSLATION BY OPUS 4.8], [TRANSLATION BY MYMEMORY], or [TRANSLATION BY GOOGLE TRANSLATE] — above the translated text on the clipboard. It uses the same delimiter as “Condense with warning” above, and (when “Shrink keeps protected text at Normal size” is on) all of these markers are protected from Shrink. On by default.',
+    kind: 'toggle',
+    category: 'editing',
+    aliases: ['translation marker', 'translation by', 'attribution'],
+  },
 
   // ─── Keyboard shortcuts ─────────────────────────────────────────
   {
@@ -1576,6 +1635,16 @@ export const SETTING_METADATA: SettingMeta[] = [
     kind: 'password',
     category: 'comments-ai',
     dependsOn: 'aiFeaturesEnabled',
+  },
+  {
+    key: 'aiModelOverride',
+    label: 'AI model (advanced)',
+    description:
+      'Optional. The Claude model id used by all AI features (e.g. claude-opus-4-8). Leave blank to use the version built into this release. Set a newer id here if the built-in model has been retired and you’d rather not update the whole app. A malformed entry is ignored and the default is used.',
+    kind: 'text',
+    category: 'comments-ai',
+    dependsOn: 'aiFeaturesEnabled',
+    aliases: ['model', 'claude model', 'model override', 'opus', 'sonnet', 'haiku'],
   },
   {
     key: 'clodEnabled',
@@ -1662,11 +1731,11 @@ export class SettingsStore {
   }
 
   /** Snapshot for export: every persisted setting EXCEPT transient
-   *  (per-window) keys and the Anthropic API key, which is never
-   *  exported. */
+   *  (per-window) keys and the secret credentials (API keys / the
+   *  MyMemory email), which are never exported. */
   exportObject(): Record<string, unknown> {
     const out: Record<string, unknown> = { ...this.values };
-    delete out['anthropicApiKey'];
+    for (const key of SECRET_SETTING_KEYS) delete out[key];
     for (const key of TRANSIENT_SETTING_KEYS) delete out[key];
     return out;
   }
@@ -1675,13 +1744,14 @@ export class SettingsStore {
    *  through `sanitize({ ...DEFAULTS, ...raw })` — the same boundary as
    *  load — so it tolerates schema drift: fields added since the export
    *  fall back to defaults, fields removed since are dropped, and bad
-   *  values are coerced/clamped. The current API key (never exported)
+   *  values are coerced/clamped. The secret credentials (never exported)
    *  and transient per-window values are preserved, not wiped. */
   replaceAll(raw: unknown): void {
     const parsed = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
-    const preserved: Record<string, unknown> = {
-      anthropicApiKey: this.values.anthropicApiKey,
-    };
+    const preserved: Record<string, unknown> = {};
+    for (const key of SECRET_SETTING_KEYS) {
+      preserved[key] = (this.values as unknown as Record<string, unknown>)[key];
+    }
     for (const key of TRANSIENT_SETTING_KEYS) {
       preserved[key] = (this.values as unknown as Record<string, unknown>)[key];
     }
@@ -1946,6 +2016,7 @@ function sanitize(s: Settings): Settings {
       typeof s.anthropicApiKey === 'string'
         ? s.anthropicApiKey
         : DEFAULTS.anthropicApiKey,
+    aiModelOverride: typeof s.aiModelOverride === 'string' ? s.aiModelOverride.trim() : '',
     aiFeaturesEnabled: !!s.aiFeaturesEnabled,
     clodEnabled: !!s.clodEnabled,
     clodActivitiesByTime: sanitizeClodActivitiesByTime(s.clodActivitiesByTime),
@@ -1960,6 +2031,23 @@ function sanitize(s: Settings): Settings {
     aiPersonaCustomPronouns: sanitizeCustomPronouns(s.aiPersonaCustomPronouns),
     aiCitePrompt:
       typeof s.aiCitePrompt === 'string' ? s.aiCitePrompt : DEFAULTS.aiCitePrompt,
+    translationProvider: (['auto', 'mymemory', 'anthropic', 'google'] as const).includes(
+      s.translationProvider as Settings['translationProvider'],
+    )
+      ? (s.translationProvider as Settings['translationProvider'])
+      : DEFAULTS.translationProvider,
+    translationTargetLang:
+      typeof s.translationTargetLang === 'string' && s.translationTargetLang.trim()
+        ? s.translationTargetLang.trim().toLowerCase()
+        : DEFAULTS.translationTargetLang,
+    translationSourceLang:
+      typeof s.translationSourceLang === 'string' && s.translationSourceLang.trim()
+        ? s.translationSourceLang.trim().toLowerCase()
+        : DEFAULTS.translationSourceLang,
+    myMemoryEmail: typeof s.myMemoryEmail === 'string' ? s.myMemoryEmail.trim() : '',
+    googleTranslateApiKey:
+      typeof s.googleTranslateApiKey === 'string' ? s.googleTranslateApiKey.trim() : '',
+    prependTranslationMarker: s.prependTranslationMarker === false ? false : true,
     multiDocWorkspace: !!s.multiDocWorkspace,
     multiDocLayoutMode:
       s.multiDocLayoutMode === 'wide' || s.multiDocLayoutMode === 'compact'

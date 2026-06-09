@@ -15,6 +15,18 @@ describe('settings export', () => {
     expect(out['commentAuthor']).toBe('Alice');
     expect(out['ribbonKeyOverrides']).toBeDefined();
   });
+
+  it('excludes the Google Translate key and MyMemory email', () => {
+    const s = new SettingsStore();
+    s.set('googleTranslateApiKey', 'g-secret');
+    s.set('myMemoryEmail', 'me@example.com');
+    s.set('translationProvider', 'google');
+    const out = s.exportObject();
+    expect('googleTranslateApiKey' in out).toBe(false);
+    expect('myMemoryEmail' in out).toBe(false);
+    // Non-secret translation settings still export.
+    expect(out['translationProvider']).toBe('google');
+  });
 });
 
 describe('settings import (replaceAll)', () => {
@@ -25,6 +37,17 @@ describe('settings import (replaceAll)', () => {
     s.replaceAll({ commentAuthor: 'New' });
     expect(s.get('commentAuthor')).toBe('New');
     expect(s.get('anthropicApiKey')).toBe('keep-me');
+  });
+
+  it('preserves the Google key and MyMemory email across import', () => {
+    const s = new SettingsStore();
+    s.set('googleTranslateApiKey', 'keep-google');
+    s.set('myMemoryEmail', 'keep@example.com');
+    // An import that even tries to set them must not overwrite.
+    s.replaceAll({ googleTranslateApiKey: 'evil', myMemoryEmail: 'evil@x.com', commentAuthor: 'X' });
+    expect(s.get('googleTranslateApiKey')).toBe('keep-google');
+    expect(s.get('myMemoryEmail')).toBe('keep@example.com');
+    expect(s.get('commentAuthor')).toBe('X');
   });
 
   it('fills defaults for missing fields and drops unknown keys', () => {

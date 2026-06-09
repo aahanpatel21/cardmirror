@@ -7,6 +7,49 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Translator** (`src/editor/translate.ts`, `src/editor/settings.ts`,
+  `src/editor/settings-ui.ts`, ribbon wiring). Mirror of the "Card
+  Formatting Tools" Translator. `runTranslate` reads the selection,
+  translates via the resolved backend, and copies the result to the
+  clipboard (no doc edit). Backends:
+  - **MyMemory** — keyless, CORS-OK (renderer fetch), works with AI off.
+    Needs a concrete source language; MyMemory's own auto-detect is
+    unreliable, so on `'auto'` we detect locally with `tinyld` (new dep)
+    first. Per-request `q` is capped, so text is chunked at sentence
+    boundaries (`chunkText`) and rejoined. Optional `myMemoryEmail` raises
+    the daily limit.
+  - **Anthropic** — reuses the reference Translator prompt (parameterized
+    by target language); only when AI features are ready.
+  - **Google Cloud Translation** v2 — `googleTranslateApiKey`; auto-detects
+    source.
+  - `translationProvider` `'auto'` resolves to Anthropic when ready else
+    MyMemory. `translationSourceLang` / `translationTargetLang` (default
+    `en`) pickers. All under Settings → Editing via a custom
+    `translationConfig` widget; the Anthropic radio greys out when AI is
+    off (live, via a self-detaching `settings.subscribe`).
+  - `prependTranslationMarker` (default **on**): prepends
+    `<delim>TRANSLATION BY <attr><close>` to the clipboard output, where
+    `<attr>` is the model (`modelMarkerName`), `MYMEMORY`, or
+    `GOOGLE TRANSLATE`, wrapped in the `condenseWarningDelimiter` (custom
+    condense delimiter → square-bracket fallback, since condense's custom
+    is full pause/resume strings, not an open/close pair). Six
+    `TRANSLATION BY .*?` shapes added to `BUILTIN_PROTECTED_REGEXES` so all
+    attributions/delimiters survive Shrink.
+  - `googleTranslateApiKey` + `myMemoryEmail` join `anthropicApiKey` in a
+    new `SECRET_SETTING_KEYS` set — excluded from settings export, never
+    overwritten on import.
+
+- **Unified AI model + override + retired-model message**
+  (`src/editor/ai/anthropic.ts`, `src/editor/settings.ts`). `DEFAULT_MODEL`
+  is documented as the single source of truth; new `resolveAiModel()`
+  returns the user's `aiModelOverride` when it passes a loose id check,
+  else the default. `callAnthropic` calls it when no explicit model is
+  passed, so every feature (cite, explain, translate, flashcards, image)
+  honors the override at once. New Settings → Comments & AI → "AI model
+  (advanced)" text field (greys with the AI master switch). On a 404 /
+  `not_found_error` / model-naming 4xx, `callAnthropic` throws a friendly
+  `'model'`-kind error telling the user to update or set a newer model id.
+
 - **AI cite creator: off-by-one on whole-document selections + cite
   sanitization** (`src/editor/ai/cite-creator.ts`). Two fixes:
   - `buildCiteTransaction` now clamps the incoming range to valid text

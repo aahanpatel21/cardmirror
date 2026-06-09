@@ -32,6 +32,7 @@ import {
 import { isFontAvailable } from './font-detect.js';
 import { WORD_HIGHLIGHT_COLORS } from './color-palette.js';
 import { buildKeybindingsEditor } from './keybindings-editor.js';
+import { TRANSLATION_LANGUAGES } from './translate.js';
 import { getHost, getElectronHost } from './host/index.js';
 import { getInstallInfo } from './install-info.js';
 import { resetTimer } from './timer-state.js';
@@ -457,7 +458,7 @@ class SettingsModal {
     const desc = document.createElement('div');
     desc.className = 'pmd-settings-row-desc';
     desc.textContent =
-      'Save all your settings — shortcuts, keyboard macros, appearance, and the rest — to a file, or import a file to replace them. Importing overwrites your current settings. Your Anthropic API key is never included.';
+      'Save all your settings — shortcuts, keyboard macros, appearance, and the rest — to a file, or import a file to replace them. Importing overwrites your current settings. Your API keys (Anthropic, Google Translate) and MyMemory email are never included.';
     section.appendChild(desc);
 
     const actions = document.createElement('div');
@@ -634,6 +635,10 @@ class SettingsModal {
     } else if (meta.kind === 'saveFormat') {
       row.appendChild(text);
       row.appendChild(buildSaveFormatEditor());
+      return row;
+    } else if (meta.kind === 'translationConfig') {
+      row.appendChild(text);
+      row.appendChild(buildTranslationEditor());
       return row;
     } else if (meta.kind === 'sendDocDestination') {
       row.appendChild(text);
@@ -2352,6 +2357,152 @@ function buildSaveFormatEditor(): HTMLElement {
     row.appendChild(labelText);
     wrap.appendChild(row);
   }
+  return wrap;
+}
+
+function buildTranslationEditor(): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'pmd-translation-editor';
+
+  // --- Backend radios ---
+  const providers: { value: 'auto' | 'mymemory' | 'anthropic' | 'google'; label: string; note?: string }[] = [
+    { value: 'auto', label: 'Automatic — Anthropic when AI features are on, otherwise MyMemory' },
+    { value: 'mymemory', label: 'MyMemory — free, no key, works with AI features off' },
+    { value: 'anthropic', label: 'Anthropic — highest quality (requires AI features)' },
+    { value: 'google', label: 'Google Cloud Translation — needs an API key below' },
+  ];
+  const groupName = `pmd-translation-provider-${Math.random().toString(36).slice(2, 8)}`;
+  // Anthropic-dependent radios, greyed when AI features are off.
+  const anthropicRadios: HTMLInputElement[] = [];
+  const fieldLabel = (txt: string): HTMLElement => {
+    const l = document.createElement('div');
+    l.className = 'pmd-settings-row-title';
+    l.textContent = txt;
+    return l;
+  };
+
+  for (const o of providers) {
+    const row = document.createElement('label');
+    row.className = 'pmd-multi-doc-layout-mode-row';
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = groupName;
+    input.value = o.value;
+    input.checked = o.value === settings.get('translationProvider');
+    input.addEventListener('change', () => {
+      if (input.checked) settings.set('translationProvider', o.value);
+    });
+    if (o.value === 'anthropic') anthropicRadios.push(input);
+    row.appendChild(input);
+    const labelText = document.createElement('span');
+    labelText.className = 'pmd-multi-doc-layout-mode-row-label';
+    labelText.textContent = o.label;
+    row.appendChild(labelText);
+    wrap.appendChild(row);
+  }
+
+  // Note shown when AI features are off and Anthropic is greyed.
+  const aiNote = document.createElement('div');
+  aiNote.className = 'pmd-settings-row-desc pmd-translation-ai-note';
+  aiNote.textContent = 'Anthropic translation is unavailable until you enable AI features under Comments & AI.';
+  wrap.appendChild(aiNote);
+
+  // Determinism / evidence-ethics caveat for the Anthropic backend.
+  const caveat = document.createElement('div');
+  caveat.className = 'pmd-settings-row-desc pmd-translation-caveat';
+  caveat.textContent =
+    'Note: The Anthropic translation system prompt directs the model to preserve the original meaning above all else. However, the translation may not be deterministic — re-running can produce slightly different wording. Keep this in mind if you are debating in a league or circuit where translated evidence requires a paper trail or reproducibility.';
+  wrap.appendChild(caveat);
+
+  const langRow = document.createElement('div');
+  langRow.className = 'pmd-translation-langs';
+
+  // --- Source language ---
+  const srcWrap = document.createElement('div');
+  srcWrap.appendChild(fieldLabel('Source language'));
+  const srcSel = document.createElement('select');
+  srcSel.className = 'pmd-body-font-select';
+  const autoOpt = document.createElement('option');
+  autoOpt.value = 'auto';
+  autoOpt.textContent = 'Auto-detect';
+  srcSel.appendChild(autoOpt);
+  for (const l of TRANSLATION_LANGUAGES) {
+    const opt = document.createElement('option');
+    opt.value = l.code;
+    opt.textContent = l.name;
+    srcSel.appendChild(opt);
+  }
+  srcSel.value = settings.get('translationSourceLang');
+  srcSel.addEventListener('change', () => settings.set('translationSourceLang', srcSel.value));
+  srcWrap.appendChild(srcSel);
+  langRow.appendChild(srcWrap);
+
+  // --- Target language ---
+  const tgtWrap = document.createElement('div');
+  tgtWrap.appendChild(fieldLabel('Target language'));
+  const tgtSel = document.createElement('select');
+  tgtSel.className = 'pmd-body-font-select';
+  for (const l of TRANSLATION_LANGUAGES) {
+    const opt = document.createElement('option');
+    opt.value = l.code;
+    opt.textContent = l.name;
+    tgtSel.appendChild(opt);
+  }
+  tgtSel.value = settings.get('translationTargetLang');
+  tgtSel.addEventListener('change', () => settings.set('translationTargetLang', tgtSel.value));
+  tgtWrap.appendChild(tgtSel);
+  langRow.appendChild(tgtWrap);
+  wrap.appendChild(langRow);
+
+  // --- MyMemory email (optional, raises the daily limit) ---
+  const emailWrap = document.createElement('div');
+  emailWrap.className = 'pmd-translation-field';
+  emailWrap.appendChild(fieldLabel('MyMemory email (optional)'));
+  const emailDesc = document.createElement('div');
+  emailDesc.className = 'pmd-settings-row-desc';
+  emailDesc.textContent = 'Supplying an email raises MyMemory’s free limit from ~5,000 to ~50,000 characters/day.';
+  emailWrap.appendChild(emailDesc);
+  const email = document.createElement('input');
+  email.type = 'email';
+  email.className = 'pmd-settings-text';
+  email.value = settings.get('myMemoryEmail');
+  email.placeholder = 'you@example.com';
+  email.addEventListener('change', () => settings.set('myMemoryEmail', email.value.trim()));
+  emailWrap.appendChild(email);
+  wrap.appendChild(emailWrap);
+
+  // --- Google API key (only used by the Google backend) ---
+  const keyWrap = document.createElement('div');
+  keyWrap.className = 'pmd-translation-field';
+  keyWrap.appendChild(fieldLabel('Google Cloud Translation API key'));
+  const keyDesc = document.createElement('div');
+  keyDesc.className = 'pmd-settings-row-desc';
+  keyDesc.textContent = 'Only used by the Google backend. 500,000 characters/month are free; beyond that Google bills per character. Stored locally.';
+  keyWrap.appendChild(keyDesc);
+  const key = document.createElement('input');
+  key.type = 'password';
+  key.className = 'pmd-settings-text';
+  key.value = settings.get('googleTranslateApiKey');
+  key.addEventListener('change', () => settings.set('googleTranslateApiKey', key.value.trim()));
+  keyWrap.appendChild(key);
+  wrap.appendChild(keyWrap);
+
+  // Live-grey the Anthropic radio + note based on the AI master switch.
+  const applyAiState = (): void => {
+    const ready = settings.get('aiFeaturesEnabled');
+    for (const r of anthropicRadios) {
+      r.disabled = !ready;
+      r.closest('label')?.classList.toggle('pmd-settings-row-disabled', !ready);
+    }
+    aiNote.style.display = ready ? 'none' : '';
+  };
+  applyAiState();
+  const unsub = settings.subscribe(() => {
+    // Self-detach once the widget leaves the DOM (dialog re-render / close).
+    if (!document.body.contains(wrap)) { unsub(); return; }
+    applyAiState();
+  });
+
   return wrap;
 }
 
