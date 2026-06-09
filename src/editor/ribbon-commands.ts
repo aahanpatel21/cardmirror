@@ -3457,6 +3457,7 @@ export type RibbonCommandId =
   | 'aiAskAboutSelection'
   | 'aiCreateCite'
   | 'translate'
+  | 'repairText'
   | 'createFlashcard'
   | 'manageFlashcards'
   | 'wordCountSelection'
@@ -3597,6 +3598,7 @@ export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
   'aiAskAboutSelection',
   'aiCreateCite',
   'translate',
+  'repairText',
   'createFlashcard',
   'manageFlashcards',
   'wordCountSelection',
@@ -3713,6 +3715,7 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   aiAskAboutSelection: 'Ask AI About Selection',
   aiCreateCite: 'Format Cite From Selection',
   translate: 'Translate Selection (to Clipboard)',
+  repairText: 'Repair OCR/PDF Text',
   createFlashcard: 'Create Flashcard From Selection',
   manageFlashcards: 'Manage Flashcards',
   wordCountSelection: 'Word Count Selection',
@@ -3871,6 +3874,7 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   aiAskAboutSelection: 'Mod-Shift-q',
   aiCreateCite: 'Mod-Shift-x',
   translate: 'Mod-Shift-t',
+  repairText: 'Mod-Shift-r',
   createFlashcard: '',
   manageFlashcards: '',
   wordCountSelection: '',
@@ -4052,6 +4056,8 @@ export interface RibbonContext {
   aiCreateCite: () => void;
   /** Translate the selection and copy the result to the clipboard. */
   translate: () => void;
+  /** Repair OCR / PDF text errors in the selection in place. */
+  repairText: () => void;
   createFlashcard: () => void;
   manageFlashcards: () => void;
   /** File-level commands. These work regardless of whether the editor
@@ -4172,6 +4178,7 @@ const DEFAULT_RIBBON_CONTEXT: RibbonContext = {
   aiAskAboutSelection: () => {},
   aiCreateCite: () => {},
   translate: () => {},
+  repairText: () => {},
   createFlashcard: () => {},
   manageFlashcards: () => {},
   newDocument: () => {},
@@ -4348,6 +4355,13 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
         if (state.selection.empty) return false;
         if (!dispatch) return true;
         ctx.translate();
+        return true;
+      };
+    case 'repairText':
+      return (state, dispatch) => {
+        if (state.selection.empty) return false;
+        if (!dispatch) return true;
+        ctx.repairText();
         return true;
       };
     case 'createFlashcard':

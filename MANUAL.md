@@ -53,8 +53,9 @@ coverage in the section linked.
 - **[Spaced-repetition flashcards](#10-learn-spaced-repetition-flashcards)**
   — study your own evidence; cards live on your machine and never travel
   with a shared file.
-- **[AI features](#11-ai-features)** — format a cite, ask a question about
-  a selection, or generate alt text and tables from an image.
+- **[AI features](#11-ai-features)** — format a cite, repair OCR/PDF
+  extraction errors, ask a question about a selection, or generate alt text
+  and tables from an image.
 - **[Translate a selection](#11-ai-features)** — to the clipboard, with a
   keyless backend that works even without AI features set up.
 - **[Private notes](#9-comments-and-notes)** — a personal annotation that,
@@ -778,6 +779,7 @@ you're offline.
 | Feature | How to run it | What it does |
 |---------|---------------|--------------|
 | **Format Cite** | Mod-Shift-X on a selection | Turns a pasted citation or URL into a properly styled cite, with the cite mark on the author and date. |
+| **Repair Text** | Mod-Shift-R on a selection | Fixes OCR / PDF extraction errors (dropped ligatures, `rn`/`m`, mid-word hyphenation, run-together words) without changing the wording. Corrections apply in place, one at a time with a highlight; the whole repair is a single undo. |
 | **Ask AI about selection** | Mod-Shift-Q on a selection | Asks Claude a question about the selection — including any images in it (up to five pictures are sent to the model), with the surrounding card as context; the answer lands as an AI note. Works on a selected image on its own, too ("what does this chart show?"). Or type **@AI** in any comment or note — including its first message — to summon the AI right there; once a thread has an AI reply, further replies continue the conversation. |
 | **Generate alt text** | Right-click an image | Writes an alt-text description and inserts it under the image; offers to keep or regenerate if the image already has alt text. |
 | **Generate table from image** | Right-click an image | Extracts a real, editable table from a picture of one. |
@@ -789,6 +791,18 @@ the cite-formatting prompt, and point AI at a specific Claude model
 release) in Settings → Comments & AI. If a model is ever retired, AI
 features show a message telling you to update CardMirror or set a newer
 model id there.
+
+### Repair Text
+
+Select text pulled from a PDF or OCR and press **Mod-Shift-R** to clean up
+extraction artifacts — dropped ligatures (`signicant` → significant),
+`rn`/`m` mix-ups, words split across a line with a hyphen (`re-` / `search`
+→ research, rejoining the break), run-together words, and stray
+spaces/punctuation. It's deliberately conservative: it only touches clear
+extraction errors and never rewrites your wording. The AI returns just the
+specific fixes (not a rewrite), which apply directly in your document —
+each correction appears one at a time with a brief highlight, and the
+entire repair undoes in a single step. Requires AI features.
 
 ### Translate
 
@@ -1145,6 +1159,7 @@ these to extend the selection.
 | Mod-Shift-N | Add note to selection |
 | Mod-Shift-Q | Ask AI about selection |
 | Mod-Shift-X | Format cite from selection |
+| Mod-Shift-R | Repair OCR/PDF text in selection |
 | Mod-Shift-T | Translate selection (to clipboard) |
 
 ### Files and view

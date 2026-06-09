@@ -465,6 +465,12 @@ surface. Shipped:
   with the surrounding card as context; `@AI` in a thread re-invokes it.
 - **`aiGenerateAltText`** and **`aiGenerateTable`** (right-click an image)
   describe it as alt text or extract it into a real `table` node.
+- **`repairText` (Mod-Shift-R)** fixes OCR/PDF extraction errors via a
+  diff schema (`{fixes:[{find,replace}]}`, not a rewrite), located against
+  a `\n`-separated flatten and applied in place; two `temperature:0` passes
+  for recall, animated one-at-a-time, collapsed into a single undo
+  (`collapseToSingleUndo`) since scattered cross-pass edits can't merge in
+  PM history naturally (`repair-text.ts`, `repair-highlight-plugin.ts`).
 - **`translate` (Mod-Shift-T)** translates the selection to the clipboard
   via a pluggable backend — MyMemory (keyless, with local `tinyld` source
   detection), Anthropic, or Google (`translate.ts`). NOT AI-gated:

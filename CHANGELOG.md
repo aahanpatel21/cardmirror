@@ -9,6 +9,16 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Added
 
+- **Repair Text (AI).** Select messy OCR / PDF-extracted text and press
+  **Mod-Shift-R** to clean up extraction errors — dropped ligatures
+  (`signicant` → significant), `rn`/`m` confusions, mid-word hyphenation
+  split across lines (`re-`/`search` → research, rejoining the break),
+  run-together words, stray-space and punctuation slips — while leaving the
+  actual wording untouched. The model returns only the specific fixes (not
+  a rewrite of your text), which are applied in place: you watch each
+  correction appear one at a time with an orange highlight, and the whole
+  repair is a single undo. Requires AI features.
+
 - **Translate a selection (AI optional).** Select text and press
   **Mod-Shift-T** (rebindable) to translate it and copy the result to the
   clipboard — the document is left untouched. Three backends, picked under

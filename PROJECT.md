@@ -51,7 +51,8 @@ the F-key formatting commands · cards, analytics, tables, and images ·
 read mode · send-to-speech · drag-and-drop reordering · the three-slot
 multi-doc workspace · command-palette file search and find/replace ·
 spaced-repetition flashcards · AI cite/alt-text/table/comment features
-(comments, notes, and ask-AI work on images too) · selection translation
+(comments, notes, and ask-AI work on images too) · AI OCR/PDF text repair
+(diff-based, animated, single undo) · selection translation
 (MyMemory keyless / Anthropic / Google, AI-optional) · editor spellcheck ·
 autosave and crash recovery · desktop auto-update.
 

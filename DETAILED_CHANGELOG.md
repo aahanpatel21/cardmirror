@@ -7,6 +7,30 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Repair Text** (`src/editor/ai/repair-text.ts`,
+  `src/editor/repair-highlight-plugin.ts`, ribbon wiring). Diff-based OCR /
+  PDF repair: the model returns `{ fixes: [{ find, replace }] }` (verbatim
+  substrings + corrections) instead of a full rewrite — less hallucination
+  surface, fewer output tokens. `flattenSelection` flattens the selection
+  to text with `\n` between blocks (so paragraph boundaries aren't read as
+  run-together words) plus a char→PM-position map; `locateFixes` finds each
+  `find` sequentially and maps it to a doc range (a cross-block range joins
+  on apply, repairing hyphenation split across lines).
+  - **Two passes** at `temperature: 0` (new `temperature` option on
+    `callAnthropic`): the model occasionally skips a token on one read, so
+    a second pass over the corrected text catches it. Pass 2 is skipped
+    when pass 1 found nothing.
+  - **Animation**: each fix is applied as its own off-history transaction
+    (sequential text replacement, orange flash via `repairHighlightPlugin`,
+    scroll-into-view, ~110ms cadence); the Clod/"Thinking…" tooltip stays
+    anchored where it spawned. Reduced-motion collapses to an instant apply
+    + one static highlight.
+  - **Single undo**: because PM groups history by time + range adjacency,
+    scattered fixes across two passes can't merge naturally — so
+    `collapseToSingleUndo` reverts to the pre-repair doc (off-history) and
+    re-applies the corrected content in two synchronous dispatches (no
+    intermediate paint), recording the whole repair as ONE undoable change.
+
 - **Translator** (`src/editor/translate.ts`, `src/editor/settings.ts`,
   `src/editor/settings-ui.ts`, ribbon wiring). Mirror of the "Card
   Formatting Tools" Translator. `runTranslate` reads the selection,

@@ -118,6 +118,7 @@ instead.
 A few features call out to Anthropic's Claude API:
 
 - AI-formatted citations from a pasted URL or freeform quote.
+- AI repair of OCR / PDF extraction errors in a selection (Mod-Shift-R).
 - AI image alt-text and table-from-image (right-click an image).
 - AI commenting / explain features in the comments column.
 

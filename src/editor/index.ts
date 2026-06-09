@@ -94,8 +94,10 @@ import { scheduleIdle, cancelIdle, type IdleHandle } from './idle-scheduler.js';
 import { CommentsColumn, addCommentToSelection, FC_PREFIX, AI_PREFIX, NOTE_PREFIX } from './comments-ui.js';
 import { runAiCreateCite } from './ai/cite-creator.js';
 import { runTranslate } from './translate.js';
+import { runRepairText } from './ai/repair-text.js';
 import { readModePlugin, PMD_READ_MODE_TOGGLE } from './read-mode-plugin.js';
 import { learnHighlightPlugin, flashcardRangeAt } from './learn-highlight-plugin.js';
+import { repairHighlightPlugin } from './repair-highlight-plugin.js';
 import { absorbPlugin } from './absorb-plugin.js';
 import { citeClassifierPlugin } from './cite-classifier-plugin.js';
 import { namedStyleNormalizerPlugin } from './named-style-normalizer-plugin.js';
@@ -967,6 +969,10 @@ const ribbonContext: RibbonContext = {
   translate: () => {
     if (!view) return;
     runTranslate(view);
+  },
+  repairText: () => {
+    if (!view) return;
+    runRepairText(view);
   },
   createFlashcard: () => {
     if (!view) return;
@@ -3496,6 +3502,7 @@ export function buildEditorPlugins(): Plugin[] {
     readModePlugin,
     commentsPlugin,
     learnHighlightPlugin,
+    repairHighlightPlugin,
     frozenSelectionPlugin,
     absorbPlugin,
     citeClassifierPlugin,

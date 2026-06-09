@@ -50,6 +50,9 @@ export interface AnthropicRequest {
   model?: string;
   /** Max tokens to generate. Defaults to a sane chat-reply size. */
   maxTokens?: number;
+  /** Sampling temperature. Omit to use Anthropic's default (1.0); set
+   *  low (e.g. 0) for deterministic, thorough extraction tasks. */
+  temperature?: number;
   /** System prompt. Falls back to the explainer-flavored default. */
   system?: string;
   messages: AnthropicMessage[];
@@ -122,6 +125,7 @@ export async function callAnthropic(req: AnthropicRequest): Promise<AnthropicRep
   const body = {
     model: requestedModel,
     max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
+    ...(req.temperature != null ? { temperature: req.temperature } : {}),
     ...(req.system ? { system: req.system } : {}),
     messages: req.messages,
   };

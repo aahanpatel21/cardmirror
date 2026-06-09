@@ -4577,6 +4577,34 @@ html.pmd-nav-flat .pmd-nav-type-analytic:hover .pmd-nav-label {
   margin-top: 0.4rem;
 }
 
+/* Repair Text: an orange highlight flashes over each fix at the moment it
+   is applied. Replacements happen one at a time (driven by JS timing), so
+   the flash is purely a background pulse on the freshly-inserted text — the
+   walk-down comes from the sequence of applications, not a CSS stagger. */
+@keyframes pmd-repair-flash {
+  0% { background-color: var(--pmd-c-find-match-current-strong); }
+  45% { background-color: var(--pmd-c-find-match-current); }
+  100% { background-color: transparent; }
+}
+.pmd-repair-flash {
+  background-color: transparent;
+  border-radius: 2px;
+  animation: pmd-repair-flash 1400ms ease-out both;
+}
+/* Reduced motion — no walk-down; show a static highlight (cleared when the
+   plugin removes the decoration). More specific than the global motion
+   squash so the static background survives. */
+:root[data-motion="reduce"] .pmd-repair-flash {
+  animation: none !important;
+  background-color: var(--pmd-c-find-match-current);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="normal"]) .pmd-repair-flash {
+    animation: none !important;
+    background-color: var(--pmd-c-find-match-current);
+  }
+}
+
 .pmd-translation-editor {
   display: flex;
   flex-direction: column;
