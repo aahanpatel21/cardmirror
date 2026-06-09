@@ -7,6 +7,8 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+## 0.1.0-alpha.10 — 2026-06-08
+
 - **Reading-position marker** (`src/editor/reading-marker.ts`, read-mode
   wiring in `src/editor/read-mode-plugin.ts`, ribbon `toggleReadingMarker`).
   Inserts a red text run `Marked h:mm` (the `font_color` mark at `FF0000`,

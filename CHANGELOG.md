@@ -7,6 +7,8 @@ see `DETAILED_CHANGELOG.md`.
 
 ## Unreleased
 
+## 0.1.0-alpha.10 — 2026-06-08
+
 ### Added
 
 - **Reading-position marker.** Press **Mod-Shift-D** (rebindable) to drop a
