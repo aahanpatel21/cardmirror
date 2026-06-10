@@ -9530,15 +9530,35 @@ body.pmd-multi-doc .pmd-voice-pill {
   vertical-align: text-bottom;
   user-select: none;
 }
-/* Card ordinal badges in the nav panel (§4.2.1) — pure CSS counters
-   over card (tag) entries, visible only while voice is listening, so
-   "card <number>" always resolves against numbers the user can see. */
+/* Ordinal badges in the nav panel (§4.2.1) — pure CSS counters, one
+   per structural type, visible only while voice is listening, so
+   "card <number>" / "block <number>" always resolve against numbers
+   the user can see. Each type counts independently. */
 body.pmd-voice-listening .pmd-nav-list {
-  counter-reset: pmd-voice-card;
+  counter-reset: pmd-voice-card pmd-voice-pocket pmd-voice-hat
+    pmd-voice-block pmd-voice-analytic;
 }
 body.pmd-voice-listening .pmd-nav-item.pmd-nav-type-tag .pmd-nav-label::before {
   counter-increment: pmd-voice-card;
   content: counter(pmd-voice-card);
+}
+body.pmd-voice-listening .pmd-nav-item.pmd-nav-type-pocket .pmd-nav-label::before {
+  counter-increment: pmd-voice-pocket;
+  content: counter(pmd-voice-pocket);
+}
+body.pmd-voice-listening .pmd-nav-item.pmd-nav-type-hat .pmd-nav-label::before {
+  counter-increment: pmd-voice-hat;
+  content: counter(pmd-voice-hat);
+}
+body.pmd-voice-listening .pmd-nav-item.pmd-nav-type-block .pmd-nav-label::before {
+  counter-increment: pmd-voice-block;
+  content: counter(pmd-voice-block);
+}
+body.pmd-voice-listening .pmd-nav-item.pmd-nav-type-analytic .pmd-nav-label::before {
+  counter-increment: pmd-voice-analytic;
+  content: counter(pmd-voice-analytic);
+}
+body.pmd-voice-listening .pmd-nav-item .pmd-nav-label::before {
   display: inline-block;
   min-width: 1rem;
   margin-right: 0.3rem;

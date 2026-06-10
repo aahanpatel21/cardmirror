@@ -740,44 +740,48 @@ export async function applyVoiceCommand(
       else dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, sel.anchor, targetPos)).scrollIntoView());
       break;
     }
-    case 'cardOrdinal': {
+    case 'cardOrdinal':
+    case 'navOrdinal': {
       // §4.2.1: the badge IS the source of truth. Resolve the ordinal
-      // against the nav panel's RENDERED card entries — the exact
-      // elements the CSS counters number — so collapsed headers and
-      // level filters can never desynchronize what you read from where
-      // you land. Entries hidden under collapsed parents aren't in the
-      // DOM at all.
-      const navTags =
+      // against the nav panel's RENDERED entries of that type — the
+      // exact elements the CSS counters number — so collapsed headers
+      // and level filters can never desynchronize what you read from
+      // where you land. Entries hidden under collapsed parents aren't
+      // in the DOM at all. cardOrdinal is navOrdinal over tag entries
+      // ("card three"); pockets/hats/blocks/analytics jump the same way.
+      const kind = verb === 'cardOrdinal' ? 'tag' : String(args.target ?? 'tag');
+      const noun = kind === 'tag' ? 'card' : kind;
+      const navEntries =
         typeof document !== 'undefined'
           ? (Array.from(
-              document.querySelectorAll('.pmd-nav-panel .pmd-nav-item.pmd-nav-type-tag'),
+              document.querySelectorAll(`.pmd-nav-panel .pmd-nav-item.pmd-nav-type-${kind}`),
             ) as HTMLElement[]).filter((el) => el.offsetParent !== null)
           : [];
-      if (!navTags.length) {
-        deps.ui.hint('card numbers follow the outline — open it, or say card <tag words>');
+      if (!navEntries.length) {
+        deps.ui.hint(`${noun} numbers follow the outline — open it first`);
         ok = false;
         break;
       }
-      const entryEl = navTags[(args.n ?? 1) - 1];
+      const entryEl = navEntries[(args.n ?? 1) - 1];
       const headingId = entryEl?.dataset['id'];
       if (!entryEl || !headingId) {
-        deps.ui.hint(`only ${navTags.length} cards shown`);
+        deps.ui.hint(`only ${navEntries.length} ${noun}s shown`);
         ok = false;
         break;
       }
-      let tagPos: number | null = null;
+      let jumpPos: number | null = null;
       view.state.doc.descendants((node, pos) => {
-        if (tagPos === null && node.type.name === 'tag' && node.attrs['id'] === headingId) {
-          tagPos = pos;
+        if (jumpPos === null && node.type.name === kind && node.attrs['id'] === headingId) {
+          jumpPos = pos;
         }
-        return tagPos === null;
+        return jumpPos === null;
       });
-      if (tagPos === null) {
-        deps.ui.hint('that card just moved — try again');
+      if (jumpPos === null) {
+        deps.ui.hint(`that ${noun} just moved — try again`);
         ok = false;
         break;
       }
-      setCursor(view, dispatch, tagPos + 1);
+      setCursor(view, dispatch, jumpPos + 1);
       break;
     }
 

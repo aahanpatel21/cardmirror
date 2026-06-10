@@ -143,6 +143,14 @@ export function buildLexicon(): LexiconEntry[] {
     }
     e.push({ phrase: `card ${word}`, verb: 'cardOrdinal', args: { n } });
     e.push({ phrase: `go to card ${word}`, verb: 'cardOrdinal', args: { n } });
+    // Every numbered nav-pane level jumps the same way ("block three").
+    // Distinct from the composable-scope form ("go to third block",
+    // which counts within the current container): these resolve against
+    // the nav panel's visible numbering, doc-wide.
+    for (const kind of ['pocket', 'hat', 'block', 'analytic']) {
+      e.push({ phrase: `${kind} ${word}`, verb: 'navOrdinal', args: { target: kind, n } });
+      e.push({ phrase: `go to ${kind} ${word}`, verb: 'navOrdinal', args: { target: kind, n } });
+    }
   });
   // Compound card ordinals 21–99 ("card twenty one") — debate files
   // routinely have far more than twenty cards. Users also naturally
