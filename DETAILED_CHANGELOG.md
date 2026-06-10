@@ -7,6 +7,21 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Find/Replace offset corruption after inline images fixed**
+  (`src/editor/find-replace-plugin.ts` `findMatches`,
+  `src/editor/find-replace-ui.ts` `buildSnippet`). Match positions were
+  computed as character offsets into each textblock's `textContent` —
+  but inline image atoms occupy one document position while contributing
+  zero characters, so every match after an image sat one position left
+  per preceding image: decorations misaligned, snippets sliced wrong,
+  and Replace edited a shifted range (corrupting the neighboring text).
+  Both sites now scan `textBetween` with a one-character leaf
+  placeholder, which keeps string offsets identical to document
+  positions. The scan uses `U+0000` (impossible in a query, so a match
+  can never span an image — correct, since there IS an image between
+  those words); the snippet uses U+FFFC so an image shows as the
+  standard object-replacement glyph in find results.
+
 - **Undertag italic round-trip fixed** (`src/import/importer.ts`,
   `parseRPr`). The exporter dual-encodes `undertag_mark` as
   rStyle="UndertagChar" + `<w:i/>` (the style implies italic display in

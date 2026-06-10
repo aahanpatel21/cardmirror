@@ -172,7 +172,13 @@ function findMatches(
   const needleNorm = caseSensitive ? query : query.toLowerCase();
   state.doc.descendants((node, pos) => {
     if (!node.isTextblock) return true;
-    const text = node.textContent;
+    // NOT textContent: inline atoms (images) have nodeSize 1 but
+    // contribute nothing to textContent, so every character offset
+    // after one would lag its document position — misaligned
+    // decorations and Replace eating the wrong range. A one-char leaf
+    // placeholder keeps offsets ≡ positions, and U+0000 can never
+    // occur in a query, so a match can't span an image.
+    const text = node.textBetween(0, node.content.size, undefined, '\u0000');
     if (!text) return false;
     const category = categoryForTextblockType(node.type.name);
     const hay = caseSensitive ? text : text.toLowerCase();

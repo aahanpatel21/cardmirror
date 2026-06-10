@@ -15,6 +15,13 @@ see `DETAILED_CHANGELOG.md`.
   every undertag, every save. Undertags now come back exactly as you
   wrote them.
 
+- **Find/Replace works correctly in paragraphs containing images.**
+  Every match after an inline image was shifted one position per
+  preceding image — highlights landed slightly off and Replace edited
+  the wrong characters, corrupting adjacent text. Matches, highlights,
+  result snippets, and replacements now land exactly on the matched
+  text.
+
 ### Added
 
 - **Voice control (alpha, desktop only).** Press **Ctrl-Shift-V** to start a

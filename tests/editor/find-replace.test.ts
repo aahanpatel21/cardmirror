@@ -301,6 +301,49 @@ describe('find-replace plugin', () => {
     const next = setQuery(state, 'hello');
     expect(findReplaceKey.getState(next)!.matches.length).toBe(2);
   });
+
+  // Inline images are atoms with nodeSize 1 that contribute nothing to
+  // textContent — scanning that string used to shift every match after
+  // an image one position left per image (audit 2026-06-10).
+  describe('matches after inline images', () => {
+    const TINY_PNG =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+    function imageState(): EditorState {
+      const image = schema.nodes['image']!.create({ src: TINY_PNG, alt: '' });
+      const doc = makeDoc([
+        schema.nodes['paragraph']!.create(null, [
+          schema.text('intro '),
+          image,
+          schema.text(' the target word here'),
+        ]),
+      ]);
+      return EditorState.create({ doc, schema, plugins: [findReplacePlugin()] });
+    }
+
+    it('match ranges cover the matched text exactly', () => {
+      const state = setQuery(imageState(), 'target');
+      const matches = findReplaceKey.getState(state)!.matches;
+      expect(matches.length).toBe(1);
+      const m = matches[0]!;
+      expect(state.doc.textBetween(m.from, m.to)).toBe('target');
+    });
+
+    it('replace edits the right range', () => {
+      let state = setQuery(imageState(), 'target');
+      runReplace('REPLACED')(state, (tr) => {
+        state = state.apply(tr);
+      });
+      expect(state.doc.textContent).toBe('intro  the REPLACED word here');
+    });
+
+    it('a query cannot match across an image', () => {
+      // "o t" occurs visually around the image ("intro ￼ the") but the
+      // document has an atom between — no match may span it.
+      const state = setQuery(imageState(), 'o  t');
+      expect(findReplaceKey.getState(state)!.matches.length).toBe(0);
+    });
+  });
 });
 
 describe('find ordering', () => {

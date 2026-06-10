@@ -56,7 +56,10 @@ function buildSnippet(
   const blockEnd = blockStart + block.content.size;
   const localStart = match.from - blockStart;
   const localEnd = match.to - blockStart;
-  const text = block.textContent;
+  // One-char leaf placeholder so offsets stay position-aligned past
+  // inline images (same fix as the plugin's scan); U+FFFC renders as
+  // the standard object-replacement glyph in the snippet.
+  const text = block.textBetween(0, block.content.size, undefined, '￼');
   const beforeStart = Math.max(0, localStart - SNIPPET_PAD);
   const afterEnd = Math.min(text.length, localEnd + SNIPPET_PAD);
   const beforeRaw = text.slice(beforeStart, localStart);
