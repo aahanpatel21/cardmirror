@@ -178,6 +178,10 @@ function foldWithMap(s: string): { norm: string; map: number[] } {
     else if (ch === 'ﬄ') out = 'ffl';
     else if (ch === '\u00AD' || ch === '\u200B' || ch === '\u200C' || ch === '\u200D' || ch === '\uFEFF') out = '';
     else out = ch;
+    // Case-fold too: the model misquotes capitalization in context
+    // ("in much of…" for a doc that reads "In much of…"). Safe because
+    // the agreeing context is never edited — the doc keeps its case.
+    out = out.toLowerCase();
     norm += out;
     for (let k = 0; k < out.length; k++) map.push(i);
   }
@@ -253,6 +257,70 @@ function locateNormalized(
   };
 }
 
+/** Last resort when even the folded search misses: the model sometimes
+ *  MISQUOTES its context a word away from the actual edit — live case
+ *  2026-06-10: find "of re sis tance literature" for a doc that reads
+ *  "of THE re sis tance literature". Trim whole context words off the
+ *  find's ends (within the agreeing prefix/suffix only, so the edit
+ *  middle is untouched) and retry, smallest trim first. Fixes arrive
+ *  in reading order, so the cursor-first search keeps a less-unique
+ *  trimmed needle honest; a minimum needle length bounds the
+ *  misplacement risk. */
+function locateTrimmed(
+  flat: FlatSelection,
+  hay: { norm: string; map: number[] },
+  fix: RepairFix,
+  cursorFlat: number,
+): (LocatedFix & { cursorFlat: number }) | null {
+  const nf = foldWithMap(fix.find);
+  const nr = foldWithMap(fix.replace);
+  if (!nf.norm) return null;
+  let p = 0;
+  while (p < nf.norm.length && p < nr.norm.length && nf.norm[p] === nr.norm[p]) p++;
+  let s = 0;
+  while (
+    s < nf.norm.length - p &&
+    s < nr.norm.length - p &&
+    nf.norm[nf.norm.length - 1 - s] === nr.norm[nr.norm.length - 1 - s]
+  ) s++;
+
+  // Candidate cut points at word boundaries inside the agreeing
+  // regions: leadCuts[i] = folded index after dropping i leading words;
+  // tailCuts[i] = folded end after dropping i trailing words.
+  const leadCuts: number[] = [0];
+  for (let i = 1; i <= p && leadCuts.length <= 3; i++) {
+    if (nf.norm[i - 1] === ' ') leadCuts.push(i);
+  }
+  const tailCuts: number[] = [nf.norm.length];
+  for (let j = nf.norm.length - 1; j >= nf.norm.length - s && tailCuts.length <= 3; j--) {
+    if (nf.norm[j] === ' ') tailCuts.push(j);
+  }
+
+  for (let totalDrop = 1; totalDrop <= 4; totalDrop++) {
+    for (let li = 0; li <= totalDrop; li++) {
+      const ti = totalDrop - li;
+      if (li >= leadCuts.length || ti >= tailCuts.length) continue;
+      const L = leadCuts[li]!;
+      const R = tailCuts[ti]!;
+      if (R - L < 10) continue; // too short to trust
+      const rawFindL = nf.map[L]!;
+      const rawFindR = R < nf.norm.length ? nf.map[R]! : fix.find.length;
+      const keepTail = nf.norm.length - R;
+      const rawRepL = L < nr.norm.length ? nr.map[L]! : fix.replace.length;
+      const rawRepREnd = nr.norm.length - keepTail;
+      const rawRepR = rawRepREnd < nr.norm.length ? nr.map[rawRepREnd]! : fix.replace.length;
+      const trimmed: RepairFix = {
+        find: fix.find.slice(rawFindL, rawFindR),
+        replace: fix.replace.slice(rawRepL, rawRepR),
+      };
+      if (!trimmed.find || trimmed.find === trimmed.replace) continue;
+      const hit = locateNormalized(flat, hay, trimmed, cursorFlat);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
 /** Locate each fix in the flattened selection, sequentially (search
  *  forward from the previous match, falling back to a global search), and
  *  map it to a non-overlapping doc range. A verbatim miss retries in
@@ -273,7 +341,7 @@ export function locateFixes(
     if (idx < 0) idx = flat.text.indexOf(fix.find); // out-of-order fallback
     if (idx < 0) {
       hay ??= foldWithMap(flat.text);
-      const alt = locateNormalized(flat, hay, fix, cursor);
+      const alt = locateNormalized(flat, hay, fix, cursor) ?? locateTrimmed(flat, hay, fix, cursor);
       if (alt) {
         cursor = alt.cursorFlat;
         matched.push({ from: alt.from, to: alt.to, replace: alt.replace, fix });
@@ -378,6 +446,7 @@ function reducedMotion(): boolean {
  *  skip diagnostic to classify WHY a find missed. */
 export function normalizeForDiagnosis(s: string): string {
   return s
+    .toLowerCase()
     .replace(/[‘’‚]/g, "'")
     .replace(/[“”„]/g, '"')
     .replace(/[—–‒]/g, '--')

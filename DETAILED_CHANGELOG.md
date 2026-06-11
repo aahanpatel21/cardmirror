@@ -37,7 +37,18 @@ in each release, see `CHANGELOG.md`.
   disjoint (live: a detected "self- help" fix was dropped under
   another fix's context), with identical zero-width insertions at the
   same point deduped (the model sometimes lists one correction under
-  two windows; applying both would double the inserted text). (2) The
+  two windows; applying both would double the inserted text). The fold
+  is also case-insensitive (live: the model echoed "in much of…" for a
+  doc reading "In much of…" — safe because the agreeing context is
+  never edited, so the doc keeps its case), and a LAST-RESORT trimmed
+  retry handles word-level context misquotes (live: the model dropped
+  "the" from "of the re sis tance literature"): whole context words
+  are cut from the find's ends — within the agreeing prefix/suffix
+  only, smallest trim first, minimum-needle-length guarded — and the
+  shorter pair retried through the folded locator; the reading-order
+  cursor keeps a less-unique needle honest. This also rescues "--"
+  echoed for an em-dash when the corrupted word is trimmable context.
+  Remaining pinned gap: a find that omits an inline pilcrow. (2) The
   reply cap rises
   4096→16K with stop_reason checked — a truncated fix list previously
   surfaced as an opaque "not valid JSON" error; now it's an actionable
@@ -52,9 +63,8 @@ in each release, see `CHANGELOG.md`.
   ("re- search" → "research"); the old prompt only covered line-break
   hyphenation, and the strict leave-it-if-uncertain guideline made the
   model skip mid-line hyphen-space errors entirely. Known remaining
-  gaps (pinned in tests): "--" echoed for an em-dash
-  (two-chars-for-one, not seen live), omitted pilcrows, and the
-  shared-node flatten boundary miss.
+  gaps (pinned in tests): omitted pilcrows, and the shared-node
+  flatten boundary miss.
 
 - **Anthropic translation output ceiling raised; truncation surfaced**
   (`src/editor/translate.ts`). `translateAnthropic` inherited the

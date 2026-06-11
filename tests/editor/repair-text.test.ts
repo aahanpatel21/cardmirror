@@ -180,16 +180,44 @@ describe('placement on formatted cards (failure repro)', () => {
     expect(skipped).toBe(1);
   });
 
-  it('FAILS (documented limitation): "--" echoed for an em-dash still cannot place', () => {
-    // The fold is per-character (— → "-"); a two-character "--" echo
-    // doesn't match. Not seen in live logs; revisit if it shows up.
+  it('case-misquoted context places, and the doc keeps its capitalization', () => {
+    // Live case 2026-06-10: the doc reads "In much of…", the model
+    // echoed "in much of…". The fold is case-insensitive; the agreeing
+    // context is never edited, so the capital I survives.
+    const doc = makeDoc(para('In much of the re sis tance literature today.'));
+    const { next, applied } = repair(doc, [
+      { find: 'in much of the re sis tance literature', replace: 'in much of the resistance literature' },
+    ]);
+    expect(applied).toBe(1);
+    expect(bodyTexts(next.doc)[0]).toBe('In much of the resistance literature today.');
+  });
+
+  it('context with a dropped word places via trimmed retry', () => {
+    // Live case 2026-06-10: the doc reads "of THE re sis tance
+    // literature"; the model dropped "the" from its find. Trimming the
+    // leading context word off the find yields a needle the doc
+    // actually contains.
+    const doc = makeDoc(para('In much of the re sis tance literature today.'));
+    const { next, applied, skipped } = repair(doc, [
+      { find: 'of re sis tance literature', replace: 'of resistance literature' },
+    ]);
+    expect(applied).toBe(1);
+    expect(skipped).toBe(0);
+    expect(bodyTexts(next.doc)[0]).toBe('In much of the resistance literature today.');
+  });
+
+  it('"--" echoed for an em-dash places when the corrupted word is trimmable context', () => {
+    // The per-char fold can't match "--" against one em-dash, but the
+    // trimmed retry drops the corrupted leading word and the rest
+    // places. The em-dash itself is context, so the doc keeps it.
     const doc = makeDoc(card(tag('TAG'), formattedBody()));
-    const flat = flattenSelection(doc, 0, doc.content.size);
-    const { located, skipped } = locateFixes(flat, [
+    const { next, applied, skipped } = repair(doc, [
       { find: "critique--which I've brought", replace: "critique--which I have brought" },
     ]);
-    expect(located.length).toBe(0); // pinned current behavior
-    expect(skipped).toBe(1);
+    expect(applied).toBe(1);
+    expect(skipped).toBe(0);
+    const body = bodyTexts(next.doc).join('\n');
+    expect(body).toContain('critique—which I have brought');
   });
 
   it('overlapping context windows coexist when their actual EDITS are disjoint', () => {
