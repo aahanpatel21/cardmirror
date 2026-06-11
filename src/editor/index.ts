@@ -54,6 +54,8 @@ import {
 } from './mode-switch.js';
 import { resolveMobileLayout } from './mobile-layout.js';
 import { mobilePlugin, setMobileShellActive } from './mobile-plugin.js';
+import { installCardCutterGate, cardCutterActive } from './card-cutter-gate.js';
+import { cutFocusedCard } from './card-cutter-port.js';
 import {
   quickCardsStore,
   buildQuickCard,
@@ -3558,6 +3560,20 @@ export function buildEditorPlugins(): Plugin[] {
     // takes precedence). Outside tables, Tab on a paragraph-spanning
     // selection indents; on a collapsed cursor inserts '\t'.
     keymap({ Tab: indentParagraph, 'Shift-Tab': outdentParagraph }),
+    // Card-cutter shortcuts — inert (return false) unless the console
+    // command has enabled the experiment, so the binding is invisible
+    // until then. Gating is checked at run time so toggling needs no
+    // re-plug.
+    keymap({
+      'Mod-Alt-c': (_state, _dispatch, view) => {
+        if (!cardCutterActive() || !view) return false;
+        void cutFocusedCard(view, {
+          role: 'block',
+          readTimeSec: settings.get('cardCutterReadTimeSec'),
+        });
+        return true;
+      },
+    }),
     buildPastePlugin({
       condenseOnPaste: () => settings.get('condenseOnPaste'),
       paragraphIntegrity: () => settings.get('paragraphIntegrity'),
@@ -5747,6 +5763,10 @@ installExternalInsertHost({
   getFocusedView: () => getActiveView(),
   getFocusedDocTitle: () => activeFile().filename,
 });
+// Experimental, console-gated AI card cutter. Installs the
+// `__cardcutter('on')` console entry point; does nothing visible
+// until enabled.
+installCardCutterGate();
 requestAnimationFrame(positionDropzone);
 window.addEventListener('resize', positionDropzone);
 {

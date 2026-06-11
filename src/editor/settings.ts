@@ -821,6 +821,31 @@ export interface Settings {
   /** When on, inserting a quick card skips the mid-text confirmation
    *  prompt (inserts immediately even mid-sentence). Default off. */
   quickCardSkipMidTextInsertConfirm: boolean;
+  /** Master switch for the experimental AI card-cutter. Hidden and
+   *  OFF by default; flipped on only via the console command
+   *  `window.__cardcutter('on')`. When on, the card-cutter ribbon
+   *  commands + shortcuts activate and the Card Cutter settings tab
+   *  appears (with a Disable button that flips this back off). The
+   *  cutting logic itself lives in the separately-versioned
+   *  @cardmirror/card-cutter package, loaded dev-only. */
+  cardCutterEnabled: boolean;
+  /** Card-cutter: emphasis style — a persistent AUTHOR fingerprint
+   *  (not inferred from the file). `voice` = emphasis is the content
+   *  tier inside highlights (policy house style); `independent` =
+   *  emphasis marks rhetorical hammers regardless of the spoken cut
+   *  (kritik style); `minimal` = sparse. */
+  cardCutterEmphasisStyle: 'voice' | 'independent' | 'minimal';
+  /** Card-cutter: default highlighted-read length, in seconds at the
+   *  user's reader WPM. The budget knob; ~12s ≈ 64 words @ 350 wpm. */
+  cardCutterReadTimeSec: number;
+  /** Card-cutter: acronym letter-splitting (off by default — real but
+   *  inconsistent in human cuts and the highest garble risk). */
+  cardCutterAcronymSplitting: 'off' | 'conservative' | 'aggressive';
+  /** Card-cutter: word-internal morphology shaving ("regs", "Dems";
+   *  off by default — load-bearing but riskiest). */
+  cardCutterMorphologyShaving: boolean;
+  /** Card-cutter: when the model may pose a clarifying question. */
+  cardCutterClarifyingQuestions: 'when-ambiguous' | 'always' | 'never';
 }
 
 /** Open-delimiter options for "Condense with warning" markers. The
@@ -1004,6 +1029,12 @@ const DEFAULTS: Settings = {
   multiDocLayoutMode: 'compact',
   quickCardActiveTags: [],
   quickCardSkipMidTextInsertConfirm: false,
+  cardCutterEnabled: false,
+  cardCutterEmphasisStyle: 'voice',
+  cardCutterReadTimeSec: 12,
+  cardCutterAcronymSplitting: 'off',
+  cardCutterMorphologyShaving: false,
+  cardCutterClarifyingQuestions: 'when-ambiguous',
 };
 
 /** Public read-only view of the built-in defaults — handy for any UI
@@ -1021,7 +1052,8 @@ export type SettingsCategory =
   | 'accessibility'
   | 'editing'
   | 'shortcuts'
-  | 'comments-ai';
+  | 'comments-ai'
+  | 'card-cutter';
 
 /**
  * Human-readable metadata for each setting, used by the settings UI.
@@ -1080,7 +1112,11 @@ export interface SettingMeta {
     | 'aiCitePrompt'
     | 'translationConfig'
     | 'multiDocLayoutMode'
-    | 'mobileLayout';
+    | 'mobileLayout'
+    | 'cardCutterEmphasisStyle'
+    | 'cardCutterAcronymSplitting'
+    | 'cardCutterClarifyingQuestions'
+    | 'cardCutterDisable';
   /** Which tab this setting lives under in the settings dialog. */
   category: SettingsCategory;
   /** When set, this row is greyed out and its controls disabled
@@ -1622,6 +1658,64 @@ export const SETTING_METADATA: SettingMeta[] = [
       'When off (default), inserting a quick card into the middle of a paragraph asks you to confirm first (pressing Enter again). Turn on to always insert immediately, even mid-sentence.',
     kind: 'toggle',
     category: 'editing',
+  },
+  // ─── Card Cutter (experimental, console-gated) ──────────────────
+  // The whole category is hidden unless `cardCutterEnabled` (flipped
+  // by the console command). `searchHidden` keeps these out of the
+  // command palette's settings search.
+  {
+    key: 'cardCutterReadTimeSec',
+    label: 'Default read length (seconds)',
+    description:
+      'How long the highlighted read should take by default, at your reader words-per-minute. Roughly 12 seconds is a typical card. Individual cuts can override this.',
+    kind: 'number',
+    category: 'card-cutter',
+    searchHidden: true,
+  },
+  {
+    key: 'cardCutterEmphasisStyle',
+    label: 'Emphasis style',
+    description:
+      "Voice: emphasis marks the spoken content words inside highlights (policy house style). Independent: emphasis marks rhetorically powerful phrases whether or not they're in the read (kritik style). Minimal: sparse emphasis. This is your own preference and sticks across files.",
+    kind: 'cardCutterEmphasisStyle',
+    category: 'card-cutter',
+    searchHidden: true,
+  },
+  {
+    key: 'cardCutterClarifyingQuestions',
+    label: 'Clarifying questions',
+    description:
+      'When the cutter may pause to ask how you want a card cut (e.g. establish vs. supplement). When-ambiguous lets the model decide; Always forces a prompt; Never skips them.',
+    kind: 'cardCutterClarifyingQuestions',
+    category: 'card-cutter',
+    searchHidden: true,
+  },
+  {
+    key: 'cardCutterAcronymSplitting',
+    label: 'Acronym letter-splitting',
+    description:
+      'Highlight just the initial letters of a spelled-out term so the read produces the acronym (e.g. "Department of Defense" read as "DoD"). Off by default — error-prone when machine-generated.',
+    kind: 'cardCutterAcronymSplitting',
+    category: 'card-cutter',
+    searchHidden: true,
+  },
+  {
+    key: 'cardCutterMorphologyShaving',
+    label: 'Word-shaving for spoken shorthand',
+    description:
+      'Allow highlighting part of a word to produce spoken shorthand ("regulations" read as "regs", "Democrats" as "Dems"). Off by default — load-bearing but the riskiest transform.',
+    kind: 'toggle',
+    category: 'card-cutter',
+    searchHidden: true,
+  },
+  {
+    key: 'cardCutterEnabled',
+    label: 'Disable the card cutter',
+    description:
+      'Turns the experimental card cutter back off, hides its ribbon commands and shortcuts, and removes this settings tab. Re-enable with the console command.',
+    kind: 'cardCutterDisable',
+    category: 'card-cutter',
+    searchHidden: true,
   },
   {
     key: 'headingMode',
@@ -2170,6 +2264,24 @@ function sanitize(s: Settings): Settings {
       ? s.quickCardActiveTags.filter((t): t is string => typeof t === 'string')
       : [],
     quickCardSkipMidTextInsertConfirm: s.quickCardSkipMidTextInsertConfirm === true,
+    cardCutterEnabled: s.cardCutterEnabled === true,
+    cardCutterEmphasisStyle:
+      s.cardCutterEmphasisStyle === 'independent' || s.cardCutterEmphasisStyle === 'minimal'
+        ? s.cardCutterEmphasisStyle
+        : 'voice',
+    cardCutterReadTimeSec:
+      typeof s.cardCutterReadTimeSec === 'number' && s.cardCutterReadTimeSec > 0
+        ? Math.min(120, Math.max(3, Math.round(s.cardCutterReadTimeSec)))
+        : DEFAULTS.cardCutterReadTimeSec,
+    cardCutterAcronymSplitting:
+      s.cardCutterAcronymSplitting === 'conservative' || s.cardCutterAcronymSplitting === 'aggressive'
+        ? s.cardCutterAcronymSplitting
+        : 'off',
+    cardCutterMorphologyShaving: s.cardCutterMorphologyShaving === true,
+    cardCutterClarifyingQuestions:
+      s.cardCutterClarifyingQuestions === 'always' || s.cardCutterClarifyingQuestions === 'never'
+        ? s.cardCutterClarifyingQuestions
+        : 'when-ambiguous',
   };
 }
 
