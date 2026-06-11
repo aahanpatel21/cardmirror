@@ -210,6 +210,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
    *  please-close handler after journaling. */
   closeSelf: () => ipcRenderer.invoke('host:close-self'),
 
+  /** Mode-switch helper: report the docs this window journaled in
+   *  response to a please-close. Main accumulates them so the
+   *  surviving window can scope its post-reload auto-recovery to
+   *  exactly the switch's docs (sessionStorage is per-window, so a
+   *  closing window's list can only travel through main). */
+  reportModeSwitchJournaled: (docs: Array<{ uid: string; dirty: boolean }>) =>
+    ipcRenderer.invoke('host:mode-switch-journaled', docs),
+
+  /** Fetch (and clear) the docs the closed windows reported for the
+   *  current mode switch. Called once by the surviving window after
+   *  its reload. */
+  takeModeSwitchJournaledDocs: () =>
+    ipcRenderer.invoke('host:take-mode-switch-journaled'),
+
   /** Subscribe to mode-switch please-close broadcasts. Returns an
    *  unsubscribe handle. */
   onPleaseCloseForModeSwitch(handler: () => void): () => void {

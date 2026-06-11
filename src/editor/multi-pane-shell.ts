@@ -1621,9 +1621,13 @@ class MultiPaneShell {
    *  startup-recovery can rebuild the workspace in the new layout.
    *  Cancels each record's pending debounced timer first so the
    *  explicit write we're about to fire isn't shadowed by a
-   *  redundant timer-driven write a few hundred ms later. */
-  async journalAll(): Promise<void> {
+   *  redundant timer-driven write a few hundred ms later. Returns
+   *  each journaled doc's uid + pre-switch dirty state — the
+   *  mode-switch marker scopes the post-reload reopen to exactly
+   *  this list. */
+  async journalAll(): Promise<Array<{ uid: string; dirty: boolean }>> {
     const tasks: Promise<void>[] = [];
+    const docs: Array<{ uid: string; dirty: boolean }> = [];
     for (const id of SLOT_IDS) {
       for (const rec of this.slots[id].stack) {
         if (rec.journalTimer !== null) {
@@ -1631,9 +1635,11 @@ class MultiPaneShell {
           rec.journalTimer = null;
         }
         tasks.push(runJournalForRecord(rec));
+        docs.push({ uid: rec.uid, dirty: rec.dirty });
       }
     }
     await Promise.all(tasks);
+    return docs;
   }
 
   /** Load a recovered doc into the workspace. Picks the first
@@ -1649,6 +1655,7 @@ class MultiPaneShell {
     docId: string | null;
     doc: PMNode;
     threads: import('./comments-plugin.js').Thread[];
+    dirty: boolean;
   }): Promise<void> {
     // Pick the first empty slot; otherwise fall back to the
     // currently-focused slot or slot1.
@@ -1670,10 +1677,11 @@ class MultiPaneShell {
       docId: entry.docId,
       threads: entry.threads,
     });
-    // Recovery restores content that wasn't successfully saved on
-    // the previous session, so the doc is dirty by definition.
-    // Close-X prompts will fire until the user explicitly saves.
-    record.dirty = true;
+    // Crash recovery restores content that wasn't successfully
+    // saved, so it arrives dirty (close-X prompts until the user
+    // saves). A mode-switch reopen of a doc that was CLEAN before
+    // the switch arrives clean — its on-disk file already matches.
+    record.dirty = entry.dirty;
     slot.push(record);
   }
 

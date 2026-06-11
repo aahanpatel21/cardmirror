@@ -16,6 +16,17 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Fixed
 
+- **Switching between the three-pane workspace and one-window-per-
+  document mode now restores exactly the documents you had open.**
+  This glitch primarily affected Mac users. Both directions were
+  broken: switching out of three-pane closed every pane and
+  reopened nothing, and switching into it brought back documents
+  from earlier sessions alongside the ones you actually had open.
+  The switch now hands off precisely the open set — every open
+  document reopens in the new layout, nothing tags along from the
+  past, and documents with no unsaved changes come back clean
+  instead of asking you to save when you close them.
+
 - **Typing over a Ctrl+Shift+Down selection no longer eats the
   paragraph break.** Selecting a paragraph with Ctrl+Shift+Down
   extends the selection to the start of the next block, so typing

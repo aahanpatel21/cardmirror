@@ -222,6 +222,11 @@ export interface SpawnWindowPayload {
    *  the New Speech Document flow so the freshly-spawned window
    *  becomes the routing target for subsequent ` send-to-speech. */
   markAsSpeech?: boolean;
+  /** When true, the spawned window mounts the doc DIRTY instead of
+   *  the default clean. Used by the mode-switch reopen for docs
+   *  that had unsaved changes — the payload bytes hold edits that
+   *  exist nowhere on disk, so the close prompt must keep firing. */
+  markDirty?: boolean;
   /** When set, the spawned window resolves this anchor against the
    *  mounted doc and scrolls + selects it. Used by the flashcard
    *  review's "Show in context" to open a card's source in its own

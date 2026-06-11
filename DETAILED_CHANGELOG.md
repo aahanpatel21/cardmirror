@@ -7,6 +7,65 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Mode-switch (three-pane ↔ windows) restores exactly the open
+  set** (`src/editor/index.ts`, new `src/editor/mode-switch.ts`,
+  `multi-pane-shell.ts`, `apps/desktop/src/main.ts`, preload +
+  electron-host). Primarily a macOS glitch — the trigger was the
+  app outliving its windows, which only happens there (see the
+  first hole below). The toggle works by journaling every open doc,
+  reloading, and letting startup recovery reopen them in the new
+  layout. Three holes in that handoff:
+
+  - *Multi→single reopened nothing.* Single-doc boot gates startup
+    recovery on `isFirstWindow()`, and main set `firstWindowId` once
+    per app session, never reassigning it. On macOS the app stays
+    alive after its last window closes, so any window created after
+    that point — or surviving a switch that closed the original
+    first window — was never "first" and silently skipped recovery;
+    the journals just sat there. (On Linux/Windows the app quits
+    with its last window, so every launch reset the id — which is
+    why this direction only broke on the Mac.) The mode-switch
+    reload now runs recovery in the surviving window regardless of
+    first-window status (the sessionStorage marker identifies it
+    precisely), and main lets the next created window reclaim
+    firstness once the last window closes.
+
+  - *Single→multi swept in stale docs.* The post-reload recovery
+    auto-opened EVERY journal in the store, not just the ones this
+    switch wrote — so leftovers from earlier sessions (including the
+    failed multi→single direction above, which consumed nothing)
+    reappeared on every toggle. The marker now carries the exact
+    uid list the switch journaled: the initiating window's docs via
+    sessionStorage, and the docs of the windows the switch closes
+    via a main-process accumulator (`host:mode-switch-journaled` /
+    `host:take-mode-switch-journaled` — sessionStorage is
+    per-window, so a closing window's list can only travel through
+    main). Recovery reopens exactly that set; unrelated journals
+    stay put for the next normal launch's recovery sidebar, which
+    is where crash leftovers belong.
+
+  - *Every switch left bogus journals and dirty flags behind.* The
+    switch journals clean docs too (the journal is the transport),
+    but the reopen marked everything dirty and never deleted the
+    consumed entries — breaking the journals-mean-unsaved-work
+    invariant: clean docs came back prompting to save on close, and
+    quitting after a switch resurfaced the whole workspace as
+    recovery offers. The marker now records each doc's pre-switch
+    dirty state; clean docs reopen clean and their journals are
+    deleted once they're open (the on-disk file already matches),
+    dirty docs reopen dirty with the journal kept. Spawned windows
+    (multi→single distribution) get the flag via a new `markDirty`
+    field on the spawn payload. A doc reported dirty by any channel
+    stays dirty — losing an unsaved-changes flag is worse than a
+    redundant prompt. The untouched onboarding starter is skipped
+    entirely (it used to journal as a redundant "Untitled" that
+    reopened as an extra pane).
+
+  `[cardmirror] modeswitch:` diagnostics along the journal → marker
+  → recovery path (forwarded to the dev terminal) for the
+  verification loop, alongside the existing main-process `xlog`
+  probes.
+
 - **Typing over a block-tail selection preserves the boundary** (new
   `src/editor/type-over-boundary.ts`, wired in `buildEditorPlugins`).
   Triple-click selects a paragraph's inline content, so typing over it

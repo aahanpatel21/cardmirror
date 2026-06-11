@@ -178,6 +178,10 @@ interface InitialDocPayload {
    *  doc as the speech doc after mounting. Optional / absent for
    *  normal Open + New spawns. */
   markAsSpeech?: boolean;
+  /** Mode-switch reopen of a doc with unsaved changes: the spawned
+   *  window mounts it dirty instead of the default clean. Passed
+   *  through opaquely. */
+  markDirty?: boolean;
   /** "Show in context": spawned window scrolls + selects this anchor
    *  after mounting. Passed through opaquely (stored + returned via
    *  get-initial-doc); the renderer resolves it. */
@@ -185,8 +189,11 @@ interface InitialDocPayload {
 }
 const pendingInitialDocs = new Map<number, InitialDocPayload>();
 
-/** Window id of the first window of this app session. Set once on
- *  the first `createWindow` call and never updated. Used by the
+/** Window id of the first window of this app session. Set on the
+ *  first `createWindow` call; re-claimable by the next created
+ *  window once the last window closes (macOS keeps the app alive
+ *  windowless — without the reset, no window created after that
+ *  point would ever run startup recovery). Used by the
  *  renderer's startup-recovery flow to gate the "offer to restore
  *  unsaved journals" UI: only the first window of a session should
  *  surface that UI — a subsequent spawned-blank window would
@@ -1024,6 +1031,13 @@ const modeSwitchAskedAt = new Map<number, number>();
 // past.
 let modeSwitchInProgress = false;
 
+// Docs journaled by the windows that close for a mode switch. Each
+// closing renderer reports its {uid, dirty} list before close-self;
+// the surviving window collects (and clears) the accumulated set
+// after its reload so it can auto-reopen exactly the switch's docs
+// — sessionStorage can't carry the closed windows' lists across.
+let modeSwitchJournaledDocs: Array<{ uid: string; dirty: boolean }> = [];
+
 ipcMain.handle('host:journal-and-close-other-windows', async (event) => {
   const sender = BrowserWindow.fromWebContents(event.sender);
   if (modeSwitchInProgress) {
@@ -1031,6 +1045,9 @@ ipcMain.handle('host:journal-and-close-other-windows', async (event) => {
     return;
   }
   modeSwitchInProgress = true;
+  // Fresh round — drop reports left over from an earlier switch
+  // whose surviving window never collected them.
+  modeSwitchJournaledDocs = [];
   try {
   const others = BrowserWindow.getAllWindows().filter(
     (w) => w !== sender && !w.isDestroyed(),
@@ -1107,6 +1124,19 @@ ipcMain.handle('host:close-self', async (event) => {
     skipCloseConfirm.add(sender.id);
     sender.close();
   }
+});
+
+ipcMain.handle(
+  'host:mode-switch-journaled',
+  (_event, docs: Array<{ uid: string; dirty: boolean }>) => {
+    if (Array.isArray(docs)) modeSwitchJournaledDocs.push(...docs);
+  },
+);
+
+ipcMain.handle('host:take-mode-switch-journaled', () => {
+  const docs = modeSwitchJournaledDocs;
+  modeSwitchJournaledDocs = [];
+  return docs;
 });
 
 // ─── Speech-doc registry ──────────────────────────────────────────
@@ -1629,6 +1659,14 @@ app.on('browser-window-created', (_event, win) => {
       windowOpenPaths.delete(win.id);
     } else {
       xlog('window-closed-cleanup', { win: win.id, releasedPaths: [] });
+    }
+    // Last window gone → let the next created window claim
+    // first-window status (and with it the startup-recovery UI).
+    // While other windows remain, firstness stays retired — a
+    // window spawned mid-session must not offer to "recover" docs
+    // that are open in those windows.
+    if (BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed()).length === 0) {
+      firstWindowId = null;
     }
   });
 });

@@ -47,6 +47,12 @@ import { dropzoneStore, deriveDropzoneLabel } from './dropzone-store.js';
 import { DropzoneController } from './dropzone-ui.js';
 import { installExternalInsertHost } from './external-insert-host.js';
 import {
+  decodeModeSwitchMarker,
+  encodeModeSwitchMarker,
+  modeSwitchDirtyMap,
+  type ModeSwitchDoc,
+} from './mode-switch.js';
+import {
   quickCardsStore,
   buildQuickCard,
   distinctTags,
@@ -668,8 +674,9 @@ let multiDocClearFocusedJournal: (() => Promise<void>) | null = null;
 let multiDocNotifyFocusedSaved: (() => void) | null = null;
 /** Mode-switch hook: journal every open DocRecord across every
  *  slot's stack so the auto-recover-on-reload flow can rebuild
- *  the workspace in the new layout. */
-let multiDocJournalAll: (() => Promise<void>) | null = null;
+ *  the workspace in the new layout. Returns each doc's uid +
+ *  pre-switch dirty state for the mode-switch marker. */
+let multiDocJournalAll: (() => Promise<ModeSwitchDoc[]>) | null = null;
 /** Crash-recovery hook: load a recovered journal entry into the
  *  multi-pane workspace. The shell picks a slot (first empty, or
  *  prompts the user) and pushes a DocRecord built from the
@@ -683,6 +690,7 @@ let multiDocOnRecoveredDoc:
       docId: string | null;
       doc: import('prosemirror-model').Node;
       threads: Thread[];
+      dirty: boolean;
     }) => Promise<void>)
   | null = null;
 
@@ -725,8 +733,9 @@ export function enableMultiDocMode(opts: {
     docId: string | null;
     doc: import('prosemirror-model').Node;
     threads: Thread[];
+    dirty: boolean;
   }) => Promise<void>;
-  journalAll?: () => Promise<void>;
+  journalAll?: () => Promise<ModeSwitchDoc[]>;
 }): void {
   multiDocActive = true;
   multiDocOnFileOpen = opts.onFileOpen;
@@ -5469,7 +5478,15 @@ function pushNativeMenuBindings(): void {
       });
       void (async (): Promise<void> => {
         try {
-          await runJournalWrite();
+          // Journals this window's open doc(s) — single doc or, in
+          // the rare multi-pane-with-extra-windows case, every pane —
+          // and reports the uid + dirty list to main so the surviving
+          // window can scope its post-reload reopen to exactly the
+          // switch's docs.
+          const docs = await journalAllForModeSwitch();
+          if (docs.length > 0) {
+            await electronHost.reportModeSwitchJournaled(docs);
+          }
         } catch (err) {
           console.warn('Mode-switch journaling failed:', err);
         }
@@ -5832,7 +5849,18 @@ async function initSingleDocBoot(): Promise<void> {
   } catch (err) {
     console.warn('isFirstWindow failed; defaulting to true:', err);
   }
-  if (isFirst) {
+  // A mode-switch reload must run recovery in THIS window no matter
+  // what: it's the switch's surviving window, but frequently NOT the
+  // app session's first window — every single→multi switch closes
+  // all the other windows, often including the original first, and
+  // firstness never transfers. Gating the mode-switch reopen on
+  // isFirstWindow was why multi→single restored nothing.
+  const modeSwitchPending =
+    sessionStorage.getItem(MODE_SWITCH_MARKER_KEY) !== null;
+  if (modeSwitchPending) {
+    console.log(`[cardmirror] modeswitch: single-pane boot, isFirst=${isFirst}`);
+  }
+  if (isFirst || modeSwitchPending) {
     // Launched with no file → show the home screen over the
     // (blank) starter doc. Recovery still runs underneath; if the
     // user recovers a draft it mounts + hides home via
@@ -5840,6 +5868,8 @@ async function initSingleDocBoot(): Promise<void> {
     // no-recovery launch lands on the hub rather than a blank doc.
     homeScreen.show();
     await runStartupRecovery();
+  }
+  if (isFirst) {
     // At-launch update check, gated on the same first-window rule
     // as the recovery UI — we don't want every spawned window in
     // a session to re-check or to re-pop "Update available" if
@@ -5895,8 +5925,12 @@ async function mountFromSpawnPayload(
     adoptDocId(docId, payload.filename, payload.handle, format);
     // Newly spawned window starts clean — even though it has
     // pre-loaded content from the originating window, it hasn't
-    // been edited in THIS window's session.
-    markCurrentDocClean();
+    // been edited in THIS window's session. Exception: a mode-
+    // switch respawn of a doc with unsaved changes — the payload
+    // bytes hold edits that exist nowhere on disk, so the close
+    // prompt must keep firing.
+    if (payload.markDirty) markCurrentDocDirty();
+    else markCurrentDocClean();
     syncSingleDocSpeechRegistration();
     if (payload.markAsSpeech) {
       // New Speech Document flow: the spawning window built the
@@ -5981,8 +6015,16 @@ async function handleModeSwitch(newValue: boolean): Promise<void> {
     if (electronHost) {
       await electronHost.journalAndCloseOtherWindows();
     }
-    await journalAllForModeSwitch();
-    sessionStorage.setItem(MODE_SWITCH_MARKER_KEY, '1');
+    const docs = await journalAllForModeSwitch();
+    // The marker carries exactly which journals belong to this
+    // switch (plus each doc's pre-switch dirty state). The
+    // post-reload recovery reopens those and ONLY those — without
+    // the list it swept in every journal in the store, so stale
+    // entries from earlier sessions reappeared on every toggle.
+    sessionStorage.setItem(MODE_SWITCH_MARKER_KEY, encodeModeSwitchMarker(docs));
+    console.log(
+      `[cardmirror] modeswitch: journaled ${docs.length} local doc(s), switching to ${newValue ? 'multi' : 'single'}-pane`,
+    );
   } catch (err) {
     console.error('Mode-switch journaling failed:', err);
     alert(
@@ -5996,19 +6038,24 @@ async function handleModeSwitch(newValue: boolean): Promise<void> {
 }
 
 /** Journal every currently-open doc so the post-reload recovery
- *  flow can restore them in the new layout. Cancels the single-
- *  doc debounce timer so a pending edit-driven write doesn't
- *  fire alongside the explicit one. */
-async function journalAllForModeSwitch(): Promise<void> {
+ *  flow can restore them in the new layout, and return each doc's
+ *  uid + pre-switch dirty state for the mode-switch marker.
+ *  Cancels the single-doc debounce timer so a pending edit-driven
+ *  write doesn't fire alongside the explicit one. */
+async function journalAllForModeSwitch(): Promise<ModeSwitchDoc[]> {
   if (multiDocActive && multiDocJournalAll) {
-    await multiDocJournalAll();
-    return;
+    return await multiDocJournalAll();
   }
+  // Untouched onboarding starter — nothing real is open in this
+  // window. Journaling it would reopen a redundant Untitled doc
+  // in the new layout.
+  if (isPristineStarter && !currentDocDirty) return [];
   if (journalTimer !== null) {
     window.clearTimeout(journalTimer);
     journalTimer = null;
   }
   await runJournalWrite();
+  return [{ uid: currentDocUid, dirty: currentDocDirty }];
 }
 
 /** Startup recovery — read any unsaved journals from the previous
@@ -6027,15 +6074,36 @@ async function runStartupRecovery(): Promise<void> {
     console.warn('Failed to read recovery journals:', err);
     return;
   }
-  if (entries.length === 0) return;
   // Mode-switch reload: the user toggled `multiDocWorkspace` and we
-  // journaled everything before reloading. Now auto-open all
-  // entries silently in the new layout — no recovery sidebar.
-  if (sessionStorage.getItem(MODE_SWITCH_MARKER_KEY) === '1') {
+  // journaled the open docs before reloading. Auto-open exactly the
+  // journals the switch wrote — and only those — silently in the
+  // new layout, no recovery sidebar. Journals NOT in the switch's
+  // list (crash leftovers from earlier sessions) stay put for the
+  // next normal launch's sidebar.
+  const markerDocs = decodeModeSwitchMarker(
+    sessionStorage.getItem(MODE_SWITCH_MARKER_KEY),
+  );
+  if (markerDocs !== null) {
     sessionStorage.removeItem(MODE_SWITCH_MARKER_KEY);
-    await autoRecoverAll(entries);
+    // Docs that were open in the windows the switch closed reported
+    // their journals to main — sessionStorage is per-window, so
+    // their lists can only reach us through the main process.
+    let remoteDocs: ModeSwitchDoc[] = [];
+    try {
+      remoteDocs = (await getElectronHost()?.takeModeSwitchJournaledDocs()) ?? [];
+    } catch (err) {
+      console.warn('Failed to collect mode-switch doc reports:', err);
+    }
+    const dirtyByUid = modeSwitchDirtyMap([...markerDocs, ...remoteDocs]);
+    const matched = entries.filter((e) => dirtyByUid.has(e.uid));
+    console.log(
+      `[cardmirror] modeswitch: recovery — ${entries.length} journal(s) on disk, ` +
+        `${markerDocs.length} local + ${remoteDocs.length} remote in marker, ${matched.length} matched`,
+    );
+    await autoRecoverAll(matched, dirtyByUid);
     return;
   }
+  if (entries.length === 0) return;
   const { openRecoverySidebar } = await import('./recovery-ui.js');
   await openRecoverySidebar(entries, {
     onSave: async (entry) => {
@@ -6055,6 +6123,9 @@ async function runStartupRecovery(): Promise<void> {
             docId: parsed.docId,
             doc: parsed.doc,
             threads: parsed.threads,
+            // Sidebar recovery = crash recovery: the journal holds
+            // content that never reached disk.
+            dirty: true,
           });
         } catch (err) {
           console.warn(`Failed to parse recovery journal for ${entry.uid}:`, err);
@@ -6167,7 +6238,27 @@ async function reserializeJournalAs(
  *  mounts the most recent and leaves the rest as journals (they'll
  *  show up in the recovery sidebar on the next non-mode-switch
  *  launch). */
-async function autoRecoverAll(entries: JournalEntry[]): Promise<void> {
+async function autoRecoverAll(
+  entries: JournalEntry[],
+  dirtyByUid?: ReadonlyMap<string, boolean>,
+): Promise<void> {
+  const host = getHost();
+  // No dirty info (plain crash recovery) → treat everything as
+  // dirty: the journal IS the unsaved content.
+  const wasDirty = (uid: string): boolean => dirtyByUid?.get(uid) ?? true;
+  // Mode-switch docs that were clean before the switch already
+  // match their on-disk files — once reopened, their journals are
+  // redundant. Dropping them keeps the store's journals-mean-
+  // unsaved-work invariant: leftovers used to resurface as bogus
+  // recovery offers AND as stale extra docs on the next switch.
+  const dropIfClean = async (uid: string): Promise<void> => {
+    if (wasDirty(uid)) return;
+    try {
+      await host.deleteJournal(uid);
+    } catch {
+      /* best-effort */
+    }
+  };
   if (multiDocActive && multiDocOnRecoveredDoc) {
     for (const entry of entries) {
       try {
@@ -6180,7 +6271,10 @@ async function autoRecoverAll(entries: JournalEntry[]): Promise<void> {
           docId: parsed.docId,
           doc: parsed.doc,
           threads: parsed.threads,
+          dirty: wasDirty(entry.uid),
         });
+        await dropIfClean(entry.uid);
+        console.log(`[cardmirror] modeswitch: reopened "${entry.filename}" in a pane`);
       } catch (err) {
         console.warn(`Failed to auto-recover ${entry.uid}:`, err);
       }
@@ -6194,8 +6288,9 @@ async function autoRecoverAll(entries: JournalEntry[]): Promise<void> {
   );
   const winner = sorted[0];
   if (!winner) return;
-  await applyRecovery(winner);
-  const host = getHost();
+  await applyRecovery(winner, { markDirty: wasDirty(winner.uid) });
+  await dropIfClean(winner.uid);
+  console.log(`[cardmirror] modeswitch: reopened "${winner.filename}" in this window`);
   if (!host.canSpawnWindow) return;
   for (const entry of sorted.slice(1)) {
     try {
@@ -6207,7 +6302,10 @@ async function autoRecoverAll(entries: JournalEntry[]): Promise<void> {
         // Reuse the original uid so the spawned window's
         // journal continues to track the same logical doc.
         uid: entry.uid,
+        markDirty: wasDirty(entry.uid),
       });
+      await dropIfClean(entry.uid);
+      console.log(`[cardmirror] modeswitch: spawned a window for "${entry.filename}"`);
     } catch (err) {
       console.warn(`Failed to spawn window for recovered ${entry.uid}:`, err);
     }
@@ -6216,8 +6314,14 @@ async function autoRecoverAll(entries: JournalEntry[]): Promise<void> {
 
 /** Load a recovered journal entry into the single-doc editor (the
  *  recovered doc replaces the current one). Multi-doc routing
- *  happens inline in `runStartupRecovery` via the shell hook. */
-async function applyRecovery(entry: JournalEntry): Promise<void> {
+ *  happens inline in `runStartupRecovery` via the shell hook.
+ *  `markDirty: false` is the mode-switch reopen of a doc that was
+ *  clean before the switch — it mounts clean (its on-disk file
+ *  already matches); everything else mounts dirty. */
+async function applyRecovery(
+  entry: JournalEntry,
+  opts?: { markDirty?: boolean },
+): Promise<void> {
   let parsed: ReturnType<typeof parseNative>;
   try {
     parsed = parseNative(entry.bytes);
@@ -6236,9 +6340,11 @@ async function applyRecovery(entry: JournalEntry): Promise<void> {
   // re-associate (and a never-saved doc's cards stay keyed to the
   // reused uid above). adoptDocId registers it when present.
   adoptDocId(parsed.docId, entry.filename, entry.handle, entry.format);
-  // Recovery restores content that wasn't successfully saved on the
-  // previous session, so the doc is dirty by definition.
-  markCurrentDocDirty();
+  // Crash recovery restores content that wasn't successfully saved
+  // on the previous session, so it mounts dirty. A mode-switch
+  // reopen of a pre-switch-clean doc mounts clean instead.
+  if (opts?.markDirty === false) markCurrentDocClean();
+  else markCurrentDocDirty();
   syncSingleDocSpeechRegistration();
   markNonPristineStarter();
   updateWindowTitle();

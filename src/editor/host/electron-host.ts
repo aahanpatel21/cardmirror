@@ -100,6 +100,10 @@ interface ElectronAPI {
   onExternalOpen(handler: (payload: { path: string }) => void): () => void;
   journalAndCloseOtherWindows(): Promise<void>;
   closeSelf(): Promise<void>;
+  /** Optional so an older preload tolerates the mode-switch
+   *  doc-list channel being absent. */
+  reportModeSwitchJournaled?(docs: Array<{ uid: string; dirty: boolean }>): Promise<void>;
+  takeModeSwitchJournaledDocs?(): Promise<Array<{ uid: string; dirty: boolean }>>;
   onPleaseCloseForModeSwitch(handler: () => void): () => void;
   onCloseRequest(handler: () => void): () => void;
   docRegister(uid: string): Promise<void>;
@@ -429,6 +433,20 @@ export class ElectronHost implements Host {
    *  handler after the renderer finishes journaling. */
   async closeSelf(): Promise<void> {
     await api().closeSelf();
+  }
+
+  /** Mode-switch helper: report the docs this window journaled in
+   *  response to a please-close, so the surviving window can scope
+   *  its post-reload auto-recovery to exactly the switch's docs. */
+  async reportModeSwitchJournaled(docs: Array<{ uid: string; dirty: boolean }>): Promise<void> {
+    await api().reportModeSwitchJournaled?.(docs);
+  }
+
+  /** Mode-switch helper: fetch (and clear) the doc lists the closed
+   *  windows reported. Called once by the surviving window after
+   *  its reload. */
+  async takeModeSwitchJournaledDocs(): Promise<Array<{ uid: string; dirty: boolean }>> {
+    return (await api().takeModeSwitchJournaledDocs?.()) ?? [];
   }
 
   /** Subscribe to mode-switch please-close broadcasts. */
