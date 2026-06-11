@@ -48,6 +48,23 @@ describe('parseRepairResponse', () => {
   it('throws when there is no JSON object', () => {
     expect(() => parseRepairResponse('sorry, no errors')).toThrow();
   });
+
+  // Live failure 2026-06-10: the model echoed evidence containing
+  // quotation marks without escaping them — one bad quote killed the
+  // whole response ("Expected ',' or '}' after property value").
+  it('salvages unescaped quotes inside find/replace strings', () => {
+    const out = parseRepairResponse(
+      '{"fixes":[{"find":"the "real" thinng","replace":"the "real" thing"}]}',
+    );
+    expect(out).toEqual([{ find: 'the "real" thinng', replace: 'the "real" thing' }]);
+  });
+
+  it('salvages literal newlines inside strings (pretty-printed slip)', () => {
+    const out = parseRepairResponse(
+      '{"fixes": [\n  {"find": "re-\nsearch", "replace": "research"}\n]}',
+    );
+    expect(out).toEqual([{ find: 're-\nsearch', replace: 'research' }]);
+  });
 });
 
 describe('flattenSelection', () => {

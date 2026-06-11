@@ -63,6 +63,7 @@ Respond with ONLY a JSON object of exactly this shape — no prose, no code fenc
 
 Rules for the list:
 - "find" MUST be copied VERBATIM from the input I give you — character for character, including any newlines (write them as actual \\n in the JSON string).
+- The input contains quotation marks — escape every double quote inside "find" and "replace" as \\" so the JSON stays valid.
 - Include enough surrounding context in "find" that it occurs only once (or, if a fix repeats, list it once per occurrence in reading order).
 - "replace" is "find" with ONLY the OCR/PDF error corrected; everything else in it stays identical.
 - List the fixes in the order they appear in the text.
@@ -73,20 +74,70 @@ export interface RepairFix {
   replace: string;
 }
 
+/** Heuristic salvage for the model's most common JSON slip: an
+ *  UNESCAPED double quote (or literal newline) inside a string value —
+ *  debate evidence is full of quotation marks, and one missed escape
+ *  used to kill the whole response. Walks the string tracking
+ *  inside-string state; an interior `"` not followed (after
+ *  whitespace) by a structural character is escaped. Exported for
+ *  testing. */
+export function salvageJson(s: string): string {
+  let out = '';
+  let inStr = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]!;
+    if (!inStr) {
+      if (ch === '"') inStr = true;
+      out += ch;
+      continue;
+    }
+    if (ch === '\\') {
+      out += ch + (s[i + 1] ?? '');
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      let j = i + 1;
+      while (j < s.length && /\s/.test(s[j]!)) j++;
+      const next = s[j];
+      if (next === ',' || next === '}' || next === ']' || next === ':' || next === undefined) {
+        inStr = false;
+        out += ch;
+      } else {
+        out += '\\"';
+      }
+      continue;
+    }
+    if (ch === '\n') { out += '\\n'; continue; }
+    if (ch === '\r') continue;
+    out += ch;
+  }
+  return out;
+}
+
 /** Parse the model's JSON reply into a list of fixes. Tolerates code
- *  fences / surrounding prose by extracting the outermost `{...}`. Drops
- *  malformed entries; throws only when no JSON object is present. */
+ *  fences / surrounding prose by extracting the outermost `{...}`, and
+ *  unescaped interior quotes via `salvageJson`. Drops malformed
+ *  entries; throws only when no parseable JSON object is present. */
 export function parseRepairResponse(text: string): RepairFix[] {
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start < 0 || end <= start) {
     throw new Error('Repair response had no JSON object.');
   }
+  const raw = text.slice(start, end + 1);
   let parsed: unknown;
   try {
-    parsed = JSON.parse(text.slice(start, end + 1));
+    parsed = JSON.parse(raw);
   } catch (e) {
-    throw new Error(`Repair response was not valid JSON: ${e instanceof Error ? e.message : String(e)}`);
+    try {
+      parsed = JSON.parse(salvageJson(raw));
+      console.warn('[repair] response JSON needed quote-escape salvage');
+    } catch {
+      throw new Error(
+        `Repair response was not valid JSON: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
   }
   const rawFixes = (parsed as { fixes?: unknown })?.fixes;
   if (!Array.isArray(rawFixes)) return [];

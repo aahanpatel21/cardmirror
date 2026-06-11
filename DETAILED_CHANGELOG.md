@@ -42,6 +42,19 @@ in each release, see `CHANGELOG.md`.
   unmapped signatures, dropped/invalid entries, and per-card rewrite
   counts — same refinement loop as [repair]; the main-process console
   forwarder now matches the [repair-fmt] tag too.
+
+- **Repair JSON salvage: unescaped quotes no longer kill the
+  response** (`src/editor/ai/repair-text.ts` `salvageJson`, shared by
+  `repair-formatting.ts`). Live failure: the model echoed evidence
+  containing quotation marks without escaping them inside the JSON
+  strings — one missed escape made the whole reply unparseable
+  ("Expected ',' or '}' after property value"). On a parse failure
+  both parsers retry through a salvage pass that walks the string
+  tracking inside-string state and escapes any interior quote not
+  followed by a structural character (and folds literal newlines to
+  \\n), logging when salvage was needed; the prompt also now tells the
+  model explicitly to escape interior quotes. Only if salvage also
+  fails does the original error surface.
   output cap raised; failure paths logged**
   (`src/editor/ai/repair-text.ts`, console forwarding in
   `apps/desktop/src/main.ts`). Live diagnosis on a real imported card

@@ -31,6 +31,7 @@ import type { Node as PMNode } from 'prosemirror-model';
 import { schema } from '../../schema/index.js';
 import { settings } from '../settings.js';
 import { callAnthropic, AnthropicError } from './anthropic.js';
+import { salvageJson } from './repair-text.js';
 import { showToast } from '../toast.js';
 import { ThinkingTooltip } from './thinking-tooltip.js';
 import { setRepairFlashes, clearRepairFlashes } from '../repair-highlight-plugin.js';
@@ -323,13 +324,21 @@ export function parseFormatResponse(
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start < 0 || end <= start) throw new Error('Formatting response had no JSON object.');
+  const raw = text.slice(start, end + 1);
   let parsed: unknown;
   try {
-    parsed = JSON.parse(text.slice(start, end + 1));
+    parsed = JSON.parse(raw);
   } catch (e) {
-    throw new Error(
-      `Formatting response was not valid JSON: ${e instanceof Error ? e.message : String(e)}`,
-    );
+    // Exception fragments are verbatim evidence text — unescaped
+    // interior quotes happen; salvage before giving up.
+    try {
+      parsed = JSON.parse(salvageJson(raw));
+      console.warn('[repair-fmt] response JSON needed quote-escape salvage');
+    } catch {
+      throw new Error(
+        `Formatting response was not valid JSON: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
   }
   const dropped: string[] = [];
   const plan: FormatPlan = { map: new Map(), exceptions: [] };
