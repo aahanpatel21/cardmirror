@@ -280,11 +280,23 @@ async function fetchFixes(
     apiKey,
     system: DEFAULT_REPAIR_PROMPT,
     messages: [{ role: 'user', content: flat.text }],
-    maxTokens: 4096,
+    // A long OCR'd card can legitimately need dozens of fixes, each
+    // carrying context — 4096 used to cut the JSON off mid-array
+    // (parse error). Output tokens only bill as generated.
+    maxTokens: 16000,
     temperature: 0,
   });
+  if (reply.stopReason === 'max_tokens') {
+    console.warn('[repair] model reply hit the output token cap — fix list truncated');
+    throw new Error(
+      'The fix list was too long for one pass — select a smaller region and repair it in parts.',
+    );
+  }
   const fixes = parseRepairResponse(reply.text);
   const { located, skipped, notFound, overlapped } = locateFixes(flat, fixes);
+  console.warn(
+    `[repair] pass: ${fixes.length} fixes returned, ${located.length} placed, ${skipped} skipped`,
+  );
   logUnplaced(flat, notFound, overlapped);
   return { fixesReturned: fixes.length, located, skipped };
 }
@@ -460,6 +472,9 @@ export function runRepairText(view: EditorView): void {
           // Best effort.
         }
       }
+      // Mirror the failure to the console (forwarded to the dev log) —
+      // the toast is transient and otherwise leaves no trace to debug.
+      console.warn(`[repair] error: ${e instanceof Error ? e.message : String(e)}`);
       if (e instanceof AnthropicError) showToast(`Repair: ${e.message}`);
       else showToast(`Repair: ${e instanceof Error ? e.message : String(e)}`);
     }
