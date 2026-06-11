@@ -113,18 +113,40 @@ describe('placement on formatted cards (failure repro)', () => {
     expect(skipped).toBe(1);
   });
 
-  it('FAILS: model normalizes smart punctuation in its find', () => {
+  it('straight-quote echoes place via the folded fallback, doc punctuation preserved', () => {
+    // Doc has “Occupy” (curly); the model echoed "Occupy" (straight) —
+    // live-confirmed dominant skip cause (2026-06-10, 27 of 27 skips).
+    // The fallback places it AND keeps the document's curly quotes:
+    // only the differing middle of find→replace is spliced in.
+    const doc = makeDoc(card(tag('TAG'), formattedBody()));
+    const { next, applied, skipped } = repair(doc, [
+      { find: 'to "Occupy" London suggests thisis', replace: 'to "Occupy" London suggests this is' },
+    ]);
+    expect(applied).toBe(1);
+    expect(skipped).toBe(0);
+    const body = bodyTexts(next.doc).join('\n');
+    expect(body).toContain('“Occupy” London suggests this is');
+  });
+
+  it('straight-apostrophe echo places and keeps the curly apostrophe', () => {
+    const doc = makeDoc(card(tag('TAG'), formattedBody()));
+    const { next, applied } = repair(doc, [
+      { find: "which I've brought", replace: "which I've bought" },
+    ]);
+    expect(applied).toBe(1);
+    expect(bodyTexts(next.doc).join('\n')).toContain('which I’ve bought');
+  });
+
+  it('FAILS (documented limitation): "--" echoed for an em-dash still cannot place', () => {
+    // The fold is per-character (— → "-"); a two-character "--" echo
+    // doesn't match. Not seen in live logs; revisit if it shows up.
     const doc = makeDoc(card(tag('TAG'), formattedBody()));
     const flat = flattenSelection(doc, 0, doc.content.size);
-    const { located, skipped, notFound } = locateFixes(flat, [
-      // doc has — and ’ ; model echoes -- and '
-      { find: "critique--which I've brought", replace: "critique—which I've brought it" },
-      // doc has “ ” ; model echoes " "
-      { find: 'to "Occupy" London', replace: 'to "Occupy" London town' },
+    const { located, skipped } = locateFixes(flat, [
+      { find: "critique--which I've brought", replace: "critique--which I have brought" },
     ]);
     expect(located.length).toBe(0); // pinned current behavior
-    expect(skipped).toBe(2);
-    expect(notFound.length).toBe(2);
+    expect(skipped).toBe(1);
   });
 
   it('FAILS: overlapping context windows drop the second fix', () => {

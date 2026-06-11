@@ -150,22 +150,114 @@ export interface LocatedFix {
   replace: string;
 }
 
+/** Fold the characters the model routinely fails to echo verbatim,
+ *  keeping a map from each folded char back to its raw index. Curly
+ *  quotes/dashes → ASCII (1:1), NBSP → space, soft hyphen and
+ *  zero-width characters dropped. The pilcrow glyph is deliberately
+ *  NOT folded — it's meaningful condensed-card content, and a folded
+ *  match spanning one would silently delete it. */
+function foldWithMap(s: string): { norm: string; map: number[] } {
+  let norm = '';
+  const map: number[] = [];
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]!;
+    let out: string;
+    if (ch === '‘' || ch === '’' || ch === '‚') out = "'";
+    else if (ch === '“' || ch === '”' || ch === '„') out = '"';
+    else if (ch === '—' || ch === '–' || ch === '‒') out = '-';
+    else if (ch === '\u00A0') out = ' ';
+    else if (ch === '\u00AD' || ch === '\u200B' || ch === '\u200C' || ch === '\u200D' || ch === '\uFEFF') out = '';
+    else out = ch;
+    if (out) {
+      norm += out;
+      map.push(i);
+    }
+  }
+  return { norm, map };
+}
+
+/** Fallback placement when the verbatim search misses: match in folded
+ *  space, then rebuild the replacement so the DOCUMENT'S punctuation
+ *  survives — only the model's actual edit (the differing middle of
+ *  find→replace) is spliced in; the agreeing prefix/suffix come from
+ *  the original text, curly quotes and all. */
+function locateNormalized(
+  flat: FlatSelection,
+  hay: { norm: string; map: number[] },
+  fix: RepairFix,
+  cursorFlat: number,
+): (LocatedFix & { cursorFlat: number }) | null {
+  const nf = foldWithMap(fix.find);
+  const nr = foldWithMap(fix.replace);
+  if (!nf.norm) return null;
+  // First occurrence at/after the flat cursor, falling back to the first
+  // occurrence anywhere (mirrors the verbatim search's ordering rules).
+  let idx = -1;
+  for (let i = hay.norm.indexOf(nf.norm); i >= 0; i = hay.norm.indexOf(nf.norm, i + 1)) {
+    if (hay.map[i]! >= cursorFlat) { idx = i; break; }
+    if (idx < 0) idx = i; // remember the global-first as fallback
+  }
+  if (idx < 0) return null;
+  const flatStart = hay.map[idx]!;
+  const flatEnd = hay.map[idx + nf.norm.length - 1]! + 1;
+  // A folded match spanning a block boundary can't be applied safely
+  // (the rebuilt replacement would re-insert the newline as a literal).
+  if (flat.text.slice(flatStart, flatEnd).includes('\n')) return null;
+
+  // Agreeing prefix/suffix between folded find and folded replace —
+  // those regions keep the ORIGINAL document characters.
+  let p = 0;
+  while (p < nf.norm.length && p < nr.norm.length && nf.norm[p] === nr.norm[p]) p++;
+  let s = 0;
+  while (
+    s < nf.norm.length - p &&
+    s < nr.norm.length - p &&
+    nf.norm[nf.norm.length - 1 - s] === nr.norm[nr.norm.length - 1 - s]
+  ) s++;
+  const prefixEndFlat = p > 0 ? hay.map[idx + p - 1]! + 1 : flatStart;
+  const suffixStartFlat = s > 0 ? hay.map[idx + nf.norm.length - s]! : flatEnd;
+  const midStartRaw = p < nr.norm.length ? nr.map[p]! : fix.replace.length;
+  const midEndRaw = s > 0 ? nr.map[nr.norm.length - s]! : fix.replace.length;
+  const replace =
+    flat.text.slice(flatStart, prefixEndFlat) +
+    fix.replace.slice(midStartRaw, midEndRaw) +
+    flat.text.slice(suffixStartFlat, flatEnd);
+
+  return {
+    from: flat.pos[flatStart]!,
+    to: endPos(flat, flatEnd),
+    replace,
+    cursorFlat: flatEnd,
+  };
+}
+
 /** Locate each fix in the flattened selection, sequentially (search
  *  forward from the previous match, falling back to a global search), and
- *  map it to a non-overlapping doc range. Returns the located edits plus
- *  the count that couldn't be placed. Exported for testing. */
+ *  map it to a non-overlapping doc range. A verbatim miss retries in
+ *  folded space (smart quotes/dashes/invisibles — the things models
+ *  fail to echo verbatim; live-confirmed 2026-06-10 as the dominant
+ *  "could not place" cause on imported cards). Returns the located
+ *  edits plus the count that couldn't be placed. Exported for testing. */
 export function locateFixes(
   flat: FlatSelection,
   fixes: readonly RepairFix[],
 ): { located: LocatedFix[]; skipped: number; notFound: RepairFix[]; overlapped: RepairFix[] } {
   const matched: (LocatedFix & { fix: RepairFix })[] = [];
   const notFound: RepairFix[] = [];
+  let hay: { norm: string; map: number[] } | null = null;
   let cursor = 0;
   for (const fix of fixes) {
     let idx = flat.text.indexOf(fix.find, cursor);
     if (idx < 0) idx = flat.text.indexOf(fix.find); // out-of-order fallback
     if (idx < 0) {
-      notFound.push(fix);
+      hay ??= foldWithMap(flat.text);
+      const alt = locateNormalized(flat, hay, fix, cursor);
+      if (alt) {
+        cursor = alt.cursorFlat;
+        matched.push({ from: alt.from, to: alt.to, replace: alt.replace, fix });
+      } else {
+        notFound.push(fix);
+      }
       continue;
     }
     const from = flat.pos[idx]!;

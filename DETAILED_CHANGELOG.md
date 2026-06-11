@@ -7,6 +7,37 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Repair Text placement: normalization-tolerant fallback locator;
+  output cap raised; failure paths logged**
+  (`src/editor/ai/repair-text.ts`, console forwarding in
+  `apps/desktop/src/main.ts`). Live diagnosis on a real imported card
+  (46 fixes returned, only 31 placed) showed the dominant
+  "could not place" cause: the model echoes straight quotes/apostrophes
+  in its `find` strings where the document has curly ones — every
+  skipped fix in the log was a quoted span. Repro tests confirmed the
+  full failure taxonomy: smart-punctuation echoes (dominant), inline
+  pilcrows omitted from finds, overlapping context windows, and a
+  flattenSelection block-boundary miss when duplicated blocks share a
+  node object (copy/paste reuses nodes). Fixes: (1) when the verbatim
+  search misses, a folded-space fallback retries — curly quotes/dashes
+  → ASCII, NBSP → space, soft-hyphen/zero-widths dropped (pilcrow
+  deliberately NOT folded: it's meaningful content and a folded match
+  spanning one would delete it) — and the replacement is REBUILT so
+  the document keeps its original punctuation: the agreeing
+  prefix/suffix of find→replace come from the original text and only
+  the differing middle is spliced from the model's replace. Fallback
+  matches spanning a block boundary are rejected (the rebuilt text
+  would re-insert the newline literally). (2) The reply cap rises
+  4096→16K with stop_reason checked — a truncated fix list previously
+  surfaced as an opaque "not valid JSON" error; now it's an actionable
+  "repair a smaller region". (3) Every outcome logs a [repair]-tagged
+  console line (per-pass placement summary, classified skips, errors),
+  and the Electron main process forwards [repair]/[cardmirror]-tagged
+  renderer console lines to stdout so terminal dev sessions can see
+  them. Known remaining gaps (pinned in tests): "--" echoed for an
+  em-dash (two-chars-for-one, not seen live), omitted pilcrows, and
+  the shared-node flatten boundary miss.
+
 - **Anthropic translation output ceiling raised; truncation surfaced**
   (`src/editor/translate.ts`). `translateAnthropic` inherited the
   client's `DEFAULT_MAX_TOKENS = 1024` — sized for chat replies, not

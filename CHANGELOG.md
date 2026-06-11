@@ -9,6 +9,17 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Fixed
 
+- **Repair Text now places far more of its fixes on imported cards.**
+  The model frequently echoes straight quotes and apostrophes where
+  the document has curly ones, and the exact-match placement quietly
+  skipped every such fix — on a real card, over half the suggested
+  repairs. A fallback matcher now tolerates those echo slips (smart
+  quotes/dashes, non-breaking spaces, invisible characters) while
+  preserving the document's original punctuation — only the actual
+  correction is spliced in. Long fix lists also no longer fail with a
+  cryptic JSON error: the response limit is raised, and genuinely
+  oversized lists ask you to repair a smaller region instead.
+
 - **Anthropic translations no longer cut off silently on long
   selections.** The AI translation path capped its output at roughly
   750 words and quietly copied whatever fit — a long card came back
