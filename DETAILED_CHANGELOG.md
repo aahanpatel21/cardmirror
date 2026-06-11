@@ -7,7 +7,24 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
-- **Repair Text: batch apply per pass** (`src/editor/ai/repair-text.ts`
+- **Smart Shrink** (`src/editor/ribbon-commands.ts` `smartShrinkText`;
+  ribbon `smartShrink`, Mod-Alt-8, grouped beside Shrink/Regrow).
+  One-shot per-paragraph shrink depth: a block with no
+  underline_mark / underline_direct / emphasis_mark anywhere goes
+  straight to 5pt; blocks carrying those marks shrink their eligible
+  text to 8pt. Deliberately deterministic (no AI). Scope mirrors the
+  regular shrink cycle via a block-aware variant
+  (`computeSmartShrinkBlocks`) — cursor in card/analytic → all its
+  bodies, doc paragraph → itself, selection → clipped card_body/
+  paragraph portions — with one wrinkle the cycle doesn't have:
+  classification reads the WHOLE paragraph even when only part is
+  selected (a partial selection in a marked paragraph shrinks to 8pt,
+  not 5pt). Eligibility and the protected-span machinery
+  (findProtectedRanges + restore-to-Normal under
+  shrinkRestoresOmissionsToNormal) are shared with the cycle.
+  Idempotent with honest no-op reporting: when every eligible range
+  already sits at its target size the command returns false instead
+  of burning an undo step. (`src/editor/ai/repair-text.ts`
   `applyPass`). The animated one-at-a-time walk (110ms cadence,
   per-fix flash + scroll) is replaced by one transaction per pass via
   `buildRepairTransaction`, with `setRepairFlashes` blinking every

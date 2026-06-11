@@ -89,6 +89,16 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Added
 
+- **Smart Shrink.** Press **Mod-Alt-8** to shrink a card's connective
+  text in one step, with per-paragraph depth: paragraphs containing no
+  underlining or emphasis at all — the long fully-unread stretches —
+  go straight to 5pt, while paragraphs that do carry those marks
+  shrink their connective text to the standard 8pt. No cycling:
+  running it again changes nothing. Underlined and emphasized text is
+  never touched, and the same protections as regular Shrink apply
+  (omission markers, integrity warnings, custom rules). Regular Shrink
+  (Mod-8) and Regrow (Mod-Shift-8) work on the result as usual.
+
 - **Repair Formatting (AI).** Select body text and press **Mod-Alt-R**
   to normalize it to Verbatim's four-layer scheme — underline as the
   broad pass, emphasis to make some of it stand out, highlighting for

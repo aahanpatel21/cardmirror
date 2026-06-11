@@ -2408,6 +2408,151 @@ export function regrowText(
   );
 }
 
+/** Smart Shrink: one-shot, per-paragraph depth. A paragraph with NO
+ *  underlining or emphasis anywhere is a long fully-unread stretch —
+ *  its eligible text goes straight to 5pt; a paragraph that has those
+ *  marks keeps the standard 8pt for its connective text. Eligibility
+ *  and protections are identical to the regular shrink cycle, and the
+ *  command is idempotent (no cycling). Classification reads the WHOLE
+ *  paragraph even when only part of it is selected. */
+const SMART_SHRINK_BARE_PT = 5;
+const SMART_SHRINK_MARKED_PT = 8;
+
+interface SmartShrinkBlock {
+  /** The textblock (classification looks at all of it). */
+  node: PMNode;
+  /** The portion to shrink (clipped to the selection when partial). */
+  from: number;
+  to: number;
+}
+
+/** Smart-shrink scope: the same blocks the regular shrink cycle
+ *  touches, but block-aware so each paragraph classifies itself. */
+function computeSmartShrinkBlocks(
+  state: import('prosemirror-state').EditorState,
+): SmartShrinkBlock[] {
+  const sel = state.selection;
+  if (sel.empty) {
+    const $pos = sel.$from;
+    if ($pos.depth < 1) return [];
+    const docLevel = $pos.node(1);
+    const docLevelStart = $pos.before(1);
+    const t = docLevel.type.name;
+    if (t === 'card' || t === 'analytic_unit') {
+      const out: SmartShrinkBlock[] = [];
+      let offset = 1;
+      docLevel.forEach((child) => {
+        if (child.type.name === 'card_body') {
+          const childStart = docLevelStart + offset;
+          out.push({ node: child, from: childStart + 1, to: childStart + child.nodeSize - 1 });
+        }
+        offset += child.nodeSize;
+      });
+      return out;
+    }
+    if (t === 'paragraph') {
+      return [{ node: docLevel, from: docLevelStart + 1, to: docLevelStart + docLevel.nodeSize - 1 }];
+    }
+    return [];
+  }
+  const out: SmartShrinkBlock[] = [];
+  state.doc.nodesBetween(sel.from, sel.to, (node, pos) => {
+    if (!node.isTextblock) return true;
+    const t = node.type.name;
+    if (t !== 'card_body' && t !== 'paragraph') return false;
+    const from = Math.max(sel.from, pos + 1);
+    const to = Math.min(sel.to, pos + node.nodeSize - 1);
+    if (from < to) out.push({ node, from, to });
+    return false;
+  });
+  return out;
+}
+
+/** True when any text in the block carries a shrink-exempt mark
+ *  (underline / direct underline / emphasis). */
+function blockHasExemptMarks(node: PMNode): boolean {
+  let has = false;
+  node.descendants((child) => {
+    if (has) return false;
+    if (child.isText && child.marks.some((m) => SHRINK_EXEMPT_MARK_NAMES.has(m.type.name))) {
+      has = true;
+    }
+    return !has;
+  });
+  return has;
+}
+
+export function smartShrinkText(
+  effectivePt: (node: PMNode | null, parent: PMNode) => number,
+  normalPt: () => number,
+  restoreOmissions: () => boolean,
+  protectionPatterns: () => readonly RegExp[],
+): Command {
+  return (state, dispatch) => {
+    const blocks = computeSmartShrinkBlocks(state);
+    if (blocks.length === 0) {
+      if (dispatch && state.selection.$from.parent.type.name === 'cite_paragraph') {
+        showToast('This paragraph is a cite line — shrink works on body text', {
+          durationMs: 2200,
+        });
+      }
+      return false;
+    }
+
+    const ranges = blocks.map(({ from, to }) => ({ from, to }));
+    const protectedRanges = restoreOmissions()
+      ? findProtectedRanges(state.doc, ranges, protectionPatterns())
+      : [];
+
+    // Per block: classify (whole paragraph), then collect its eligible
+    // sub-ranges at the block's target size.
+    const edits: { from: number; to: number; pt: number }[] = [];
+    for (const block of blocks) {
+      const pt = blockHasExemptMarks(block.node) ? SMART_SHRINK_MARKED_PT : SMART_SHRINK_BARE_PT;
+      state.doc.nodesBetween(block.from, block.to, (node, pos, parent) => {
+        if (!node.isText || !parent) return true;
+        if (node.marks.some((m) => SHRINK_EXEMPT_MARK_NAMES.has(m.type.name))) return true;
+        const start = Math.max(block.from, pos);
+        const end = Math.min(block.to, pos + node.nodeSize);
+        if (start >= end) return true;
+        for (const sub of subtractRanges(start, end, protectedRanges)) {
+          edits.push({ ...sub, pt });
+        }
+        return true;
+      });
+    }
+    if (edits.length === 0 && protectedRanges.length === 0) return false;
+
+    // Idempotency / no-op detection: skip when every edit already sits
+    // at its target size (so the command honestly reports false).
+    const fontSizeType = schema.marks['font_size']!;
+    const changed = edits.some(({ from, to, pt }) => {
+      let differs = false;
+      state.doc.nodesBetween(from, to, (node, _pos, parent) => {
+        if (differs || !node.isText || !parent) return !differs;
+        if (effectivePt(node, parent) !== pt) differs = true;
+        return !differs;
+      });
+      return differs;
+    });
+    if (!changed && protectedRanges.length === 0) return false;
+    if (!dispatch) return true;
+
+    const tr = state.tr;
+    for (const { from, to, pt } of edits) {
+      tr.removeMark(from, to, fontSizeType);
+      tr.addMark(from, to, fontSizeType.create({ halfPoints: Math.round(pt * 2) }));
+    }
+    const normalHp = Math.round(normalPt() * 2);
+    for (const { from, to } of protectedRanges) {
+      tr.removeMark(from, to, fontSizeType);
+      tr.addMark(from, to, fontSizeType.create({ halfPoints: normalHp }));
+    }
+    dispatch(tr);
+    return true;
+  };
+}
+
 function sizeCycleCommand(
   effectivePt: (node: PMNode | null, parent: PMNode) => number,
   normalPt: () => number,
@@ -3547,6 +3692,7 @@ export type RibbonCommandId =
   | 'pasteAsText'
   | 'clearToNormal'
   | 'shrink'
+  | 'smartShrink'
   | 'regrow'
   | 'createReference'
   | 'extractUndertag'
@@ -3692,6 +3838,7 @@ export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
   'pasteAsText',
   'clearToNormal',
   'shrink',
+  'smartShrink',
   'regrow',
   'createReference',
   'extractUndertag',
@@ -3813,6 +3960,7 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   pasteAsText: 'Paste Plain Text',
   clearToNormal: 'Clear',
   shrink: 'Shrink Card Text',
+  smartShrink: 'Smart Shrink (Deeper for Unmarked Paragraphs)',
   regrow: 'Restore Card Text Size',
   createReference: 'Create Reference',
   extractUndertag: 'Extract Undertag',
@@ -3924,6 +4072,7 @@ export const RIBBON_COMMAND_ALIASES: Partial<Record<RibbonCommandId, readonly st
   // vague / Word-flavored labels
   clearToNormal: ['clear formatting', 'remove formatting', 'clear to normal'],
   regrow: ['unshrink', 'regrow', 'restore text size', 'unshrink card text'],
+  smartShrink: ['smart shrink', 'deep shrink'],
   pasteAsText: ['paste without formatting', 'paste unformatted', 'paste text'],
   removeHyperlinks: ['remove links', 'delete links', 'unlink'],
   applyShading: ['shading', 'text highlight color'],
@@ -3975,6 +4124,7 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   pasteAsText: 'F2',
   clearToNormal: 'F12',
   shrink: 'Mod-8',
+  smartShrink: 'Mod-Alt-8',
   regrow: 'Mod-Shift-8',
   // Menu / button commands — exposed for user-defined bindings via
   // the keybinding editor; no default key.
@@ -4398,6 +4548,13 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
       return clearToNormal();
     case 'shrink':
       return shrinkText(
+        ctx.effectivePtForNode,
+        ctx.normalPt,
+        ctx.shrinkRestoresOmissionsToNormal,
+        ctx.shrinkProtectionPatterns,
+      );
+    case 'smartShrink':
+      return smartShrinkText(
         ctx.effectivePtForNode,
         ctx.normalPt,
         ctx.shrinkRestoresOmissionsToNormal,
