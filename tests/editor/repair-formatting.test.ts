@@ -183,6 +183,30 @@ describe('parseFormatResponse', () => {
     expect(dropped.length).toBe(2);
   });
 
+  // Live failure 2026-06-10: a size-recovery card's single emphasized
+  // sentence (em+hl) was bulldozed into the blanket plain→u rule —
+  // existing emphasis is canonical user work and must survive blanket
+  // remapping. The guard re-adds em (dropping u, which em implies).
+  it('hard guard: a plan stripping em from an em signature gets em back', () => {
+    const sigs = new Set(['plain', 'hl', 'small', 'em+hl']);
+    const { plan, warnings } = parseFormatResponse(
+      '{"map":{"plain":["u"],"hl":["u","hl"],"small":[],"em+hl":["u","hl"]}}',
+      sigs,
+    );
+    expect(plan.map.get('em+hl')).toEqual(['em', 'hl']);
+    expect(warnings.length).toBe(1);
+    // The compliant mappings pass through untouched.
+    expect(plan.map.get('hl')).toEqual(['u', 'hl']);
+  });
+
+  it('hard guard: em-preserving plans produce no warning', () => {
+    const { warnings } = parseFormatResponse(
+      '{"map":{"em+hl":["em","hl"]}}',
+      new Set(['em+hl']),
+    );
+    expect(warnings).toEqual([]);
+  });
+
   // Live drop 2026-06-10: the model mirrored the SIGNATURE notation in
   // a target — ["u+hl"] as one compound string — and the whole mapping
   // for b+hl+u was discarded, leaving those runs untouched.

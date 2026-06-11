@@ -59,7 +59,8 @@ Decide what each signature SHOULD be, using these repair patterns:
 5. Highlighting stays hl. Highlighted text should normally also be underlined: a signature of just hl usually maps to u+hl.
 6. Shading stays shd (on top of its highlighting).
 7. cite debris in body text is not formatting — drop it from the target.
-8. When unsure, change less: map a signature to itself rather than guess.
+8. em in the INPUT is already canonical emphasis — existing user work. Any signature containing em KEEPS em in its target (em+hl → ["em","hl"]). Never convert em to u; never strip it as part of a blanket rule.
+9. When unsure, change less: map a signature to itself rather than guess.
 
 Respond with ONLY a JSON object, no prose, no code fences:
 
@@ -332,7 +333,7 @@ export interface FormatPlan {
 export function parseFormatResponse(
   text: string,
   knownSignatures: ReadonlySet<string>,
-): { plan: FormatPlan; dropped: string[] } {
+): { plan: FormatPlan; dropped: string[]; warnings: string[] } {
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start < 0 || end <= start) throw new Error('Formatting response had no JSON object.');
@@ -415,7 +416,23 @@ export function parseFormatResponse(
       }
     }
   }
-  return { plan, dropped };
+  // HARD GUARD: existing emphasis is canonical user work — a blanket
+  // rule must never strip it (live failure: a size-recovery card's one
+  // emphasized sentence was bulldozed to u+hl). If the plan drops em
+  // from an em-carrying signature, put it back (and drop u, which em
+  // implies). The exceptions channel remains the deliberate override.
+  const warnings: string[] = [];
+  for (const [key, target] of plan.map) {
+    const sigFlags = key === 'plain' ? [] : key.split('+');
+    if (sigFlags.includes('em') && !target.includes('em')) {
+      const fixed: TargetFlag[] = ['em', ...target.filter((t) => t !== 'u' && t !== 'em')];
+      plan.map.set(key, fixed);
+      warnings.push(
+        `plan stripped em from "${key}" (→ [${target.join(',')}]) — emphasis preserved as [${fixed.join(',')}]`,
+      );
+    }
+  }
+  return { plan, dropped, warnings };
 }
 
 /** True when applying `target` to a run with `flags` would change
@@ -561,8 +578,9 @@ export function runRepairFormatting(view: EditorView): void {
           throw new Error('The formatting plan was cut off — try a smaller selection.');
         }
         const known = new Set(analysis.signatures.keys());
-        const { plan, dropped } = parseFormatResponse(reply.text, known);
+        const { plan, dropped, warnings } = parseFormatResponse(reply.text, known);
         for (const d of dropped) console.warn(`${tag} dropped ${d}`);
+        for (const w of warnings) console.warn(`${tag} WARNING: ${w}`);
         console.warn(`${tag} plan: ${JSON.stringify(Object.fromEntries(plan.map))}`);
         for (const ex of plan.exceptions) {
           console.warn(`${tag} exception: ${JSON.stringify(ex.text)} → [${ex.format.join(',')}]`);

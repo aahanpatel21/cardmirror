@@ -40,8 +40,15 @@ in each release, see `CHANGELOG.md`.
   model to infer: a live all-bold-underline card was mapped b+u → em
   because the model failed to notice the ABSENCE of a bare-u
   signature (models reliably miss absences); the run loop also logs a
-  WARNING when a plan contradicts the stated fact. All requests
-  resolve before a SINGLE
+  WARNING when a plan contradicts the stated fact. Existing
+  emphasis_mark is HARD-protected: a live size-recovery card's one
+  emphasized sentence was bulldozed into the blanket plain→u rule, so
+  a plan that strips em from an em-carrying signature gets em
+  reinstated by the parser (u dropped, since em implies underline),
+  with a logged WARNING — the exceptions channel remains the
+  deliberate per-fragment override. Target parsing tolerates the
+  signature notation the table teaches ("u+hl" splits to ["u","hl"]).
+  All requests resolve before a SINGLE
   transaction applies every card (formatting-only edits keep positions
   stable), so the whole repair is one undo step; repaired ranges flash
   like Repair Text. [repair-fmt]-tagged console diagnostics log the
