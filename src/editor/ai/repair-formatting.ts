@@ -53,7 +53,7 @@ You receive one card: its plain text, then a table of the FORMATTING SIGNATURES 
 Decide what each signature SHOULD be, using these repair patterns:
 
 1. du is underlining → map to u.
-2. b+u (bold underline): if the card ALSO has plain (non-bold) underlining, b+u is the stand-out layer → em. If ALL underlining in the card is bold, there was no emphasis pass — it IS the underlining → u.
+2. b+u (bold underline): the FACTS section states whether the card has plain (non-bold) underlining — follow it. If plain underlining exists, b+u is the stand-out layer → em (and b+hl+u → em+hl). If the FACTS say ALL underlining is bold, there was no emphasis pass — bold-underline IS the underlining: b+u → u and b+hl+u → u+hl, NOT em.
 3. b or i alone amid underlined text usually stands in for emphasis → em. BUT keep b / i (possibly alongside em or u) when it coexists with real emphasis as an extra differentiation layer, or when the samples read as reproduced source formatting (titles, foreign words, single emphasized terms from the original author).
 4. If the card has NO underlining at all but mixes base-size and small text, the base-size text WAS the underlined text → map plain to u and small to nothing. (Sizes themselves are never changed — only the marks.)
 5. Highlighting stays hl. Highlighted text should normally also be underlined: a signature of just hl usually maps to u+hl.
@@ -186,6 +186,11 @@ export interface CardAnalysis {
   runs: RunInfo[];
   /** signature key → stats. */
   signatures: Map<string, { runs: number; chars: number; samples: string[] }>;
+  /** Any underlining (u or du) WITHOUT bold? Decides pattern 3: when
+   *  false, all underlining is bold — it IS the underline pass, not an
+   *  emphasis layer. Computed here because models reliably miss the
+   *  ABSENCE of a signature; the request states it as a fact. */
+  hasPlainUnderline: boolean;
 }
 
 export function signatureKey(flags: ReadonlySet<FormatFlag>): string {
@@ -294,7 +299,11 @@ export function analyzeCard(group: readonly BodyBlock[]): CardAnalysis {
     }
   }
 
-  return { blocks, charPos, texts, runs, signatures };
+  const hasPlainUnderline = runs.some(
+    (r) => (r.flags.has('u') || r.flags.has('du')) && !r.flags.has('b'),
+  );
+
+  return { blocks, charPos, texts, runs, signatures, hasPlainUnderline };
 }
 
 /** The per-card request body: plain text + signature table. */
@@ -307,7 +316,10 @@ export function buildCardRequest(analysis: CardAnalysis): string {
         s.samples.map((x) => JSON.stringify(x)).join(', '),
     )
     .join('\n');
-  return `CARD TEXT:\n${analysis.texts.join('\n')}\n\nFORMATTING SIGNATURES:\n${table}`;
+  const facts = analysis.hasPlainUnderline
+    ? 'This card HAS plain (non-bold) underlining — bold+underline is a stand-out layer on top of it.'
+    : 'This card has NO plain (non-bold) underlining — ALL underlined text is bold, so bold+underline IS the underline pass (there was no emphasis pass).';
+  return `CARD TEXT:\n${analysis.texts.join('\n')}\n\nFORMATTING SIGNATURES:\n${table}\n\nFACTS:\n- ${facts}`;
 }
 
 export interface FormatPlan {
@@ -542,6 +554,15 @@ export function runRepairFormatting(view: EditorView): void {
         }
         const unmapped = [...known].filter((k) => !plan.map.has(k));
         if (unmapped.length) console.warn(`${tag} unmapped (left as-is): ${unmapped.join(', ')}`);
+        if (!analysis.hasPlainUnderline) {
+          for (const [key, target] of plan.map) {
+            if (key.includes('b') && key.includes('u') && target.includes('em')) {
+              console.warn(
+                `${tag} WARNING: mapped ${key} → em despite ALL underlining being bold (pattern 3 says u)`,
+              );
+            }
+          }
+        }
         results.push({ analysis, plan });
       }
 

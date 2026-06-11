@@ -34,7 +34,14 @@ in each release, see `CHANGELOG.md`.
   heuristic) stay card-scoped; doc-level loose paragraphs pool as one
   group. Base size = largest size with ≥10% char share (largest, not
   modal: shrunk connective text is usually the majority in
-  size-encoded cards). All requests resolve before a SINGLE
+  size-encoded cards). The pattern-3 discriminator — does the card
+  have any plain (non-bold) underlining? — is computed by the editor
+  and stated as a FACTS line in the request rather than left for the
+  model to infer: a live all-bold-underline card was mapped b+u → em
+  because the model failed to notice the ABSENCE of a bare-u
+  signature (models reliably miss absences); the run loop also logs a
+  WARNING when a plan contradicts the stated fact. All requests
+  resolve before a SINGLE
   transaction applies every card (formatting-only edits keep positions
   stable), so the whole repair is one undo step; repaired ranges flash
   like Repair Text. [repair-fmt]-tagged console diagnostics log the

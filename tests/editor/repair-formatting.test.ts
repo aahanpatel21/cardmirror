@@ -134,6 +134,30 @@ describe('analyzeCard', () => {
     expect(req).toContain('FORMATTING SIGNATURES:');
     expect(req).toMatch(/\bu — 1 run/);
   });
+
+  // Live miss 2026-06-10: an all-bold-underline card (pattern 3) was
+  // mapped b+u → em — the model failed to notice the ABSENCE of plain
+  // underlining. The fact is now computed and stated in the request.
+  it('states the all-underlining-is-bold fact when no plain underline exists', () => {
+    const doc = makeDoc(
+      card(tag('TAG'), body(t('plain lead '), t('bold underlined', m('bold'), m('underline_mark')))),
+    );
+    const analysis = analyzeCard(collectBodyBlocks(doc, 0, doc.content.size));
+    expect(analysis.hasPlainUnderline).toBe(false);
+    expect(buildCardRequest(analysis)).toContain('NO plain (non-bold) underlining');
+  });
+
+  it('states that plain underlining exists when it does (even via direct underline)', () => {
+    const doc = makeDoc(
+      card(
+        tag('TAG'),
+        body(t('direct ', m('underline_direct')), t('standout', m('bold'), m('underline_mark'))),
+      ),
+    );
+    const analysis = analyzeCard(collectBodyBlocks(doc, 0, doc.content.size));
+    expect(analysis.hasPlainUnderline).toBe(true);
+    expect(buildCardRequest(analysis)).toContain('HAS plain (non-bold) underlining');
+  });
 });
 
 describe('parseFormatResponse', () => {
