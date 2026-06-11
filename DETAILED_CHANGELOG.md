@@ -88,14 +88,20 @@ in each release, see `CHANGELOG.md`.
 
   Repair mode shares Move's tap-select machinery (a `tapMode` in the
   mobile plugin): tap a card or heading, and the repair sheet offers
-  Repair Text / Repair Formatting scoped to that unit. The buttons
-  set a text selection over the unit and fire the existing ribbon
-  commands — the repair flows read `state.selection` and can't tell
-  a tap-made scope from a keyboard-made one, so the thinking
-  tooltip, orange flashes, toasts, and single-undo-step behavior are
-  the shared implementation verbatim. With AI features off or no API
-  key on the device, the sheet explains and links to the mobile
-  Settings page instead.
+  Repair Text / Repair Formatting — scoped to the unit's BODY blocks
+  only (first card_body/paragraph through the last; tags and cites
+  never enter the scope) — plus Repair Cite, which selects the
+  tapped card's `cite_paragraph` and fires the AI cite creator (the
+  Mod-Shift-X command). The buttons set a text selection and fire
+  the existing ribbon commands — the repair flows read
+  `state.selection` and can't tell a tap-made scope from a
+  keyboard-made one, so the thinking/Clod progress pill (Clod
+  governed by the same setting as desktop, exposed as a toggle in
+  mobile Settings), orange flashes, toasts, and single-undo-step
+  behavior are the shared implementation verbatim; the scope is
+  scrolled on-screen before firing so the pill's anchor is visible.
+  With AI features off or no API key on the device, the sheet
+  explains and links to the mobile Settings page instead.
 
   Outline gestures on mobile: the list owns its pointer stream
   (`touch-action: none`). A drag pans the list manually under the
@@ -121,6 +127,17 @@ in each release, see `CHANGELOG.md`.
   (the layout setting is reachable from Settings and the mobile menu
   but stays out of command search). The desktop dialog gets a radio
   editor for the layout setting.
+
+- **Web-edition Open could deadlock behind a hung picker**
+  (`src/editor/host/browser-host.ts`). `openFile` serialized every
+  call behind an in-flight promise; an `openOnce` that never settles
+  — a dismissed picker on a browser without the `cancel` event, or
+  an `input.click()` silently ignored because its transient user
+  activation had expired — wedged the chain, killing every later
+  Open across every entry point (they all share the host method). A
+  new attempt now supersedes the pending one (settling it as null)
+  instead of queueing behind it, so a single hung picker self-heals
+  on the next try.
 
 - **Mode-switch (three-pane ↔ windows) restores exactly the open
   set** (`src/editor/index.ts`, new `src/editor/mode-switch.ts`,

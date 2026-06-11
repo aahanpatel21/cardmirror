@@ -148,6 +148,11 @@ function buildEditor(meta: SettingMeta): HTMLElement {
       return buildDisplaySizeSteppers();
     case 'readers':
       return buildReadersEditor();
+    case 'clod':
+      // Desktop renders a full activity configurator; on mobile the
+      // on/off toggle (plain "Thinking…" vs Clod activities in the
+      // AI progress pill) is the part that matters.
+      return buildToggle(meta.key);
     default: {
       // A flagged kind without a renderer is a build-time oversight —
       // make it visible instead of silently rendering nothing.

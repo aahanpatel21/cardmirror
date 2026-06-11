@@ -125,17 +125,19 @@ export class BrowserHost implements Host {
   /** Lazily-created hidden file input. Reused across opens. */
   private fileInput: HTMLInputElement | null = null;
 
-  /** Serialize concurrent openFile() calls so two near-simultaneous
-   *  opens don't step on each other's event listeners. */
-  private openInFlight: Promise<OpenedFile | null> = Promise.resolve(null);
+  /** Settles the currently-pending openOnce (as null), if any. A
+   *  pending open can hang forever — a dismissed picker on a browser
+   *  without the `cancel` event, or an `input.click()` that silently
+   *  did nothing because its user activation had expired. Opens used
+   *  to QUEUE behind an in-flight promise, so one hung open wedged
+   *  every future open across every entry point (Ctrl-O, menu, home
+   *  screen all share this method); a new attempt now supersedes the
+   *  stuck one instead. */
+  private abortPendingOpen: (() => void) | null = null;
 
   async openFile(opts: OpenFileOptions = {}): Promise<OpenedFile | null> {
-    const next = this.openInFlight.then(() => this.openOnce(opts));
-    this.openInFlight = next.then(
-      () => null,
-      () => null,
-    );
-    return next;
+    this.abortPendingOpen?.();
+    return this.openOnce(opts);
   }
 
   private openOnce(opts: OpenFileOptions): Promise<OpenedFile | null> {
@@ -158,7 +160,16 @@ export class BrowserHost implements Host {
       const cleanup = (): void => {
         input.removeEventListener('change', onChange);
         input.removeEventListener('cancel', onCancel);
+        if (this.abortPendingOpen === abort) this.abortPendingOpen = null;
       };
+      const abort = (): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        console.log('[cardmirror] open: superseding a pending open that never settled');
+        resolve(null);
+      };
+      this.abortPendingOpen = abort;
       const onChange = async (): Promise<void> => {
         if (settled) return;
         settled = true;

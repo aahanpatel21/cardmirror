@@ -1753,6 +1753,7 @@ export const SETTING_METADATA: SettingMeta[] = [
     kind: 'clod',
     category: 'comments-ai',
     dependsOn: 'aiFeaturesEnabled',
+    mobile: true,
   },
   {
     key: 'aiCitePrompt',

@@ -561,6 +561,7 @@ function showRepairSheet(unit: UnitRange): void {
     };
     action('✦ Repair text (OCR)', () => runRepairOnUnit('repairText'));
     action('✦ Repair formatting', () => runRepairOnUnit('repairFormatting'));
+    action('✦ Repair cite', runRepairCite);
     action('✕', () => {
       const view = getActiveView();
       if (view) setMobileUnitSelection(view, null);
@@ -583,18 +584,72 @@ function hideRepairSheet(): void {
 function runRepairOnUnit(command: 'repairText' | 'repairFormatting'): void {
   const view = getActiveView();
   if (!view || !currentUnit || repairBusy) return;
+  // Scope to the unit's BODY paragraphs only — the text and
+  // formatting repairs must never sweep tags and cites in (a card's
+  // tag is the user's own writing, and cites have their own repair).
+  // Body blocks trail the tag/cite in a card, so first-body → last-
+  // body excludes them.
+  let first: number | null = null;
+  let last: number | null = null;
+  view.state.doc.nodesBetween(currentUnit.from, currentUnit.to, (node, pos) => {
+    if (node.type.name === 'card_body' || node.type.name === 'paragraph') {
+      if (first === null) first = pos + 1;
+      last = pos + node.nodeSize - 1;
+      return false;
+    }
+    return true;
+  });
+  if (first === null || last === null) {
+    showToast('No body text here to repair');
+    return;
+  }
+  fireRepair(view, first, last, command);
+}
+
+/** Repair cite: select the tapped card's cite paragraph and run the
+ *  AI cite creator on it (the Mod-Shift-X command). */
+function runRepairCite(): void {
+  const view = getActiveView();
+  if (!view || !currentUnit || repairBusy) return;
+  if (currentUnit.level !== 4) {
+    showToast('Tap a single card to repair its cite');
+    return;
+  }
+  let cite: { from: number; to: number } | null = null;
+  view.state.doc.nodesBetween(currentUnit.from, currentUnit.to, (node, pos) => {
+    if (cite) return false;
+    if (node.type.name === 'cite_paragraph') {
+      cite = { from: pos + 1, to: pos + node.nodeSize - 1 };
+      return false;
+    }
+    return true;
+  });
+  if (!cite) {
+    showToast('This card has no cite paragraph');
+    return;
+  }
+  fireRepair(view, (cite as { from: number }).from, (cite as { to: number }).to, 'aiCreateCite');
+}
+
+/** Select the scope, bring it on-screen (the in-flight thinking/Clod
+ *  pill anchors at the selection start — an off-screen anchor would
+ *  hide the progress indicator), and fire the ribbon command. */
+function fireRepair(
+  view: NonNullable<ReturnType<typeof getActiveView>>,
+  from: number,
+  to: number,
+  command: 'repairText' | 'repairFormatting' | 'aiCreateCite',
+): void {
   const { doc } = view.state;
   view.dispatch(
-    view.state.tr.setSelection(
-      TextSelection.between(
-        doc.resolve(Math.min(currentUnit.from + 1, doc.content.size)),
-        doc.resolve(Math.min(currentUnit.to - 1, doc.content.size)),
-      ),
-    ),
+    view.state.tr.setSelection(TextSelection.between(doc.resolve(from), doc.resolve(to))),
   );
+  const dom = view.nodeDOM(currentUnit!.from);
+  if (dom instanceof HTMLElement) preciseScrollIntoView(view, dom);
   runRibbon(command);
   // Debounce accidental double-taps; the repair itself reports
-  // progress and completion through its own tooltip + toasts.
+  // progress and completion through its own thinking / Clod-mode
+  // tooltip (governed by the Clod setting) + toasts.
   repairBusy = true;
   window.setTimeout(() => {
     repairBusy = false;

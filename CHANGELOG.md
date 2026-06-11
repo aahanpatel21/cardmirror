@@ -43,9 +43,12 @@ see `DETAILED_CHANGELOG.md`.
   itself, press and hold a row for a moment to pick it up and drag
   it (a plain swipe still scrolls). The AI repairs work from the
   phone too: tap **Repair**, tap a card or heading to set the scope,
-  and run Repair Text or Repair Formatting on exactly that unit —
-  same fixes, flashes, and single undo step as on desktop (with a
-  pointer to Settings if no API key is set up on the device).
+  and run Repair Text or Repair Formatting on its body text (tags
+  and cites stay out of scope), or **Repair Cite** to re-run the AI
+  cite formatter on the tapped card's citation — with the same
+  thinking/Clod progress indicator, fixes, flashes, and single undo
+  step as on desktop (and a pointer to Settings if no API key is set
+  up on the device; the Clod toggle is in mobile Settings too).
 
 ### Changed
 
@@ -55,6 +58,14 @@ see `DETAILED_CHANGELOG.md`.
   Formatting. The two passes read as two blinks. Still one undo step.
 
 ### Fixed
+
+- **Open can no longer deadlock in the web edition.** If a file
+  picker ever closed without delivering a result (some browsers
+  don't report a cancelled dialog, and a request made without a
+  fresh user gesture can be silently ignored), every later Open —
+  shortcut, menu, and home screen alike — waited forever behind it.
+  A new Open attempt now supersedes a stuck one instead of queueing
+  behind it.
 
 - **Switching between the three-pane workspace and one-window-per-
   document mode now restores exactly the documents you had open.**
