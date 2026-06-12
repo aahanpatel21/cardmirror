@@ -7,6 +7,8 @@ see `DETAILED_CHANGELOG.md`.
 
 ## Unreleased
 
+## 0.1.0-alpha.11 — 2026-06-11
+
 ### Added
 
 - **A steady (non-blinking) text cursor.** A new accessibility setting
@@ -73,6 +75,65 @@ see `DETAILED_CHANGELOG.md`.
   step as on desktop (and a pointer to Settings if no API key is set
   up on the device; the Clod toggle is in mobile Settings too).
 
+
+- **Smart Shrink.** Press **Mod-Alt-8** to shrink a card's connective
+  text in one step, with per-paragraph depth: paragraphs containing no
+  underlining or emphasis at all — the long fully-unread stretches —
+  go straight to 5pt, while paragraphs that do carry those marks
+  shrink their connective text to the standard 8pt. No cycling:
+  running it again changes nothing. Underlined and emphasized text is
+  never touched, and the same protections as regular Shrink apply
+  (omission markers, integrity warnings, custom rules). Regular Shrink
+  (Mod-8) and Regrow (Mod-Shift-8) work on the result as usual.
+
+- **Repair Formatting (AI).** Select body text and press **Mod-Alt-R**
+  to normalize it to Verbatim's four-layer scheme — underline as the
+  broad pass, emphasis to make some of it stand out, highlighting for
+  what's read aloud, shading to set off some of the highlighting. It
+  repairs the classic breakdowns of imported cards: bold or italics
+  standing in for emphasis, direct underlining instead of the named
+  style, bold-underline used for ALL the underlining (no emphasis pass
+  — converted to plain underline, not emphasis), and cards whose
+  underlining was destroyed by an unsupported style, recoverable only
+  from font size (full-size text was the underlined text). Bold and
+  italics survive when they're a deliberate extra layer alongside real
+  emphasis or reproduce the source's own formatting (book titles,
+  foreign terms). The model never touches your text — it only returns
+  a mapping from each formatting pattern found to what that pattern
+  should be (plus targeted overrides for idiosyncratic fragments), and
+  the editor applies it. Works one card at a time, only on body
+  paragraphs (never tags, cites, or headings), highlight and shading
+  colors preserved, font sizes untouched, one undo step. Requires AI
+  features.
+
+- **Voice control (experimental, desktop only).** Press **Ctrl-Shift-V** to start a
+  hands-free editing session — recognition runs entirely on your machine
+  (no network, ever). Speak commands like `pen highlight` · `take <words
+  you can see>` · `mark` · `next card` · `condense` · `go back`, dictate
+  with `start typing` … `stop typing` (your words stream in as gray
+  preview text while you talk), or enter **paint mode** (`paint`) where
+  the words you read aloud are inked with the active pen — the
+  voice-native version of working a card. A status pill shows the
+  listening state, active pen, what was heard, and your mic level; `voice
+  sleep` / `voice wake` park the mic when someone walks up. Every voice
+  action is one undo step, and voice undo (`scratch that`) and Ctrl-Z
+  always agree. Dictation supports spoken punctuation ("period", "comma",
+  "question mark", quotes), a configurable dash word, `literal <words>` for
+  dictating command words, and automatic sentence capitalization. The
+  session auto-sleeps after sitting idle (configurable; the pill dims as a
+  warning), and clicking the pill opens a microphone picker. Voice options
+  live under Settings → Accessibility — including an optional large
+  dictation model (one-time 1.8 GB download) that roughly halves
+  general-English dictation errors. Targeting composes Cursorless-style:
+  ordinals count within their natural container (`take second sentence`,
+  `go to third card` — third in this block), `mark every tag` inks every
+  tag in the block with one undo step, `take head card` / `take tail
+  paragraph` select to a scope's edge, and `take from <words> to <words>`
+  spans two spoken anchors. When the words you spoke appear more than once
+  on screen, numbered badges appear over each match — say `pick two` to
+  choose. Speech models ship with the app (installers grow by roughly
+  130 MB).
+
 ### Changed
 
 - **A revamped "AI is working" indicator.** While an AI action runs —
@@ -90,6 +151,11 @@ see `DETAILED_CHANGELOG.md`.
   Formatting. The two passes read as two blinks. Still one undo step.
 
 ### Fixed
+
+- **Picking up a card on macOS no longer selects a word.** Holding the
+  drag-from-document chord and clicking used to trigger macOS
+  word-selection (Option+Shift+click) instead of grabbing the card;
+  clicks held under the pickup chord are now fully absorbed.
 
 - **Open can no longer deadlock in the web edition.** If a file
   picker ever closed without delivering a result (some browsers
@@ -201,66 +267,6 @@ see `DETAILED_CHANGELOG.md`.
   condense stopped folding the body). With the cursor in a tag F7
   correctly did nothing — now the selection does nothing too. Same fix
   for Mod-F7 on analytic text and F8 on an undertag.
-
-### Added
-
-- **Smart Shrink.** Press **Mod-Alt-8** to shrink a card's connective
-  text in one step, with per-paragraph depth: paragraphs containing no
-  underlining or emphasis at all — the long fully-unread stretches —
-  go straight to 5pt, while paragraphs that do carry those marks
-  shrink their connective text to the standard 8pt. No cycling:
-  running it again changes nothing. Underlined and emphasized text is
-  never touched, and the same protections as regular Shrink apply
-  (omission markers, integrity warnings, custom rules). Regular Shrink
-  (Mod-8) and Regrow (Mod-Shift-8) work on the result as usual.
-
-- **Repair Formatting (AI).** Select body text and press **Mod-Alt-R**
-  to normalize it to Verbatim's four-layer scheme — underline as the
-  broad pass, emphasis to make some of it stand out, highlighting for
-  what's read aloud, shading to set off some of the highlighting. It
-  repairs the classic breakdowns of imported cards: bold or italics
-  standing in for emphasis, direct underlining instead of the named
-  style, bold-underline used for ALL the underlining (no emphasis pass
-  — converted to plain underline, not emphasis), and cards whose
-  underlining was destroyed by an unsupported style, recoverable only
-  from font size (full-size text was the underlined text). Bold and
-  italics survive when they're a deliberate extra layer alongside real
-  emphasis or reproduce the source's own formatting (book titles,
-  foreign terms). The model never touches your text — it only returns
-  a mapping from each formatting pattern found to what that pattern
-  should be (plus targeted overrides for idiosyncratic fragments), and
-  the editor applies it. Works one card at a time, only on body
-  paragraphs (never tags, cites, or headings), highlight and shading
-  colors preserved, font sizes untouched, one undo step. Requires AI
-  features.
-
-- **Voice control (alpha, desktop only).** Press **Ctrl-Shift-V** to start a
-  hands-free editing session — recognition runs entirely on your machine
-  (no network, ever). Speak commands like `pen highlight` · `take <words
-  you can see>` · `mark` · `next card` · `condense` · `go back`, dictate
-  with `start typing` … `stop typing` (your words stream in as gray
-  preview text while you talk), or enter **paint mode** (`paint`) where
-  the words you read aloud are inked with the active pen — the
-  voice-native version of working a card. A status pill shows the
-  listening state, active pen, what was heard, and your mic level; `voice
-  sleep` / `voice wake` park the mic when someone walks up. Every voice
-  action is one undo step, and voice undo (`scratch that`) and Ctrl-Z
-  always agree. Dictation supports spoken punctuation ("period", "comma",
-  "question mark", quotes), a configurable dash word, `literal <words>` for
-  dictating command words, and automatic sentence capitalization. The
-  session auto-sleeps after sitting idle (configurable; the pill dims as a
-  warning), and clicking the pill opens a microphone picker. Voice options
-  live under Settings → Accessibility — including an optional large
-  dictation model (one-time 1.8 GB download) that roughly halves
-  general-English dictation errors. Targeting composes Cursorless-style:
-  ordinals count within their natural container (`take second sentence`,
-  `go to third card` — third in this block), `mark every tag` inks every
-  tag in the block with one undo step, `take head card` / `take tail
-  paragraph` select to a scope's edge, and `take from <words> to <words>`
-  spans two spoken anchors. When the words you spoke appear more than once
-  on screen, numbered badges appear over each match — say `pick two` to
-  choose. Speech models ship with the app (installers grow by roughly
-  130 MB).
 
 ## 0.1.0-alpha.10 — 2026-06-08
 

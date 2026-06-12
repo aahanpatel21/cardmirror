@@ -31,12 +31,13 @@ for the parts that aren't.
 9. [Comments and notes](#9-comments-and-notes)
 10. [Learn: spaced-repetition flashcards](#10-learn-spaced-repetition-flashcards)
 11. [AI features](#11-ai-features)
-12. [Saving and file formats](#12-saving-and-file-formats)
-13. [Settings reference](#13-settings-reference)
-14. [Appearance and accessibility](#14-appearance-and-accessibility)
-15. [Keyboard shortcuts](#15-keyboard-shortcuts)
-16. [What's not here yet](#16-whats-not-here-yet)
-17. [Glossary](#17-glossary)
+12. [Voice control](#12-voice-control)
+13. [Saving and file formats](#13-saving-and-file-formats)
+14. [Settings reference](#14-settings-reference)
+15. [Appearance and accessibility](#15-appearance-and-accessibility)
+16. [Keyboard shortcuts](#16-keyboard-shortcuts)
+17. [What's not here yet](#17-whats-not-here-yet)
+18. [Glossary](#18-glossary)
 
 ## 1. Getting started
 
@@ -65,6 +66,14 @@ You can run CardMirror two ways:
 
 Features that work in only one edition are marked **(desktop only)** or
 **(web only)** throughout.
+
+**Mobile layout (web edition).** Open CardMirror in a phone or tablet
+browser — or any browser window narrower than about 768px — and it
+switches to a view-first **mobile layout**: a slim top bar, the document
+full-bleed, a **Read** button for read mode (tap the page to drop or
+remove a reading marker), pinch-zoom, an outline drawer, and a
+touch-sized Settings page. **Use desktop layout** switches back to the
+full editor. Web edition only.
 
 ### First launch and the welcome guide
 
@@ -160,7 +169,7 @@ covered in full in the section linked.
   and tables from an image.
 - **[Translate a selection](#11-ai-features)** — to the clipboard, with a
   keyless backend that works even without AI features set up.
-- **[Display customizations and accessibility](#14-appearance-and-accessibility)**
+- **[Display customizations and accessibility](#15-appearance-and-accessibility)**
   — themes, dyslexia-friendly fonts, per-style colors, and color overrides
   that change how styles look on your screen without altering the document
   or its style definitions.
@@ -310,6 +319,18 @@ analytic through progressively smaller sizes and back to normal, so a
 card reads compactly at the podium. By default it leaves **omission
 notes** — bracketed text like `[Table Omitted]` or `<Figure Omitted>` —
 at full size; you can turn that protection off in Settings.
+
+### Smart Shrink (Mod-Alt-8)
+
+**Smart Shrink** shrinks a card's connective text in one pass, working
+paragraph by paragraph: a paragraph with no underlining or emphasis at all
+— the long, fully-unread stretches — drops to **5pt**, while a paragraph
+that carries marks shrinks only its connective text to the standard
+**8pt**. Underlined and emphasized text is never touched. Unlike Shrink,
+it doesn't cycle: running it again changes nothing. It honors the same
+protections as Shrink (omission markers, integrity warnings, your custom
+rules), and regular **Shrink (Mod-8)** and **Regrow (Mod-Shift-8)** still
+work on the result.
 
 ### Citations
 
@@ -561,7 +582,7 @@ so you can narrow cards by topic.
 
 This palette is the in-editor seed of full corpus search: it already
 reaches files that aren't open, but a persistent, library-wide *content*
-index is still [planned](#16-whats-not-here-yet) — for now, searching
+index is still [planned](#17-whats-not-here-yet) — for now, searching
 *inside* a file happens one file at a time, when you dive in.
 
 ---
@@ -695,7 +716,7 @@ rearrange.
 
 When it's time to share a speech with the judge or opponent, use the
 **Send Doc** options described under
-[Saving and file formats](#12-saving-and-file-formats) — a clean copy
+[Saving and file formats](#13-saving-and-file-formats) — a clean copy
 with comments, analytics, and undertags stripped — either through Save As
 or in one keystroke with **Save Send Doc (Mod-Alt-S)**.
 
@@ -822,6 +843,7 @@ you're offline.
 |---------|---------------|--------------|
 | **Format Cite** | Mod-Shift-X on a selection | Turns a pasted citation or URL into a properly styled cite, with the cite mark on the author and date. |
 | **Repair Text** | Mod-Shift-R on a selection | Fixes OCR / PDF extraction errors (dropped ligatures, `rn`/`m`, mid-word hyphenation, run-together words) without changing the wording. Corrections apply in place, one at a time with a highlight; the whole repair is a single undo. |
+| **Repair Formatting** | Mod-Alt-R on a selection | Normalizes an imported card's formatting to Verbatim's four-layer scheme (underline / emphasis / highlighting / shading) — fixing bold or italics standing in for emphasis, direct underlining, bold-underline, and underlining lost to an unsupported style. It never changes your text. |
 | **Ask AI about selection** | Mod-Shift-Q on a selection | Asks Claude a question about the selection — including any images in it (up to five pictures are sent to the model), with the surrounding card as context; the answer lands as an AI note. Works on a selected image on its own, too ("what does this chart show?"). Or type **@AI** in any comment or note — including its first message — to summon the AI right there; once a thread has an AI reply, further replies continue the conversation. |
 | **Generate alt text** | Right-click an image | Writes an alt-text description and inserts it under the image; offers to keep or regenerate if the image already has alt text. |
 | **Generate table from image** | Right-click an image | Extracts a real, editable table from a picture of one. |
@@ -845,6 +867,25 @@ extraction errors and never rewrites your wording. The AI returns just the
 specific fixes (not a rewrite), which apply directly in your document —
 each correction appears one at a time with a brief highlight, and the
 entire repair undoes in a single step. Requires AI features.
+
+### Repair Formatting
+
+Select body text and press **Mod-Alt-R** to normalize a card's formatting
+to Verbatim's four-layer scheme: **underline** for the broad pass,
+**emphasis** for what stands out within it, **highlighting** for what's
+read aloud, and **shading** to set off some of that highlighting. It fixes
+the classic ways an imported card breaks down — bold or italics standing
+in for emphasis, direct underlining used instead of the named underline
+style, bold-underline used for all underlining, and underlining destroyed
+by an unsupported style (recoverable from the font size). Bold and italics
+are left alone where they're a deliberate extra layer or reproduce the
+source (book titles, foreign terms).
+
+The model **never touches your text**: it returns a mapping from each
+formatting pattern to what that pattern should become, and the editor
+applies it. It works on one card at a time, on body paragraphs only —
+never tags, cites, or headings — leaves your colors and font sizes
+untouched, and is a single undo. Requires AI features.
 
 ### Translate
 
@@ -877,9 +918,104 @@ who cycles through time-of-day activities like "Clod is making toast…" or
 "Clod is reading by candlelight…". The persona's name, pronouns, and
 activity lists are all customizable.
 
+### Send to Verbatim Flow
+
+**(Windows only. Experimental.)** With Excel open and a workbook whose name
+contains "Flow", CardMirror can push your work straight into Verbatim
+Flow. Commands send the selected tags, cites, or text into Flow's current
+column, pull the selected Flow cells back into your document, or open a new
+Flow from the Verbatim template. They drive Excel directly and need no
+changes to Verbatim Flow itself.
+
+These commands aren't on the ribbon and have no default shortcuts — find
+them in the command palette, or bind keys to them under **Settings →
+Keyboard shortcuts**.
+
 ---
 
-## 12. Saving and file formats
+## 12. Voice control
+
+**(Desktop only. Experimental.)** Press **Ctrl-Shift-V** to start a
+hands-free editing session and work a card by voice — read text aloud to
+ink it, dictate tags and cites, and move around the document without
+touching the keyboard. Recognition runs **entirely on your own machine** —
+no audio ever leaves it, with or without a network connection. The speech
+models ship inside the app, which is why the desktop installers are about
+130 MB larger.
+
+This is early, experimental software; expect rough edges, and keep the
+keyboard within reach.
+
+### Starting a session
+
+**Ctrl-Shift-V** turns the microphone on. A **status pill** appears
+showing whether CardMirror is listening, the active **pen**, what it last
+heard, and a live mic level. Click the pill to choose which microphone to
+use. To park the mic without ending the session, say **`voice sleep`**; say
+**`voice wake`** to start listening again. The mic also **auto-sleeps**
+after a stretch of silence (configurable) so a forgotten session doesn't
+keep transcribing the room — the pill dims as a warning before it does.
+
+### Commands
+
+Every command starts with a spoken verb. A few you'll use constantly:
+
+- **`pen highlight`** (or `pen underline`, `pen emphasis`, `pen cite`) sets
+  the active pen — the mark that `mark` and paint apply. The pen sticks
+  until you change it.
+- **`take <words you can see>`** selects exactly those words on screen;
+  **`mark`** then applies the pen, or **`mark <words>`** does both at once.
+- **`next card`** / **`go back`** move you around; **`condense`** and
+  **`shrink`** run the usual card commands.
+
+When words you speak appear more than once on screen, numbered badges pop
+up over each match — say **`pick two`** to choose.
+
+### Paint mode
+
+Say **`paint`** and then simply **read the card aloud**: the words you read
+are inked with the active pen as you go, the voice-native way to highlight
+or underline a card. Switch pens mid-pass (`pen highlight`), skip ahead
+without marking, and say **`stop paint`** when you're done.
+
+### Dictation
+
+Say **`start typing`** to dictate at the cursor and **`stop typing`** to
+stop; while you talk, words stream in as gray preview text before they
+land. Dictation understands spoken punctuation (`period`, `comma`,
+`question mark`, quotes), a configurable **dash** word, and capitalizes
+sentences for you. To dictate a word that's also a command, prefix it with
+**`literal`** (so `literal stop typing` types the words instead of
+exiting).
+
+### Precise targeting
+
+Targeting composes, so you can be specific without reaching for the mouse:
+
+- **Ordinals count inside their natural container.** `take second
+  sentence` is the second sentence of this paragraph; `go to third card`
+  is the third card in this block.
+- **`mark every tag`** marks every tag in the block in a single step.
+- **`take head card`** / **`take tail paragraph`** select to a scope's
+  start or end.
+- **`take from <words> to <words>`** spans two spoken anchors.
+
+### Undo
+
+Every voice action is a single undo step, and voice undo (**`scratch
+that`**) and **Ctrl-Z** always agree — so you can take back a voice action
+with the keyboard, or vice versa, and never lose your place.
+
+### Options
+
+Voice settings live under **Settings → Accessibility**. They include an
+optional **large dictation model** — a one-time 1.8 GB download that uses
+around 5 GB of memory while it's on and roughly halves general-English
+dictation errors (it doesn't change command recognition).
+
+---
+
+## 13. Saving and file formats
 
 ### Two formats
 
@@ -932,7 +1068,7 @@ time.
 
 ---
 
-## 13. Settings reference
+## 14. Settings reference
 
 Open settings with the **gear** icon. Settings are grouped into tabs.
 
@@ -1009,7 +1145,7 @@ Workflow and document behavior.
 ### Appearance
 
 How things look. None of these change the file — only your view (see
-[Appearance and accessibility](#14-appearance-and-accessibility)).
+[Appearance and accessibility](#15-appearance-and-accessibility)).
 
 - **Theme** — light, dark, or follow the system.
 - **Apply theme to the document area** — off by default, so dark mode
@@ -1091,7 +1227,7 @@ Behavior of the cutting and condense commands (see [Cutting and formatting cards
 Rebind any command: search for it, click **+** to add a binding, **×** to
 remove one, **↺** to restore its default. A few window-level shortcuts
 (like Mod-W) are handled by the OS and can't be overridden (see
-[Keyboard shortcuts](#15-keyboard-shortcuts)).
+[Keyboard shortcuts](#16-keyboard-shortcuts)).
 
 ### Comments & AI
 
@@ -1113,6 +1249,8 @@ remove one, **↺** to restore its default. A few window-level shortcuts
 
 - **Reduce motion** — turn off UI animations: follow the system, always
   on, or always off.
+- **Steady text cursor (no blinking)** — stop the text cursor blinking and
+  show a steady caret instead. Off by default.
 - **Override highlight color in display** — render highlights in your
   chosen colors regardless of what's stored on the mark (display-only).
 - **Highlight override colors** — up to three ordered colors; the
@@ -1128,7 +1266,7 @@ remove one, **↺** to restore its default. A few window-level shortcuts
 
 ---
 
-## 14. Appearance and accessibility
+## 15. Appearance and accessibility
 
 Everything visual in CardMirror is customizable, and — importantly — your
 display choices **never change the file**. The way you like to see Tags is
@@ -1145,7 +1283,8 @@ everyone, apply direct formatting in the document itself).
   override document text color, and pick dyslexia-friendly body fonts
   (Atkinson Hyperlegible, Lexend, OpenDyslexic, and others). CardMirror
   also forces readable contrast on highlighted and shaded text
-  automatically.
+  automatically. A **Steady text cursor (no blinking)** option (off by
+  default) replaces the blinking caret with a steady one.
 - **Zoom.** **Mod-=** / **Mod--** zoom the document; the status bar shows
   the level (click to reset). You can also pinch on a trackpad or hold
   Ctrl and scroll, once you turn that on under Settings → General →
@@ -1155,7 +1294,7 @@ everyone, apply direct formatting in the document itself).
 
 ---
 
-## 15. Keyboard shortcuts
+## 16. Keyboard shortcuts
 
 All defaults; rebind any of them in **Settings → Keyboard shortcuts**.
 **Mod** = Ctrl (Windows/Linux) or ⌘ (macOS).
@@ -1178,6 +1317,7 @@ All defaults; rebind any of them in **Settings → Keyboard shortcuts**.
 | Mod-Alt-Shift-F3 | Uncondense |
 | Shift-F3 | Toggle case |
 | Mod-8 | Shrink |
+| Mod-Alt-8 | Smart Shrink |
 | Alt-F8 | Copy previous cite |
 | Tab / Shift-Tab | Indent / Outdent |
 
@@ -1207,6 +1347,7 @@ these to extend the selection.
 | Mod-Shift-Q | Ask AI about selection |
 | Mod-Shift-X | Format cite from selection |
 | Mod-Shift-R | Repair OCR/PDF text in selection |
+| Mod-Alt-R | Repair Formatting in selection |
 | Mod-Shift-T | Translate selection (to clipboard) |
 | Mod-Shift-D | Toggle a reading-position marker (Space / Enter also work in read mode) |
 
@@ -1226,15 +1367,19 @@ these to extend the selection.
 | Mod-Shift-F | Expand / restore the focused slot |
 | Mod-W | Close the focused document or window |
 
+### Voice control (desktop)
+| Shortcut | Action |
+|----------|--------|
+| Ctrl-Shift-V | Start / stop a voice control session |
+
 The full, current list is always in the app: press **📖** in the ribbon.
 
 ---
 
-## 16. What's not here yet
+## 17. What's not here yet
 
 CardMirror is in active development. Planned, but not built yet:
 
-- **Verbatim Flow integration** — the Excel-based flowing tool.
 - **Library-wide search** — a persistent index of your whole evidence
   corpus. For now, the [Search Everything palette](#5-finding-things)
   searches files by name and lets you dive into one at a time.
@@ -1263,7 +1408,7 @@ revision metadata.
 
 ---
 
-## 17. Glossary
+## 18. Glossary
 
 - **Pocket / Hat / Block / Tag** — the four heading levels (Word Heading
   1–4).

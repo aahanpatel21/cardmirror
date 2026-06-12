@@ -7,6 +7,8 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+## 0.1.0-alpha.11 — 2026-06-11
+
 - **Revamped "AI is working" affordance** (new `src/editor/ai/
   ai-activity.ts`, `ai-working-plugin.ts`; rebuilt `thinking-tooltip.ts`;
   used by cite-creator, repair-text, repair-formatting, image alt-text).
