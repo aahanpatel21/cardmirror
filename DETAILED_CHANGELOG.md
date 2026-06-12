@@ -7,6 +7,21 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Settings + AI cite-prompt editor: stacked-Escape** (`settings-ui.ts`,
+  `ai/edit-prompt-modal.ts`). Both opened their own `document` Escape
+  listener, so Escape from the cite-prompt editor (opened from Settings)
+  closed both. Both now join the overlay stack (`overlay-stack.ts`): push
+  on open, pop on close, and guard Escape with `isTopOverlay`. The Settings
+  modal is a shown/hidden singleton, so it pushes in `open()` (idempotent)
+  and pops in `close()`.
+
+- **AI cite-prompt editor instructions were stale**
+  (`ai/edit-prompt-modal.ts`). The note claimed the model "MUST return JSON
+  with `cite` and `tokens` fields", but the default prompt switched to a
+  delimited `[[CITE]] … [[TOKENS]] … [[END]]` block (no JSON) that the
+  parser splits on. Updated the note to describe that format and why it's
+  parser-critical.
+
 - **Line-spacing reset left stale input values** (`settings-ui.ts`,
   `buildLineHeightsEditor`). The editor re-renders on settings change only
   when focus isn't inside it (so it can't clobber a value mid-edit) — but

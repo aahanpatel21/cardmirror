@@ -98,8 +98,14 @@ see `DETAILED_CHANGELOG.md`.
   type isn't tracked yet.)
 
 - **Escape closes one dialog at a time.** With two dialogs stacked (e.g.
-  editing a card from the Quick Cards or flashcard manager), Escape used to
-  close both at once; it now closes only the topmost.
+  editing a card from the Quick Cards or flashcard manager, or opening the
+  AI cite-prompt editor from Settings), Escape used to close both at once;
+  it now closes only the topmost.
+
+- **The AI cite-prompt editor's instructions are up to date.** They told you
+  the model must return JSON; it actually replies in a delimited block
+  format. The note now describes the real format the editor parses (and
+  still warns against changing it).
 
 - **Undoing a deletion restores its comments too.** Deleting commented text
   and then undoing used to bring the text back but leave the comment gone;

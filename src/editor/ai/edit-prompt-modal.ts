@@ -11,9 +11,11 @@
 import { settings } from '../settings.js';
 import { DEFAULT_AI_CITE_PROMPT } from './cite-creator.js';
 import { setIcon } from '../icons';
+import { pushOverlay, popOverlay, isTopOverlay } from '../overlay-stack.js';
 
 export function openCitePromptEditor(): void {
   if (document.querySelector('.pmd-prompt-overlay')) return;
+  const overlayToken = pushOverlay();
 
   const overlay = document.createElement('div');
   overlay.className = 'pmd-prompt-overlay';
@@ -33,6 +35,7 @@ export function openCitePromptEditor(): void {
   const close = (): void => {
     overlay.remove();
     document.removeEventListener('keydown', onKey);
+    popOverlay(overlayToken);
   };
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
@@ -48,7 +51,7 @@ export function openCitePromptEditor(): void {
   note.textContent =
     'This system prompt is sent to the AI before your selected citation text. ' +
     'Use `{DATE}` anywhere you want today\'s date substituted in (M-D-YYYY). ' +
-    'The model MUST return JSON with `cite` and `tokens` fields — keep that part of the prompt intact unless you know what you\'re doing.';
+    'The reply must use the delimited [[CITE]] … [[TOKENS]] … [[END]] block format at the bottom of the prompt — the editor splits on those exact markers to insert the cite and apply the F8 cite mark to each token, so leave that part intact unless you know what you\'re doing.';
   dialog.appendChild(note);
 
   const stored = settings.get('aiCitePrompt');
@@ -99,7 +102,9 @@ export function openCitePromptEditor(): void {
   document.body.appendChild(overlay);
 
   const onKey = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape') close();
+    // Only the topmost overlay reacts, so Escape from here doesn't also
+    // close the Settings modal underneath.
+    if (e.key === 'Escape' && isTopOverlay(overlayToken)) close();
   };
   document.addEventListener('keydown', onKey);
 

@@ -34,6 +34,7 @@ import { WORD_HIGHLIGHT_COLORS } from './color-palette.js';
 import { buildKeybindingsEditor } from './keybindings-editor.js';
 import { TRANSLATION_LANGUAGES } from './translate.js';
 import { getHost, getElectronHost, isWindowsHost } from './host/index.js';
+import { pushOverlay, popOverlay, isTopOverlay } from './overlay-stack.js';
 import { getInstallInfo } from './install-info.js';
 import { resetTimer } from './timer-state.js';
 import { showToast } from './toast.js';
@@ -183,6 +184,10 @@ export interface SettingsTarget {
 class SettingsModal {
   private overlay: HTMLDivElement;
   private dialog: HTMLDivElement;
+  /** Overlay-stack token while open, so Escape only closes this modal
+   *  when it's the topmost (a dialog opened from here — e.g. the AI
+   *  cite-prompt editor — handles its own Escape first). */
+  private overlayToken: symbol | null = null;
   /** Rows whose enabled state is gated on another boolean setting,
    *  keyed by the setting that drives them. Refilled each open()
    *  via renderEntry bookkeeping; consumed by `refreshDependents`. */
@@ -213,9 +218,15 @@ class SettingsModal {
       if (e.target === this.overlay) this.close();
     });
 
-    // Escape closes.
+    // Escape closes — but only when this is the topmost overlay, so a
+    // dialog opened from within Settings closes alone on the first press.
     document.addEventListener('keydown', (e) => {
-      if (this.overlay.style.display !== 'none' && e.key === 'Escape') {
+      if (
+        this.overlay.style.display !== 'none' &&
+        e.key === 'Escape' &&
+        this.overlayToken !== null &&
+        isTopOverlay(this.overlayToken)
+      ) {
         this.close();
       }
     });
@@ -226,6 +237,7 @@ class SettingsModal {
   open(target?: SettingsTarget): void {
     this.render();
     this.overlay.style.display = '';
+    if (this.overlayToken === null) this.overlayToken = pushOverlay();
     // Subscribe so toggling any "parent" setting (AI master switch,
     // multi-doc, etc.) greys / un-greys the dependent rows live
     // without needing a re-open.
@@ -289,6 +301,10 @@ class SettingsModal {
       this.tabsResizeObserver = null;
     }
     this.overlay.style.display = 'none';
+    if (this.overlayToken !== null) {
+      popOverlay(this.overlayToken);
+      this.overlayToken = null;
+    }
   }
 
   private render(): void {
