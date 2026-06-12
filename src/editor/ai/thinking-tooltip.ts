@@ -42,6 +42,44 @@ export interface TooltipRange {
   to: number;
 }
 
+/**
+ * Pack a set of pills into a non-overlapping vertical column.
+ *
+ * Each item has a height and a DESIRED top (just above its target, or an
+ * editor edge when its target scrolled off). Returns the resolved tops, in
+ * the SAME order as the input. Two passes: top→bottom in desired order pushes
+ * each below the previous (a cluster near the top edge queues downward), then
+ * bottom→top pushes any overflow back up so the lowest pill ends at the floor
+ * (a cluster near the bottom edge queues upward), never above the top edge.
+ *
+ * Pure (no DOM) so the spacing logic is unit-testable.
+ */
+export function packColumn(
+  items: ReadonlyArray<{ h: number; desired: number }>,
+  bandTop: number,
+  dropFloor: number,
+  gap: number,
+): number[] {
+  // Indices ordered by desired top; the sort is stable, so pills sharing a
+  // desired position (e.g. all pinned to the same edge) keep their order.
+  const order = items.map((_, i) => i).sort((a, b) => items[a]!.desired - items[b]!.desired);
+  const tops = new Array<number>(items.length);
+
+  let cursor = bandTop;
+  for (const i of order) {
+    tops[i] = Math.max(items[i]!.desired, cursor);
+    cursor = tops[i]! + items[i]!.h + gap;
+  }
+
+  let limit = dropFloor;
+  for (let k = order.length - 1; k >= 0; k--) {
+    const i = order[k]!;
+    tops[i] = Math.max(bandTop, Math.min(tops[i]!, limit - items[i]!.h));
+    limit = tops[i]! - gap;
+  }
+  return tops;
+}
+
 /** Find the on-screen editor box (single-doc `#editor` or a multi-doc
  *  pane) so the pill can anchor to the editor, not the whole page. */
 function editorBox(view: EditorView): HTMLElement {
@@ -169,11 +207,14 @@ export class ThinkingTooltip {
     }
   }
 
-  /** Lay out every mounted pill. Pills whose target is visible anchor just
-   *  above it; pills whose target has scrolled past an editor edge queue
-   *  along that edge — stacking DOWN from the top edge and UP from the
-   *  bottom edge, in creation order — so they line up instead of piling on
-   *  the same spot. Grouped by editor so multi-pane panes stay independent. */
+  /** Lay out every mounted pill as a single non-overlapping column per
+   *  editor. Each pill's DESIRED top is just above its target (or the top
+   *  edge when the target scrolled off the top, the bottom edge when it
+   *  scrolled off the bottom). A two-pass sweep then spaces them so they
+   *  never overlap — pills clustered near an edge queue along it rather than
+   *  piling on the same spot, including the transition where targets are
+   *  near, but not yet past, an edge. Grouped by editor so multi-pane panes
+   *  stay independent. */
   private static relayout(): void {
     const groups = new Map<HTMLElement, ThinkingTooltip[]>();
     for (const p of ThinkingTooltip.active) {
@@ -194,38 +235,26 @@ export class ThinkingTooltip {
         : bandBottom;
       const left = rect.left + EDGE;
 
-      const topQueue: ThinkingTooltip[] = [];
-      const bottomQueue: ThinkingTooltip[] = [];
-
-      for (const p of pills) {
+      const items = pills.map((p) => {
         const el = p.el!;
         el.style.left = `${left}px`;
-        const pillH = el.offsetHeight || 28;
+        const h = el.offsetHeight || 28;
         const span = p.targetSpan();
+        let desired: number;
         if (!span || span.bottom < bandTop) {
-          topQueue.push(p); // scrolled off the top (or unresolved) → top edge
+          desired = bandTop; // off the top (or unresolved) → top edge
         } else if (span.top > bandBottom) {
-          bottomQueue.push(p); // scrolled off the bottom → bottom edge
+          desired = dropFloor - h; // off the bottom → bottom edge
         } else {
-          // Target visible: anchor just above it, clamped into the band.
-          const top = Math.max(bandTop, Math.min(span.top - pillH - SEL_GAP, dropFloor - pillH));
-          el.style.top = `${top}px`;
+          desired = Math.max(bandTop, Math.min(span.top - h - SEL_GAP, dropFloor - h));
         }
-      }
+        return { el, h, desired };
+      });
 
-      // Top edge: first pill at the top, the rest stacking downward.
-      let y = bandTop;
-      for (const p of topQueue) {
-        p.el!.style.top = `${y}px`;
-        y += (p.el!.offsetHeight || 28) + PILL_STACK_GAP;
-      }
-      // Bottom edge: first pill at the bottom, the rest stacking upward.
-      let yb = dropFloor;
-      for (const p of bottomQueue) {
-        const h = p.el!.offsetHeight || 28;
-        p.el!.style.top = `${yb - h}px`;
-        yb -= h + PILL_STACK_GAP;
-      }
+      const tops = packColumn(items, bandTop, dropFloor, PILL_STACK_GAP);
+      items.forEach((it, i) => {
+        it.el.style.top = `${tops[i]}px`;
+      });
     }
   }
 
