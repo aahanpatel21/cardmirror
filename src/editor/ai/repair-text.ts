@@ -24,7 +24,7 @@ import type { Node as PMNode } from 'prosemirror-model';
 import { settings } from '../settings.js';
 import { callAnthropic, AnthropicError } from './anthropic.js';
 import { showToast } from '../toast.js';
-import { ThinkingTooltip } from './thinking-tooltip.js';
+import { AiActivity } from './ai-activity.js';
 import { setRepairFlashes, clearRepairFlashes } from '../repair-highlight-plugin.js';
 
 export const DEFAULT_REPAIR_PROMPT = `You are a specialized text repair tool. Your task is to identify and fix common OCR and PDF text-extraction errors while preserving the original meaning and content exactly.
@@ -636,15 +636,6 @@ async function fetchFixes(
   return { fixesReturned: fixes.length, located, skipped };
 }
 
-/** Show the tooltip beside a document position (no-op-safe). */
-function showTooltipAt(view: EditorView, tip: ThinkingTooltip, pos: number): void {
-  try {
-    const c = view.coordsAtPos(pos);
-    tip.show({ left: c.left, top: c.top, bottom: c.bottom });
-  } catch {
-    tip.show({ left: 16, top: 16, bottom: 32 });
-  }
-}
 
 /** Apply a pass's located fixes in ONE transaction, flashing every
  *  replacement at once — matching Repair Formatting's batch behavior
@@ -726,10 +717,11 @@ export function runRepairText(view: EditorView): void {
   const origSelTo = sel.to;
   let selFrom = origSelFrom;
   let selTo = origSelTo;
-  // One tooltip, anchored where it spawns (the selection start) and left
-  // there for the whole operation — it does NOT chase the highlights.
-  const tooltip = new ThinkingTooltip();
-  showTooltipAt(view, tooltip, selFrom);
+  // Pill + purple tint over the range being repaired; re-anchored after
+  // each pass as the bounds shift, and pinned to the editor edge when
+  // the range scrolls out of view.
+  const activity = new AiActivity(view, { from: selFrom, to: selTo });
+  activity.start();
 
   void (async () => {
     let applied = 0;
@@ -741,6 +733,7 @@ export function runRepairText(view: EditorView): void {
         const r = applyPass(view, p1.located, selFrom, selTo);
         selFrom = r.selFrom;
         selTo = r.selTo;
+        activity.setRange({ from: selFrom, to: selTo });
         applied += p1.located.length;
       }
 
@@ -752,11 +745,12 @@ export function runRepairText(view: EditorView): void {
           const r = applyPass(view, p2.located, selFrom, selTo);
           selFrom = r.selFrom;
           selTo = r.selTo;
+          activity.setRange({ from: selFrom, to: selTo });
           applied += p2.located.length;
         }
       }
 
-      tooltip.hide();
+      activity.stop();
 
       if (applied === 0) {
         showToast(p1.fixesReturned === 0 ? 'No OCR errors found.' : 'Could not place any of the suggested fixes.');
@@ -774,7 +768,7 @@ export function runRepairText(view: EditorView): void {
           (skipped > 0 ? ` (${skipped} couldn't be placed)` : '') + '.',
       );
     } catch (e) {
-      tooltip.hide();
+      activity.stop();
       // Make whatever landed undoable in one step before surfacing the error.
       if (applied > 0) {
         clearRepairFlashes(view);

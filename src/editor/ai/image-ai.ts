@@ -34,7 +34,7 @@ import {
   VISION_MEDIA_TYPES,
   type AnthropicContentBlock,
 } from './anthropic.js';
-import { ThinkingTooltip } from './thinking-tooltip.js';
+import { AiActivity } from './ai-activity.js';
 
 /** Resolve the user-configured omission-bracket pair. Matches the
  *  same delimiter setting `Condense with warning` uses, so a doc
@@ -101,15 +101,10 @@ function findImageContainerInsertion(
 
 /** Anchor for the in-flight tooltip — pinned just below the image's
  *  bottom edge in viewport coords. */
-function tooltipAnchorFor(view: EditorView, imagePos: number): {
-  left: number; top: number; bottom: number;
-} {
-  try {
-    const coords = view.coordsAtPos(imagePos);
-    return { left: coords.left, top: coords.top, bottom: coords.bottom };
-  } catch {
-    return { left: 16, top: 16, bottom: 32 };
-  }
+/** The image node's doc range, for anchoring the AI-activity cues. */
+function imageRange(view: EditorView, imagePos: number): { from: number; to: number } {
+  const node = view.state.doc.nodeAt(imagePos);
+  return { from: imagePos, to: imagePos + (node?.nodeSize ?? 1) };
 }
 
 // ============================================================
@@ -289,8 +284,8 @@ function runAiAltTextRequest(
     return;
   }
 
-  const tooltip = new ThinkingTooltip();
-  tooltip.show(tooltipAnchorFor(view, imagePos));
+  const activity = new AiActivity(view, imageRange(view, imagePos));
+  activity.start();
 
   const contextText = formatImageContextForPrompt(gatherImageContext(view, imagePos));
 
@@ -326,7 +321,7 @@ function runAiAltTextRequest(
         showToast(`Alt text: ${err instanceof Error ? err.message : String(err)}`);
       }
     } finally {
-      tooltip.hide();
+      activity.stop();
     }
   })();
 }
@@ -483,8 +478,8 @@ export function runGenerateTable(
     return;
   }
 
-  const tooltip = new ThinkingTooltip();
-  tooltip.show(tooltipAnchorFor(view, imagePos));
+  const activity = new AiActivity(view, imageRange(view, imagePos));
+  activity.start();
 
   void (async () => {
     try {
@@ -556,7 +551,7 @@ export function runGenerateTable(
         showToast(`Table: ${err instanceof Error ? err.message : String(err)}`);
       }
     } finally {
-      tooltip.hide();
+      activity.stop();
     }
   })();
 }

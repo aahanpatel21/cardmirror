@@ -545,4 +545,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
     webFrame.setZoomFactor(factor);
   },
   getZoomFactor: (): number => webFrame.getZoomFactor(),
+
+  /** Card-cutter local plugin (experimental). `pick` opens the native
+   *  file dialog and returns the chosen path. `load` asks main for the
+   *  engine bundle's source (from the given path, the CARDCUTTER_ENGINE
+   *  env, or the default userData/plugins location) and runs it in the
+   *  renderer's MAIN world, where it self-registers via
+   *  window.__registerCardCutter. Never bundled in the release. */
+  cardCutterPickFile: (): Promise<string | null> =>
+    ipcRenderer.invoke('host:cardcutter-pick-file'),
+  cardCutterLoad: async (
+    enginePath?: string | null,
+  ): Promise<{ ok: boolean; path?: string; error?: string }> => {
+    const res = (await ipcRenderer.invoke('host:cardcutter-read', enginePath ?? null)) as
+      | { source: string; path: string }
+      | { error: string; path: string };
+    if (!('source' in res) || !res.source) {
+      return { ok: false, error: 'error' in res ? res.error : 'not found', path: res.path };
+    }
+    try {
+      await webFrame.executeJavaScript(res.source);
+      return { ok: true, path: res.path };
+    } catch (e) {
+      return { ok: false, error: String(e), path: res.path };
+    }
+  },
 });

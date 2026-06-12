@@ -6016,6 +6016,24 @@ body:has(#comments-column:not([hidden])) :is(#editor, .pmd-pane-editor) .pmd-com
   cursor: pointer;
 }
 
+/* AI-working box — the card/container an AI op is currently working on,
+   shown while the request is in flight (the text selection is cleared,
+   so this is the only cue to WHAT is being worked on). Mirrors the blue
+   drag-pickup box (.pmd-editor-pickup-highlight) but in the purple
+   "Thinking…" pill accent. Applied as a node decoration on the
+   container, so it boxes the whole card, not the text. View-only. */
+:is(#editor, .pmd-pane-editor) .pmd-ai-working {
+  outline: 2px solid var(--pmd-c-comment-thread);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--pmd-c-comment-thread) 10%, transparent);
+  border-radius: 4px;
+}
+/* Fallback when the range has no enclosing card container. */
+:is(#editor, .pmd-pane-editor) .pmd-ai-working-inline {
+  background-color: color-mix(in srgb, var(--pmd-c-comment-thread-toast) 24%, transparent);
+  border-radius: 2px;
+}
+
 /* Active annotation — the comment/flashcard whose card is selected in
    the column: a stronger accent tint + a thin outline so the selected
    one stands out in the text. */
@@ -10371,4 +10389,110 @@ body.pmd-mobile-tablet.pmd-mobile-rail-collapsed .pmd-mobile-movesheet {
 .pmd-cardcutter-proposal-detail {
   font-size: 0.8rem;
   color: var(--pmd-c-text-secondary);
+}
+
+/* Apply-then-refine trim checklist — a floating, non-blocking panel
+   over the just-applied cut. Unchecking a row removes that section's
+   highlights live, so the user reacts to the real card behind it.
+   Anchored bottom-left, mirroring the dropzone, so it clears the
+   full-width status/word-count bar. */
+.pmd-cardcutter-trim {
+  position: fixed;
+  left: calc(var(--nav-width) + 0.5rem);
+  right: auto;
+  bottom: calc(var(--status-bar-height) + 0.5rem);
+  z-index: 950;
+  width: 24rem;
+  max-width: calc(100vw - var(--nav-width) - 1rem);
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--pmd-c-surface);
+  border: 1px solid var(--pmd-c-border-soft);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px var(--pmd-c-shadow-strong);
+  font-family: var(--pmd-ui-font);
+}
+/* When the voice-control pill is showing (same bottom band), sit above
+   it instead of overlapping. */
+body:has(.pmd-voice-pill.pmd-voice-on) .pmd-cardcutter-trim {
+  bottom: calc(var(--status-bar-height) + 0.5rem + 30px + 0.5rem);
+}
+/* Multi-doc: clear the pane footer the dropzone/voice pill also clear. */
+body.pmd-multi-doc .pmd-cardcutter-trim {
+  bottom: calc(var(--status-bar-height) + var(--pmd-pane-footer-height) + 0.5rem);
+}
+.pmd-cardcutter-feedback {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 0.4rem 0.5rem;
+  font-family: var(--pmd-ui-font);
+  font-size: 0.85rem;
+  color: var(--pmd-c-text);
+  background: var(--pmd-c-surface-soft, var(--pmd-c-surface));
+  border: 1px solid var(--pmd-c-border-soft);
+  border-radius: 6px;
+}
+.pmd-cardcutter-trim-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid var(--pmd-c-border-soft);
+}
+.pmd-cardcutter-trim-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--pmd-c-text);
+}
+.pmd-cardcutter-trim-total {
+  font-size: 0.8rem;
+  color: var(--pmd-c-comment-thread);
+  white-space: nowrap;
+}
+.pmd-cardcutter-trim-list {
+  overflow-y: auto;
+  padding: 0.35rem 0.5rem;
+}
+.pmd-cardcutter-trim-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.4rem 0.35rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  color: var(--pmd-c-text);
+}
+.pmd-cardcutter-trim-row:hover {
+  background: var(--pmd-c-hover, rgba(127, 127, 127, 0.08));
+}
+.pmd-cardcutter-trim-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.pmd-cardcutter-trim-detail {
+  font-size: 0.78rem;
+  color: var(--pmd-c-text-secondary);
+}
+.pmd-cardcutter-trim-save {
+  font-size: 0.78rem;
+  color: var(--pmd-c-text-secondary);
+  white-space: nowrap;
+}
+.pmd-cardcutter-trim-omitted {
+  opacity: 0.55;
+}
+.pmd-cardcutter-trim-omitted .pmd-cardcutter-trim-save {
+  color: var(--pmd-c-comment-thread);
+}
+.pmd-cardcutter-trim-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.6rem 0.85rem;
+  border-top: 1px solid var(--pmd-c-border-soft);
 }

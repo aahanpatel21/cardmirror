@@ -25,6 +25,8 @@ import { settings } from './settings.js';
 import { callAnthropic } from './ai/anthropic.js';
 import { resolveAiModel } from './ai/anthropic.js';
 import { showToast } from './toast.js';
+import { AiActivity } from './ai/ai-activity.js';
+import { getElectronHost } from './host/index.js';
 
 // ─── Engine contract (structural — no import of the package) ──────
 
@@ -43,6 +45,14 @@ interface PlainCard {
   cite: string;
   paras: string[];
 }
+type CutStage =
+  | 'initial'
+  | 'highlight'
+  | 'prune'
+  | 'skeletonize'
+  | 'budget'
+  | 'add'
+  | 'tighten';
 interface CutOptions {
   /** Optional de-highlight cap; the primary cut is budget-free. */
   targetWords?: number;
@@ -51,19 +61,41 @@ interface CutOptions {
   underlineGenerosity?: 'lean' | 'standard' | 'generous';
   model?: string;
   terminalImpact?: boolean;
+  onStage?: (stage: CutStage) => void;
+}
+
+/** Stage → gerund phrase shown in the pill ("…", or "Clod is …"). */
+const STAGE_LABEL: Record<CutStage, string> = {
+  initial: 'making the first pass',
+  highlight: 'highlighting',
+  prune: 'pruning for redundancy',
+  skeletonize: 'skeletonizing',
+  budget: 'highlighting down',
+  add: 'adding highlighting',
+  tighten: 'tightening',
+};
+interface BudgetShortfall {
+  targetWords: number;
+  words: number;
+  reason?: string;
 }
 interface CutResult {
   spans: MarkSpan[];
   stats: unknown;
+  readWords?: number;
+  shortfall?: BudgetShortfall;
   warnings: string[];
   raw: unknown;
 }
 type LlmCaller = (system: string, user: string, model: string) => Promise<string>;
-export interface CutProposal {
+/** A contiguous, optional slice of the read the user can drop — counts
+ *  are engine-counted (deterministic), not model estimates. */
+export interface OmissionSection {
+  id: number;
   label: string;
-  detail: string;
-  readTimeSec: number;
-  role: CutOptions['role'];
+  description: string;
+  words: number;
+  spans: MarkSpan[];
 }
 interface CardCutterApi {
   readonly version: string;
@@ -74,20 +106,42 @@ interface CardCutterApi {
     opts: CutOptions,
     llm: LlmCaller,
   ): Promise<CutResult>;
-  proposeCuts(
+  proposeOmissions(
     card: PlainCard,
-    baseReadTimeSec: number,
-    mode: 'when-ambiguous' | 'always',
+    map: MarkMap,
     llm: LlmCaller,
     model?: string,
-  ): Promise<CutProposal[] | null>;
+  ): Promise<OmissionSection[]>;
   highlightDown(
     card: PlainCard,
     map: MarkMap,
     targetWords: number,
     llm: LlmCaller,
     model?: string,
-  ): Promise<{ keptRuns: number[]; map: MarkMap; raw: string }>;
+    onStage?: (stage: CutStage) => void,
+    feedback?: string,
+  ): Promise<{ map: MarkMap; words: number; raw: string; shortfall?: BudgetShortfall }>;
+  refineHighlight(
+    card: PlainCard,
+    map: MarkMap,
+    opts: {
+      dropRedundancy?: boolean;
+      skeletonize?: boolean;
+      targetWords?: number;
+      feedback?: string;
+      allowAdd?: boolean;
+      model?: string;
+      onStage?: (stage: CutStage) => void;
+    },
+    llm: LlmCaller,
+  ): Promise<{ map: MarkMap; words: number; warnings: string[]; shortfall?: BudgetShortfall }>;
+  addHighlight(
+    card: PlainCard,
+    existing: MarkSpan[],
+    opts: CutOptions,
+    llm: LlmCaller,
+    scope?: { p: number; start: number; end: number }[],
+  ): Promise<CutResult>;
   detectTerminalImpact(tag: string): boolean;
 }
 
@@ -132,7 +186,23 @@ export async function tryLoadCardCutterEngine(): Promise<boolean> {
     // Side-effect import only — registration happens via the global.
     await import('@cardcutter/browser');
   } catch (err) {
-    console.warn('[cardcutter] engine not available:', (err as Error).message);
+    console.warn('[cardcutter] sibling import unavailable:', (err as Error).message);
+  }
+  // Packaged builds ship the no-op stub, so the import above registers
+  // nothing. When the feature is switched on, load the user-installed
+  // engine bundle from disk (userData/plugins, an explicit settings
+  // path, or the CARDCUTTER_ENGINE env). The bundle self-registers.
+  if (!engine && settings.get('cardCutterEnabled')) {
+    const host = getElectronHost();
+    if (host?.cardCutterLoad) {
+      try {
+        const r = await host.cardCutterLoad(settings.get('cardCutterEnginePath') || null);
+        if (r.ok) console.log(`[cardcutter] engine loaded from ${r.path}`);
+        else console.warn(`[cardcutter] engine plugin not loaded: ${r.error}`);
+      } catch (err) {
+        console.warn('[cardcutter] engine plugin load error:', (err as Error).message);
+      }
+    }
   }
   return engine !== null;
 }
@@ -156,9 +226,12 @@ function makeLlm(): LlmCaller {
 
 // ─── Card extraction from the editor ──────────────────────────────
 
-interface FocusedCard {
+export interface FocusedCard {
   card: PlainCard;
   cardFrom: number;
+  /** End of the card node (cardFrom + nodeSize) — the AI-working tint
+   *  spans [cardFrom, cardTo] so the whole card shows as worked-on. */
+  cardTo: number;
   /** Doc positions of each body paragraph's content start (= text
    *  offset 0), parallel to card.paras, for span → doc-pos mapping. */
   paraStarts: number[];
@@ -243,6 +316,7 @@ export function focusedPlainCard(view: EditorView): FocusedCard | null {
       paras,
     },
     cardFrom: cardPos,
+    cardTo: cardPos + cardNode.nodeSize,
     paraStarts,
     existing,
   };
@@ -310,30 +384,44 @@ export interface CutInvocation {
   readTimeSec?: number;
 }
 
-export async function cutFocusedCard(view: EditorView, inv: CutInvocation): Promise<void> {
+/** What a completed cut leaves the UI to work with: the card handle
+ *  (positions stay valid — applying marks doesn't move text), the
+ *  engine MarkMap of the applied result (for proposeOmissions), the
+ *  exact read length, and any budget shortfall. */
+export interface CutSession {
+  focused: FocusedCard;
+  map: MarkMap;
+  readWords: number;
+  shortfall?: BudgetShortfall;
+}
+
+export async function cutFocusedCard(
+  view: EditorView,
+  inv: CutInvocation,
+): Promise<CutSession | null> {
   if (!engine) {
     const ok = await tryLoadCardCutterEngine();
     if (!ok) {
       showToast('Card-cutter engine not loaded.');
-      return;
+      return null;
     }
   }
   const api = engine!;
   if (!settings.get('anthropicApiKey').trim()) {
     showToast('Set an Anthropic API key in Settings to use the card cutter.');
-    return;
+    return null;
   }
   const focused = focusedPlainCard(view);
   if (!focused) {
     showToast('Put the cursor in a card with body text first.');
-    return;
+    return null;
   }
   const { hasUnderline, hasHighlight } = cardState(focused);
-  // Already highlighted → done; don't clobber a finished cut. (A
-  // future Highlight Down command shrinks it.)
+  // Already highlighted → done; don't clobber a finished cut. (Highlight
+  // Down shrinks it.)
   if (hasHighlight) {
     showToast('This card is already highlighted.');
-    return;
+    return null;
   }
   const opts: CutOptions = {
     // Efficient by default; a read-time cap becomes the secondary
@@ -346,27 +434,45 @@ export async function cutFocusedCard(view: EditorView, inv: CutInvocation): Prom
     model: resolveAiModel(),
     terminalImpact: api.detectTerminalImpact(focused.card.tag),
   };
+  // Pill + purple tint over the whole card while the model works.
+  const activity = new AiActivity(view, { from: focused.cardFrom, to: focused.cardTo });
+  activity.start();
+  opts.onStage = (s) => activity.setStage(STAGE_LABEL[s]);
   const llm = makeLlm();
   try {
     // Underlined-but-not-highlighted → Highlight Card (trust the
     // existing underlines, add only highlights). Plain → full Cut.
-    if (hasUnderline) {
-      showToast('Highlighting card…');
-      const result = await api.highlightCard(focused.card, focused.existing, opts, llm);
-      applyCutToCard(view, focused, result.spans, ['hl']);
-      for (const w of result.warnings) console.log(`[cardcutter] ${w}`);
-      showToast('Card highlighted — ↶ to undo');
-    } else {
-      showToast('Cutting card…');
-      const result = await api.cutCard(focused.card, opts, llm);
-      applyCutToCard(view, focused, result.spans);
-      for (const w of result.warnings) console.log(`[cardcutter] ${w}`);
-      showToast('Card cut — ↶ to undo');
-    }
+    const result = hasUnderline
+      ? await api.highlightCard(focused.card, focused.existing, opts, llm)
+      : await api.cutCard(focused.card, opts, llm);
+    applyCutToCard(view, focused, result.spans, hasUnderline ? ['hl'] : undefined);
+    for (const w of result.warnings) console.log(`[cardcutter] ${w}`);
+    showToast(hasUnderline ? 'Card highlighted — ↶ to undo' : 'Card cut — ↶ to undo');
+    return {
+      focused,
+      map: cardMapAfter(focused, result.spans),
+      readWords: result.readWords ?? 0,
+      ...(result.shortfall ? { shortfall: result.shortfall } : {}),
+    };
   } catch (err) {
     console.error('[cardcutter] cut failed:', err);
     showToast(`Card cut failed: ${(err as Error).message}`);
+    return null;
+  } finally {
+    activity.stop();
   }
+}
+
+/** The engine MarkMap of the card after applying `spans` on top of its
+ *  existing marks — what proposeOmissions / section toggles read. */
+function cardMapAfter(focused: FocusedCard, spans: MarkSpan[]): MarkMap {
+  const map = buildMarkMap(focused);
+  for (const s of spans) {
+    const arr = map[s.layer][s.p];
+    if (!arr) continue;
+    for (let i = s.start; i < s.end && i < arr.length; i++) arr[i] = 1;
+  }
+  return map;
 }
 
 /** First reader's WPM, or a sane default. */
@@ -385,23 +491,49 @@ export function focusedCardStatus(
   return { cuttable: true, ...cardState(f) };
 }
 
-/** Pass 0 (describe-then-generate): ask the engine whether the focused
- *  card cuts multiple ways, returning the option descriptions or null.
- *  Returns null on any failure (caller proceeds without a question). */
-export async function proposeFocusedCuts(
-  view: EditorView,
-  baseReadTimeSec: number,
-  mode: 'when-ambiguous' | 'always',
-): Promise<CutProposal[] | null> {
-  if (!engine) return null;
-  const f = focusedPlainCard(view);
-  if (!f) return null;
+/** After an efficient cut, ask the engine to nominate optional sections
+ *  the user could drop (with exact, engine-counted word savings). Empty
+ *  on failure or when little is optional. */
+export async function proposeFocusedOmissions(
+  session: CutSession,
+): Promise<OmissionSection[]> {
+  if (!engine) return [];
   try {
-    return await engine.proposeCuts(f.card, baseReadTimeSec, mode, makeLlm(), resolveAiModel());
+    return await engine.proposeOmissions(
+      session.focused.card,
+      session.map,
+      makeLlm(),
+      resolveAiModel(),
+    );
   } catch (err) {
-    console.warn('[cardcutter] proposeCuts failed:', (err as Error).message);
-    return null;
+    console.warn('[cardcutter] proposeOmissions failed:', (err as Error).message);
+    return [];
   }
+}
+
+/** Toggle a nominated section: remove its highlight (omit) or restore
+ *  it (un-omit). Underline/emphasis untouched. Positions come from the
+ *  card handle, valid because applying marks never moves text. */
+export function setSectionOmitted(
+  view: EditorView,
+  session: CutSession,
+  section: OmissionSection,
+  omit: boolean,
+): void {
+  const hlType = schema.marks['highlight'];
+  if (!hlType) return;
+  const tr = view.state.tr;
+  const color = omit ? '' : resolveHighlightColor(view);
+  for (const s of section.spans) {
+    const base = session.focused.paraStarts[s.p];
+    if (base === undefined) continue;
+    const from = base + s.start;
+    const to = base + s.end;
+    if (to <= from) continue;
+    if (omit) tr.removeMark(from, to, hlType);
+    else tr.addMark(from, to, hlType.create({ color }));
+  }
+  if (tr.steps.length > 0) view.dispatch(tr);
 }
 
 export async function ensureEngine(): Promise<boolean> {
@@ -426,38 +558,161 @@ function buildMarkMap(focused: FocusedCard): MarkMap {
   return map;
 }
 
-/** Remove highlight ONLY from the chars the reduction dropped (where
- *  the card was highlighted but the reduced map no longer is) — the
- *  surviving runs keep their original color/marks untouched. */
-function applyHlReduction(
+/** Apply the highlight DIFF between the original card and a refined map:
+ *  remove highlight where it was dropped, add it where it was added (the
+ *  refine "allow adding" path; adds are always within existing underline,
+ *  so no new underline is needed). Surviving runs keep their color. */
+function applyHlDiff(
   view: EditorView,
   focused: FocusedCard,
   original: MarkMap,
-  reduced: MarkMap,
+  result: MarkMap,
 ): void {
   const tr = view.state.tr;
   const hlType = schema.marks['highlight'];
   if (!hlType) return;
+  const color = resolveHighlightColor(view);
   for (let p = 0; p < focused.paraStarts.length; p++) {
     const base = focused.paraStarts[p]!;
     const orig = original.hl[p]!;
-    const red = reduced.hl[p]!;
+    const res = result.hl[p]!;
     let i = 0;
     while (i < orig.length) {
-      if (orig[i] && !red[i]) {
+      if (orig[i] && !res[i]) {
         const start = i;
-        while (i < orig.length && orig[i] && !red[i]) i++;
+        while (i < orig.length && orig[i] && !res[i]) i++;
         tr.removeMark(base + start, base + i, hlType);
+      } else i++;
+    }
+    i = 0;
+    while (i < res.length) {
+      if (res[i] && !orig[i]) {
+        const start = i;
+        while (i < res.length && res[i] && !orig[i]) i++;
+        tr.addMark(base + start, base + i, hlType.create({ color }));
       } else i++;
     }
   }
   if (tr.steps.length > 0) view.dispatch(tr.scrollIntoView());
 }
 
-export async function highlightDownFocusedCard(
+/** Options for the dehighlight skill — every field optional and
+ *  composable; `readTimeSec` is a length cap, the rest are toggles. */
+export interface RefineInvocation {
+  dropRedundancy?: boolean;
+  skeletonize?: boolean;
+  readTimeSec?: number;
+  feedback?: string;
+  /** Permit refine to ADD highlight (within underline), not just remove. */
+  allowAdd?: boolean;
+}
+
+/** Refine (dehighlight) the focused card per the chosen combination of
+ *  drop-redundancy / skeletonize / target-length / guidance. Removes
+ *  highlight only (underline/emphasis untouched). */
+export async function refineHighlightFocusedCard(
   view: EditorView,
-  readTimeSec: number,
+  inv: RefineInvocation,
 ): Promise<void> {
+  if (!(await ensureEngine())) {
+    showToast('Card-cutter engine not loaded.');
+    return;
+  }
+  if (!settings.get('anthropicApiKey').trim()) {
+    showToast('Set an Anthropic API key in Settings to use the card cutter.');
+    return;
+  }
+  const feedback = inv.feedback?.trim() || undefined;
+  if (!inv.dropRedundancy && !inv.skeletonize && !inv.readTimeSec && !feedback) {
+    showToast('Pick a target or a setting, or type some guidance.');
+    return;
+  }
+  const focused = focusedPlainCard(view);
+  if (!focused) {
+    showToast('Put the cursor in a card first.');
+    return;
+  }
+  if (!cardState(focused).hasHighlight) {
+    showToast('This card has no highlights to refine.');
+    return;
+  }
+  const targetWords = inv.readTimeSec
+    ? Math.max(10, Math.round((inv.readTimeSec * readerWpm()) / 60))
+    : undefined;
+  const original = buildMarkMap(focused);
+  const activity = new AiActivity(view, { from: focused.cardFrom, to: focused.cardTo });
+  activity.start();
+  try {
+    const result = await engine!.refineHighlight(
+      focused.card,
+      original,
+      {
+        ...(inv.dropRedundancy ? { dropRedundancy: true } : {}),
+        ...(inv.skeletonize ? { skeletonize: true } : {}),
+        ...(targetWords ? { targetWords } : {}),
+        ...(feedback ? { feedback } : {}),
+        ...(inv.allowAdd ? { allowAdd: true } : {}),
+        model: resolveAiModel(),
+        onStage: (s) => activity.setStage(STAGE_LABEL[s]),
+      },
+      makeLlm(),
+    );
+    applyHlDiff(view, focused, original, result.map);
+    for (const w of result.warnings) console.log(`[cardcutter] ${w}`);
+    const sec = Math.round((result.words / readerWpm()) * 60);
+    if (result.shortfall && inv.readTimeSec) {
+      showToast(
+        `Refined to ${result.words}w · ~${sec}s — couldn't reach ${inv.readTimeSec}s` +
+          (result.shortfall.reason ? ` without dropping ${result.shortfall.reason}` : '') +
+          '. ↶ to undo',
+      );
+    } else {
+      showToast(`Refined to ${result.words}w · ~${sec}s — ↶ to undo`);
+    }
+  } catch (err) {
+    console.error('[cardcutter] refine failed:', err);
+    showToast(`Refine failed: ${(err as Error).message}`);
+  } finally {
+    activity.stop();
+  }
+}
+
+// ─── Add Highlight ────────────────────────────────────────────────
+
+/** The current selection mapped to body-paragraph char ranges, or null
+ *  if the selection is empty or covers the whole card (→ whole-card). */
+function selectionScope(
+  view: EditorView,
+  focused: FocusedCard,
+): { p: number; start: number; end: number }[] | null {
+  const { from, to } = view.state.selection;
+  if (to <= from) return null;
+  const ranges: { p: number; start: number; end: number }[] = [];
+  let coversAll = true;
+  for (let p = 0; p < focused.card.paras.length; p++) {
+    const base = focused.paraStarts[p]!;
+    const len = focused.card.paras[p]!.length;
+    const s = Math.max(from, base) - base;
+    const e = Math.min(to, base + len) - base;
+    if (e > s) ranges.push({ p, start: s, end: e });
+    if (s > 0 || e < len) coversAll = false;
+  }
+  // Empty intersection, or the selection spans the whole body → no scope.
+  if (ranges.length === 0 || coversAll) return null;
+  return ranges;
+}
+
+/** Whether a usable sub-selection exists inside the focused card (drives
+ *  the hotkey's add-highlight-vs-shorten routing). */
+export function hasCardSubSelection(view: EditorView): boolean {
+  const f = focusedPlainCard(view);
+  return !!f && selectionScope(view, f) !== null;
+}
+
+/** Add Highlight — extend the read within the user's selection (or the
+ *  whole card if none), highlighting tag-relevant material that isn't
+ *  already read. Adds marks only; never removes. */
+export async function addHighlightFocusedCard(view: EditorView): Promise<void> {
   if (!(await ensureEngine())) {
     showToast('Card-cutter engine not loaded.');
     return;
@@ -471,26 +726,41 @@ export async function highlightDownFocusedCard(
     showToast('Put the cursor in a card first.');
     return;
   }
-  const { hasHighlight } = cardState(focused);
-  if (!hasHighlight) {
-    showToast('This card has no highlights to shorten.');
-    return;
-  }
-  const targetWords = Math.max(10, Math.round((readTimeSec * readerWpm()) / 60));
-  const original = buildMarkMap(focused);
-  showToast('Shortening the read…');
+  const scope = selectionScope(view, focused) ?? undefined;
+  const opts: CutOptions = {
+    emphasisStyle: settings.get('cardCutterEmphasisStyle'),
+    role: 'block',
+    model: resolveAiModel(),
+  };
+  const activity = new AiActivity(view, { from: focused.cardFrom, to: focused.cardTo });
+  activity.start();
+  opts.onStage = (s) => activity.setStage(STAGE_LABEL[s]);
   try {
-    const result = await engine!.highlightDown(
-      focused.card,
-      original,
-      targetWords,
-      makeLlm(),
-      resolveAiModel(),
-    );
-    applyHlReduction(view, focused, original, result.map);
-    showToast(`Read shortened (~${readTimeSec}s) — ↶ to undo`);
+    const result = await engine!.addHighlight(focused.card, focused.existing, opts, makeLlm(), scope);
+    if (result.spans.length === 0) {
+      showToast(scope ? 'Nothing tag-relevant to add in the selection.' : 'Nothing more to add.');
+      return;
+    }
+    // Add the delta marks (u + hl) without moving the selection.
+    const tr = view.state.tr;
+    const color = resolveHighlightColor(view);
+    for (const s of result.spans) {
+      const base = focused.paraStarts[s.p];
+      if (base === undefined) continue;
+      const from = base + s.start;
+      const to = base + s.end;
+      if (to <= from) continue;
+      const type = schema.marks[LAYER_MARK[s.layer]];
+      if (!type) continue;
+      tr.addMark(from, to, s.layer === 'hl' ? type.create({ color }) : type.create());
+    }
+    for (const w of result.warnings) console.log(`[cardcutter] ${w}`);
+    if (tr.steps.length > 0) view.dispatch(tr.scrollIntoView());
+    showToast('Highlight added — ↶ to undo');
   } catch (err) {
-    console.error('[cardcutter] highlight-down failed:', err);
-    showToast(`Highlight down failed: ${(err as Error).message}`);
+    console.error('[cardcutter] add-highlight failed:', err);
+    showToast(`Add highlight failed: ${(err as Error).message}`);
+  } finally {
+    activity.stop();
   }
 }

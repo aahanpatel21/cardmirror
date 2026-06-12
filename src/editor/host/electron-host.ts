@@ -50,6 +50,12 @@ interface ElectronAPI {
     bytes: Uint8Array;
     handle: string;
   } | null>;
+  /** Card-cutter local plugin (experimental; optional so an older
+   *  preload tolerates its absence). */
+  cardCutterPickFile?(): Promise<string | null>;
+  cardCutterLoad?(
+    enginePath?: string | null,
+  ): Promise<{ ok: boolean; path?: string; error?: string }>;
   readFileAtPath(filePath: string): Promise<{
     name: string;
     bytes: Uint8Array;
@@ -255,6 +261,22 @@ export class ElectronHost implements Host {
     title?: string;
   }): Promise<string | null> {
     return api().pickDirectory(opts);
+  }
+
+  /** Card-cutter local plugin: pick the engine file / load it from disk
+   *  into the renderer. No-ops gracefully on an older preload. */
+  async cardCutterPickFile(): Promise<string | null> {
+    return (await api().cardCutterPickFile?.()) ?? null;
+  }
+  async cardCutterLoad(
+    enginePath?: string | null,
+  ): Promise<{ ok: boolean; path?: string; error?: string }> {
+    return (
+      (await api().cardCutterLoad?.(enginePath ?? null)) ?? {
+        ok: false,
+        error: 'card-cutter loading unsupported by this build',
+      }
+    );
   }
 
   async openFile(opts: OpenFileOptions = {}): Promise<OpenedFile | null> {

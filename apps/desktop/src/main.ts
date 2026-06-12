@@ -537,6 +537,33 @@ ipcMain.handle('host:open-file', async (event, opts: { filters?: FileFilter[] })
   };
 });
 
+// ── Card-cutter local plugin (experimental; NEVER bundled in the
+// release). The engine ships as a user-installed JS bundle on disk; the
+// renderer asks for its source here and runs it in its main world. ──
+function cardCutterDefaultPath(): string {
+  return path.join(app.getPath('userData'), 'plugins', 'cardcutter.global.js');
+}
+ipcMain.handle('host:cardcutter-pick-file', async (event) => {
+  const win = ownerWindow(event.sender);
+  const result = await dialog.showOpenDialog(win ?? new BrowserWindow({ show: false }), {
+    title: 'Select card-cutter engine file',
+    properties: ['openFile'],
+    filters: [{ name: 'JavaScript', extensions: ['js', 'mjs', 'cjs'] }],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0]!;
+});
+ipcMain.handle('host:cardcutter-read', async (_event, explicit: string | null) => {
+  const target =
+    (explicit && explicit.trim()) || process.env.CARDCUTTER_ENGINE || cardCutterDefaultPath();
+  try {
+    const source = await fs.readFile(target, 'utf8');
+    return { source, path: target };
+  } catch (err) {
+    return { error: (err as Error).message, path: target };
+  }
+});
+
 // Read a file at a known absolute path — used by the home
 // screen's "open recent" path, which already has the path from
 // the recents list and shouldn't pop a file picker. Returns null

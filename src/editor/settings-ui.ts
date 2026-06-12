@@ -830,6 +830,47 @@ class SettingsModal {
       row.appendChild(text);
       row.appendChild(wrap);
       return row;
+    } else if (meta.kind === 'cardCutterEnginePath') {
+      // Like `folder`, but picks a FILE (the engine bundle) via the
+      // native file dialog. electronOnly, so the host is always present.
+      const wrap = document.createElement('div');
+      wrap.className = 'pmd-settings-folder';
+      const pathEl = document.createElement('span');
+      pathEl.className = 'pmd-settings-folder-path';
+      const refreshPath = (): void => {
+        const value = settings.get(meta.key) as string;
+        pathEl.textContent = value || '(default location)';
+        pathEl.classList.toggle('pmd-settings-folder-empty', !value);
+      };
+      refreshPath();
+      const browseBtn = document.createElement('button');
+      browseBtn.type = 'button';
+      browseBtn.className = 'pmd-settings-btn';
+      browseBtn.textContent = 'Browse…';
+      browseBtn.addEventListener('click', () => {
+        void (async (): Promise<void> => {
+          const electron = getElectronHost();
+          if (!electron?.cardCutterPickFile) return;
+          const picked = await electron.cardCutterPickFile();
+          if (picked == null) return;
+          settings.set(meta.key, picked as never);
+          refreshPath();
+        })();
+      });
+      const clearBtn = document.createElement('button');
+      clearBtn.type = 'button';
+      clearBtn.className = 'pmd-settings-btn';
+      clearBtn.textContent = 'Clear';
+      clearBtn.addEventListener('click', () => {
+        settings.set(meta.key, '' as never);
+        refreshPath();
+      });
+      wrap.appendChild(pathEl);
+      wrap.appendChild(browseBtn);
+      wrap.appendChild(clearBtn);
+      row.appendChild(text);
+      row.appendChild(wrap);
+      return row;
     } else if (meta.kind === 'text' || meta.kind === 'password') {
       // Plain string input. Used for comment author / initials,
       // Anthropic API key, etc. Password kind masks the value.

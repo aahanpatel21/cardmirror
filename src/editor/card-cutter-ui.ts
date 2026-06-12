@@ -16,10 +16,14 @@ import { showToast } from './toast.js';
 import {
   cutFocusedCard,
   focusedCardStatus,
-  proposeFocusedCuts,
-  highlightDownFocusedCard,
+  proposeFocusedOmissions,
+  setSectionOmitted,
+  refineHighlightFocusedCard,
+  addHighlightFocusedCard,
+  hasCardSubSelection,
   ensureEngine,
-  type CutProposal,
+  type CutSession,
+  type OmissionSection,
 } from './card-cutter-port.js';
 
 type Intent = 'build' | 'support' | 'answer';
@@ -42,8 +46,13 @@ export async function openCutLaunchSheet(view: EditorView): Promise<void> {
     return;
   }
   if (status.hasHighlight) {
-    // Already cut → offer to shorten the read instead.
-    openHighlightDownSheet(view);
+    // Already cut. A sub-selection means "add highlight here"; otherwise
+    // offer the shorten / tighten / add sheet.
+    if (hasCardSubSelection(view)) {
+      void addHighlightFocusedCard(view);
+    } else {
+      openHighlightDownSheet(view);
+    }
     return;
   }
   const highlightOnly = status.hasUnderline; // underlined → highlight only
@@ -60,10 +69,17 @@ export async function openCutLaunchSheet(view: EditorView): Promise<void> {
 
   const close = (): void => {
     overlay.remove();
-    document.removeEventListener('keydown', onKey);
+    document.removeEventListener('keydown', onKey, true);
   };
   const onKey = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape') close();
+    if (e.key === 'Escape') {
+      close();
+      return;
+    }
+    if (!dialog.contains(e.target as Node)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
   };
 
   // ── Read length (optional cap; efficient by default) ──
@@ -174,75 +190,126 @@ export async function openCutLaunchSheet(view: EditorView): Promise<void> {
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) close();
   });
-  document.addEventListener('keydown', onKey);
+  document.addEventListener('keydown', onKey, true);
   document.body.appendChild(overlay);
+  dialog.tabIndex = -1;
+  dialog.focus();
 
   async function onGo(): Promise<void> {
-    const mode =
-      settings.get('cardCutterClarifyingQuestions') === 'always' ? 'always' : 'when-ambiguous';
-    // Describe-then-generate: only for a fresh full cut, when asked.
-    if (!highlightOnly && askMe) {
-      go.disabled = true;
-      go.textContent = 'Thinking…';
-      const base = readTimeSec ?? settings.get('cardCutterReadTimeSec');
-      const proposals = await proposeFocusedCuts(view, base, mode);
-      go.disabled = false;
-      go.textContent = go.dataset['label'] ?? 'Cut';
-      if (proposals && proposals.length >= 2) {
-        renderProposalStep(proposals);
-        return;
-      }
-    }
+    // Apply-then-refine: cut now (efficiently, capped if a length was
+    // chosen), then — when asked, or when a cap couldn't be met — open
+    // the section checklist over the real cut with exact counts.
     close();
-    await cutFocusedCard(view, {
+    const session = await cutFocusedCard(view, {
       role: INTENT_ROLE[intent],
       ...(readTimeSec ? { readTimeSec } : {}),
     });
-  }
-
-  /** Second step: the engine's candidate cuts as a radio group. */
-  function renderProposalStep(proposals: CutProposal[]): void {
-    rtSection.hidden = true;
-    intentSection.hidden = true;
-    askRow.hidden = true;
-    header.textContent = 'How are you using this card?';
-    const sec = document.createElement('div');
-    sec.className = 'pmd-cardcutter-section pmd-cardcutter-proposals';
-    let chosen = proposals[0]!;
-    const grp2 = `pmd-cc-prop-${Math.random().toString(36).slice(2, 7)}`;
-    proposals.forEach((p, i) => {
-      const lbl = document.createElement('label');
-      lbl.className = 'pmd-cardcutter-radio pmd-cardcutter-proposal';
-      const input = document.createElement('input');
-      input.type = 'radio';
-      input.name = grp2;
-      input.checked = i === 0;
-      input.addEventListener('change', () => {
-        if (input.checked) chosen = p;
-      });
-      lbl.appendChild(input);
-      const box = document.createElement('span');
-      const t = document.createElement('strong');
-      t.textContent = `${p.label} · ~${p.readTimeSec}s`;
-      const d = document.createElement('span');
-      d.className = 'pmd-cardcutter-proposal-detail';
-      d.textContent = p.detail;
-      box.appendChild(t);
-      box.appendChild(d);
-      lbl.appendChild(box);
-      sec.appendChild(lbl);
-    });
-    dialog.insertBefore(sec, buttons);
-    go.textContent = 'Cut';
-    go.onclick = (): void => {
-      close();
-      void cutFocusedCard(view, { role: chosen.role, readTimeSec: chosen.readTimeSec });
-    };
+    if (!session) return;
+    // Cap met cleanly → done. Cap missed → offer manual trim. No cap →
+    // offer the checklist when ask-me is on.
+    const wantChecklist = readTimeSec ? !!session.shortfall : askMe;
+    if (!wantChecklist) return;
+    showToast('Finding optional sections…');
+    const sections = await proposeFocusedOmissions(session);
+    if (sections.length === 0) {
+      if (session.shortfall)
+        showToast(`Couldn't reach ≤${readTimeSec}s without dropping a warrant.`);
+      return;
+    }
+    openTrimChecklist(view, session, sections, readTimeSec);
   }
 }
 
-/** Highlight Down — shorten an already-cut card's read to a target
- *  length. Removes highlights only (underline/emphasis untouched). */
+/** Apply-then-refine checklist: a floating panel listing the optional
+ *  sections of a just-applied cut. Each row's count is engine-exact;
+ *  unchecking removes that section's highlights live on the card. */
+function openTrimChecklist(
+  view: EditorView,
+  session: CutSession,
+  sections: OmissionSection[],
+  capSec?: number | null,
+): void {
+  const wpm = firstReaderWpm();
+  const secsFor = (words: number): number => Math.max(1, Math.round((words / wpm) * 60));
+
+  const panel = document.createElement('div');
+  panel.className = 'pmd-cardcutter-trim';
+
+  const head = document.createElement('div');
+  head.className = 'pmd-cardcutter-trim-head';
+  const title = document.createElement('div');
+  title.className = 'pmd-cardcutter-trim-title';
+  title.textContent = capSec ? `Couldn't hit ≤${capSec}s — trim more?` : 'Trim the read (optional)';
+  head.appendChild(title);
+  const total = document.createElement('div');
+  total.className = 'pmd-cardcutter-trim-total';
+  head.appendChild(total);
+  panel.appendChild(head);
+
+  let readWords = session.readWords;
+  const renderTotal = (): void => {
+    total.textContent = `Read now: ${readWords}w · ~${secsFor(readWords)}s`;
+  };
+  renderTotal();
+
+  const list = document.createElement('div');
+  list.className = 'pmd-cardcutter-trim-list';
+  for (const sec of sections) {
+    const row = document.createElement('label');
+    row.className = 'pmd-cardcutter-trim-row';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true; // checked = kept
+    cb.addEventListener('change', () => {
+      const omit = !cb.checked;
+      setSectionOmitted(view, session, sec, omit);
+      readWords += omit ? -sec.words : sec.words;
+      row.classList.toggle('pmd-cardcutter-trim-omitted', omit);
+      renderTotal();
+    });
+    row.appendChild(cb);
+    const box = document.createElement('span');
+    box.className = 'pmd-cardcutter-trim-text';
+    const lab = document.createElement('strong');
+    lab.textContent = sec.label;
+    const det = document.createElement('span');
+    det.className = 'pmd-cardcutter-trim-detail';
+    det.textContent = sec.description;
+    box.appendChild(lab);
+    box.appendChild(det);
+    row.appendChild(box);
+    const save = document.createElement('span');
+    save.className = 'pmd-cardcutter-trim-save';
+    save.textContent = `−${sec.words}w · ~${secsFor(sec.words)}s`;
+    row.appendChild(save);
+    list.appendChild(row);
+  }
+  panel.appendChild(list);
+
+  const foot = document.createElement('div');
+  foot.className = 'pmd-cardcutter-trim-foot';
+  const done = document.createElement('button');
+  done.type = 'button';
+  done.className = 'pmd-text-prompt-ok';
+  done.textContent = 'Done';
+  const close = (): void => {
+    panel.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') close();
+  };
+  done.addEventListener('click', close);
+  foot.appendChild(done);
+  panel.appendChild(foot);
+
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(panel);
+}
+
+/** Refine the read — a compose-then-run dialog. Drop redundancy,
+ *  skeletonize, and a target length are all OPTIONAL, composable
+ *  settings; free-text guidance steers them, and can run on its own. */
 function openHighlightDownSheet(view: EditorView): void {
   const overlay = document.createElement('div');
   overlay.className = 'pmd-route-overlay';
@@ -251,42 +318,98 @@ function openHighlightDownSheet(view: EditorView): void {
 
   const header = document.createElement('div');
   header.className = 'pmd-route-header';
-  header.textContent = 'Shorten the read';
+  header.textContent = 'Refine highlighting';
   dialog.appendChild(header);
 
   const close = (): void => {
     overlay.remove();
-    document.removeEventListener('keydown', onKey);
+    document.removeEventListener('keydown', onKey, true);
   };
+  // Modal: swallow every keystroke that isn't aimed at the dialog's own
+  // controls, so the underlying doc never sees it (capture phase, before
+  // ProseMirror's keydown handler on the editor).
   const onKey = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape') close();
+    if (e.key === 'Escape') {
+      close();
+      return;
+    }
+    if (!dialog.contains(e.target as Node)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
   };
 
+  // ── Composable settings (all optional) ──
+  let dropRedundancy = false;
+  let skeletonize = false;
+  let allowAdd = false;
+  const toggleSection = document.createElement('div');
+  toggleSection.className = 'pmd-cardcutter-section pmd-cardcutter-chips';
+  const toggleChip = (text: string, onToggle: (on: boolean) => void): void => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pmd-cardcutter-chip';
+    b.textContent = text;
+    b.setAttribute('aria-pressed', 'false');
+    b.addEventListener('click', () => {
+      const on = b.getAttribute('aria-pressed') !== 'true';
+      b.setAttribute('aria-pressed', String(on));
+      onToggle(on);
+    });
+    toggleSection.appendChild(b);
+  };
+  toggleChip('Drop redundancy', (on) => (dropRedundancy = on));
+  toggleChip('Skeletonize', (on) => (skeletonize = on));
+  toggleChip('Allow adding highlighting', (on) => (allowAdd = on));
+  dialog.appendChild(toggleSection);
+
+  // ── Target length (optional; None by default) ──
+  let chosenSec: number | null = null;
   const section = document.createElement('div');
   section.className = 'pmd-cardcutter-section';
-  section.appendChild(label('Trim the highlighted read to about…'));
+  section.appendChild(label('Target length (optional)'));
   const row = document.createElement('div');
   row.className = 'pmd-cardcutter-chips';
   const wpm = firstReaderWpm();
-  let chosen = READ_TIME_PRESETS[1] ?? 12;
-  const press = (active: HTMLButtonElement): void =>
+  const pressTarget = (active: HTMLButtonElement): void =>
     row.querySelectorAll('.pmd-cardcutter-chip').forEach((c) =>
       c.setAttribute('aria-pressed', String(c === active)),
     );
+  const noneChip = document.createElement('button');
+  noneChip.type = 'button';
+  noneChip.className = 'pmd-cardcutter-chip';
+  noneChip.textContent = 'None';
+  noneChip.setAttribute('aria-pressed', 'true');
+  noneChip.addEventListener('click', () => {
+    chosenSec = null;
+    pressTarget(noneChip);
+  });
+  row.appendChild(noneChip);
   for (const sec of READ_TIME_PRESETS) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'pmd-cardcutter-chip';
     b.textContent = `${sec}s · ~${Math.round((sec * wpm) / 60)}w`;
-    b.setAttribute('aria-pressed', String(sec === chosen));
+    b.setAttribute('aria-pressed', 'false');
     b.addEventListener('click', () => {
-      chosen = sec;
-      press(b);
+      chosenSec = sec;
+      pressTarget(b);
     });
     row.appendChild(b);
   }
   section.appendChild(row);
   dialog.appendChild(section);
+
+  // ── Free-text guidance (optional; can run on its own) ──
+  const fbSection = document.createElement('div');
+  fbSection.className = 'pmd-cardcutter-section';
+  fbSection.appendChild(label('Guidance (optional)'));
+  const feedbackEl = document.createElement('textarea');
+  feedbackEl.className = 'pmd-cardcutter-feedback';
+  feedbackEl.rows = 2;
+  feedbackEl.placeholder = 'e.g. keep the strongest impact phrasing; drop the China comparison';
+  fbSection.appendChild(feedbackEl);
+  dialog.appendChild(fbSection);
 
   const buttons = document.createElement('div');
   buttons.className = 'pmd-text-prompt-buttons';
@@ -299,10 +422,21 @@ function openHighlightDownSheet(view: EditorView): void {
   const go = document.createElement('button');
   go.type = 'button';
   go.className = 'pmd-text-prompt-ok';
-  go.textContent = 'Shorten';
+  go.textContent = 'Refine';
   go.addEventListener('click', () => {
+    const feedback = feedbackEl.value.trim();
+    if (!dropRedundancy && !skeletonize && chosenSec === null && !feedback) {
+      showToast('Pick a target or a setting, or type some guidance.');
+      return;
+    }
     close();
-    void highlightDownFocusedCard(view, chosen);
+    void refineHighlightFocusedCard(view, {
+      ...(dropRedundancy ? { dropRedundancy: true } : {}),
+      ...(skeletonize ? { skeletonize: true } : {}),
+      ...(chosenSec !== null ? { readTimeSec: chosenSec } : {}),
+      ...(feedback ? { feedback } : {}),
+      ...(allowAdd ? { allowAdd: true } : {}),
+    });
   });
   buttons.appendChild(go);
   dialog.appendChild(buttons);
@@ -311,8 +445,11 @@ function openHighlightDownSheet(view: EditorView): void {
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) close();
   });
-  document.addEventListener('keydown', onKey);
+  document.addEventListener('keydown', onKey, true);
   document.body.appendChild(overlay);
+  // Pull focus off the editor so the doc stops receiving keystrokes.
+  dialog.tabIndex = -1;
+  dialog.focus();
 }
 
 function label(text: string): HTMLElement {

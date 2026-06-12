@@ -829,11 +829,14 @@ export interface Settings {
    *  cutting logic itself lives in the separately-versioned
    *  @cardmirror/card-cutter package, loaded dev-only. */
   cardCutterEnabled: boolean;
+  /** Card-cutter: absolute path to the engine bundle to load (packaged
+   *  builds only). Empty = use CARDCUTTER_ENGINE env or the default
+   *  userData/plugins/cardcutter.global.js location. */
+  cardCutterEnginePath: string;
   /** Card-cutter: emphasis style — a persistent AUTHOR fingerprint
    *  (not inferred from the file). `voice` = emphasis is the content
-   *  tier inside highlights (policy house style); `independent` =
-   *  emphasis marks rhetorical hammers regardless of the spoken cut
-   *  (kritik style); `minimal` = sparse. */
+   *  tier inside highlights; `independent` = emphasis marks rhetorical
+   *  hammers regardless of the spoken cut; `minimal` = sparse. */
   cardCutterEmphasisStyle: 'voice' | 'independent' | 'minimal';
   /** Card-cutter: default highlighted-read length, in seconds at the
    *  user's reader WPM. The budget knob; ~12s ≈ 64 words @ 350 wpm. */
@@ -1030,6 +1033,7 @@ const DEFAULTS: Settings = {
   quickCardActiveTags: [],
   quickCardSkipMidTextInsertConfirm: false,
   cardCutterEnabled: false,
+  cardCutterEnginePath: '',
   cardCutterEmphasisStyle: 'voice',
   cardCutterReadTimeSec: 12,
   cardCutterAcronymSplitting: 'off',
@@ -1115,6 +1119,7 @@ export interface SettingMeta {
     | 'cardCutterEmphasisStyle'
     | 'cardCutterAcronymSplitting'
     | 'cardCutterClarifyingQuestions'
+    | 'cardCutterEnginePath'
     | 'cardCutterDisable';
   /** Which tab this setting lives under in the settings dialog. */
   category: SettingsCategory;
@@ -1818,7 +1823,7 @@ export const SETTING_METADATA: SettingMeta[] = [
     key: 'cardCutterEmphasisStyle',
     label: 'Emphasis style',
     description:
-      "Voice: emphasis marks the spoken content words inside highlights (policy house style). Independent: emphasis marks rhetorically powerful phrases whether or not they're in the read (kritik style). Minimal: sparse emphasis. This is your own preference and sticks across files.",
+      "Voice: emphasis marks the spoken content words inside highlights. Independent: emphasis marks rhetorically powerful phrases whether or not they're in the read. Minimal: sparse emphasis. This is your own preference and sticks across files.",
     kind: 'cardCutterEmphasisStyle',
     category: 'comments-ai',
     searchHidden: true,
@@ -1851,6 +1856,17 @@ export const SETTING_METADATA: SettingMeta[] = [
       'Allow highlighting part of a word to produce spoken shorthand ("regulations" read as "regs", "Democrats" as "Dems"). Off by default — load-bearing but the riskiest transform.',
     kind: 'toggle',
     category: 'comments-ai',
+    searchHidden: true,
+    revealWhen: 'cardCutterEnabled',
+  },
+  {
+    key: 'cardCutterEnginePath',
+    label: 'Engine file',
+    description:
+      'Path to the card-cutter engine bundle this build loads (packaged installs only — the engine is never shipped with the app). Leave empty to use the CARDCUTTER_ENGINE environment variable, or the default plugins location in the app data folder. Reload after changing.',
+    kind: 'cardCutterEnginePath',
+    category: 'comments-ai',
+    electronOnly: true,
     searchHidden: true,
     revealWhen: 'cardCutterEnabled',
   },
@@ -2271,6 +2287,8 @@ function sanitize(s: Settings): Settings {
       : [],
     quickCardSkipMidTextInsertConfirm: s.quickCardSkipMidTextInsertConfirm === true,
     cardCutterEnabled: s.cardCutterEnabled === true,
+    cardCutterEnginePath:
+      typeof s.cardCutterEnginePath === 'string' ? s.cardCutterEnginePath : '',
     cardCutterEmphasisStyle:
       s.cardCutterEmphasisStyle === 'independent' || s.cardCutterEmphasisStyle === 'minimal'
         ? s.cardCutterEmphasisStyle

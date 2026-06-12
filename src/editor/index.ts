@@ -116,6 +116,7 @@ import {
 } from './read-mode-plugin.js';
 import { learnHighlightPlugin, flashcardRangeAt } from './learn-highlight-plugin.js';
 import { repairHighlightPlugin } from './repair-highlight-plugin.js';
+import { aiWorkingPlugin } from './ai/ai-working-plugin.js';
 import { italicCaretPlugin } from './italic-caret-plugin.js';
 import { absorbPlugin } from './absorb-plugin.js';
 import { citeClassifierPlugin } from './cite-classifier-plugin.js';
@@ -3545,6 +3546,7 @@ export function buildEditorPlugins(): Plugin[] {
     commentsPlugin,
     learnHighlightPlugin,
     repairHighlightPlugin,
+    aiWorkingPlugin,
     italicCaretPlugin,
     frozenSelectionPlugin,
     absorbPlugin,

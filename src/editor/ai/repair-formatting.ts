@@ -33,7 +33,7 @@ import { settings } from '../settings.js';
 import { callAnthropic, AnthropicError } from './anthropic.js';
 import { salvageJson, extractJsonObjects } from './repair-text.js';
 import { showToast } from '../toast.js';
-import { ThinkingTooltip } from './thinking-tooltip.js';
+import { AiActivity } from './ai-activity.js';
 import { setRepairFlashes, clearRepairFlashes } from '../repair-highlight-plugin.js';
 
 export const DEFAULT_FORMAT_REPAIR_PROMPT = `You are a debate-evidence formatting repair tool. Cut cards use Verbatim's body-text scheme — four layers, each a subset of the one before:
@@ -543,13 +543,8 @@ export function runRepairFormatting(view: EditorView): void {
   const groups = groupBlocksByCard(view.state.doc, blocks);
   const startDoc = view.state.doc;
 
-  const tooltip = new ThinkingTooltip();
-  try {
-    const c = view.coordsAtPos(sel.from);
-    tooltip.show({ left: c.left, top: c.top, bottom: c.bottom });
-  } catch {
-    tooltip.show({ left: 16, top: 16, bottom: 32 });
-  }
+  const activity = new AiActivity(view, { from: sel.from, to: sel.to });
+  activity.start();
 
   void (async () => {
     try {
@@ -599,7 +594,7 @@ export function runRepairFormatting(view: EditorView): void {
         results.push({ analysis, plan });
       }
 
-      tooltip.hide();
+      activity.stop();
       if (view.state.doc !== startDoc) {
         showToast('Document changed while analyzing — formatting repair cancelled.');
         return;
@@ -627,7 +622,7 @@ export function runRepairFormatting(view: EditorView): void {
           '.',
       );
     } catch (e) {
-      tooltip.hide();
+      activity.stop();
       console.warn(`[repair-fmt] error: ${e instanceof Error ? e.message : String(e)}`);
       if (e instanceof AnthropicError) showToast(`Repair formatting: ${e.message}`);
       else showToast(`Repair formatting: ${e instanceof Error ? e.message : String(e)}`);

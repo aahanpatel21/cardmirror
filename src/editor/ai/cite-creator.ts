@@ -25,7 +25,7 @@ import type { EditorState, Transaction } from 'prosemirror-state';
 import { schema } from '../../schema/index.js';
 import { settings } from '../settings.js';
 import { callAnthropic, AnthropicError } from './anthropic.js';
-import { ThinkingTooltip } from './thinking-tooltip.js';
+import { AiActivity } from './ai-activity.js';
 import { showToast } from '../toast.js';
 
 /** Today's-date placeholder substituted into the prompt at run
@@ -313,7 +313,7 @@ export function applyCiteToSelection(
   return true;
 }
 
-let activeTooltip: ThinkingTooltip | null = null;
+let activeActivity: AiActivity | null = null;
 
 // --------------------------- command ----------------------------
 
@@ -347,16 +347,10 @@ export function runAiCreateCite(view: EditorView): void {
   const promptTemplate = settings.get('aiCitePrompt').trim() || DEFAULT_AI_CITE_PROMPT;
   const systemPrompt = resolveCitePrompt(promptTemplate);
 
-  // Pin the tooltip below the selection's start coords.
-  if (activeTooltip) activeTooltip.hide();
-  activeTooltip = new ThinkingTooltip();
-  try {
-    const coords = view.coordsAtPos(sel.from);
-    activeTooltip.show({ left: coords.left, top: coords.top, bottom: coords.bottom });
-  } catch {
-    // Fall back to top-of-viewport if coordsAtPos fails.
-    activeTooltip.show({ left: 16, top: 16, bottom: 32 });
-  }
+  // Pill + purple tint over the selection being formatted.
+  if (activeActivity) activeActivity.stop();
+  activeActivity = new AiActivity(view, { from: sel.from, to: sel.to });
+  activeActivity.start();
 
   // Capture the bounds NOW; if the user edits during the request
   // the original selection might shift, but we want to replace
@@ -384,9 +378,9 @@ export function runAiCreateCite(view: EditorView): void {
         showToast(`Cite: ${e instanceof Error ? e.message : String(e)}`);
       }
     } finally {
-      if (activeTooltip) {
-        activeTooltip.hide();
-        activeTooltip = null;
+      if (activeActivity) {
+        activeActivity.stop();
+        activeActivity = null;
       }
     }
   })();
