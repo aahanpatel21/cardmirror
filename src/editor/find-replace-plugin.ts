@@ -325,6 +325,19 @@ function rescanAfterDocChange(
 }
 
 export function findReplacePlugin(): Plugin<FindReplaceState> {
+  // Per-instance memo: ProseMirror calls `decorations` on every view
+  // update, including selection-only ones. Rebuilding the full match
+  // DecorationSet each time is wasteful with thousands of matches open.
+  // The plugin's `apply` returns the SAME state object when nothing
+  // relevant changed, so a reference-identity check on (doc, matches,
+  // scope, currentIndex) lets us reuse the prior set untouched.
+  let decoCache: {
+    doc: unknown;
+    matches: unknown;
+    scope: unknown;
+    currentIndex: number;
+    deco: DecorationSet | null;
+  } | null = null;
   return new Plugin<FindReplaceState>({
     key: findReplaceKey,
     state: {
@@ -442,6 +455,15 @@ export function findReplacePlugin(): Plugin<FindReplaceState> {
       decorations(state) {
         const s = findReplaceKey.getState(state);
         if (!s) return null;
+        if (
+          decoCache &&
+          decoCache.doc === state.doc &&
+          decoCache.matches === s.matches &&
+          decoCache.scope === s.scope &&
+          decoCache.currentIndex === s.currentIndex
+        ) {
+          return decoCache.deco;
+        }
         const decos: Decoration[] = [];
         if (s.scope) {
           // Wrap the scope range in a faint band so the user can
@@ -461,8 +483,15 @@ export function findReplacePlugin(): Plugin<FindReplaceState> {
               : 'pmd-find-match';
           decos.push(Decoration.inline(m.from, m.to, { class: className }));
         }
-        if (decos.length === 0) return null;
-        return DecorationSet.create(state.doc, decos);
+        const deco = decos.length === 0 ? null : DecorationSet.create(state.doc, decos);
+        decoCache = {
+          doc: state.doc,
+          matches: s.matches,
+          scope: s.scope,
+          currentIndex: s.currentIndex,
+          deco,
+        };
+        return deco;
       },
     },
   });

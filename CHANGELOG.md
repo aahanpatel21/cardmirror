@@ -21,6 +21,23 @@ see `DETAILED_CHANGELOG.md`.
   system default instead of failing with "microphone unavailable / device
   not found."
 
+- **Change Case no longer drops the last letter of some text.** On a
+  selection containing a character whose uppercase form is longer than one
+  letter (German ß → SS), cycling case ate the final character; it now
+  preserves the whole text.
+
+- **Condensing into a heading keeps it tracked in the navigation pane.**
+  When a condense that began inside a tag or analytic produced the merged
+  heading, that heading came out without a stable id — so until you next
+  saved and reopened the file, the nav pane couldn't follow the cursor into
+  it (the highlight stuck to the heading above) and you couldn't select or
+  collapse it from the pane. The merged heading now keeps the first
+  source's id.
+
+- **Find-match highlighting isn't re-rendered on every cursor move.** With
+  the find bar open over a large match count, moving the cursor or stepping
+  between matches no longer re-allocates the entire highlight overlay.
+
 ## 0.1.0-alpha.12 — 2026-06-12
 
 ### Added

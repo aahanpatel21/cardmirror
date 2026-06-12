@@ -182,6 +182,20 @@ export function registerFlowIpc(): void {
   // answers, without touching Excel.
   ipcMain.handle('host:flow-start', () => runVerb('ping'));
 
-  // Never leave an orphaned PowerShell behind.
+  // Never leave an orphaned PowerShell behind. `before-quit` covers the
+  // normal path; `will-quit` catches quits that bypass it (e.g. another
+  // before-quit listener calling preventDefault); the synchronous
+  // `process.exit` hook is the last-ditch backstop for app.exit()/abnormal
+  // teardown where the async-friendly events don't fire. All idempotent.
   app.on('before-quit', () => teardown('app quitting'));
+  app.on('will-quit', () => teardown('app quitting'));
+  process.on('exit', () => {
+    if (child) {
+      try {
+        child.kill();
+      } catch {
+        /* already gone */
+      }
+    }
+  });
 }

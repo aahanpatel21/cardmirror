@@ -492,7 +492,24 @@ function mergeRun(sources: PMNode[], withPilcrows: boolean, targetType: NodeType
     cleaned.forEach((child) => inlines.push(child));
     trailingMarks = trailingTextMarks(cleaned);
   }
-  return targetType.create(null, Fragment.fromArray(inlines));
+  // Carry the first source's attributes that the target type supports —
+  // notably `id`. Dropping it (the previous `create(null, …)`) left a
+  // merged tag/heading with no id, which the nav pane keys on, so the
+  // merged card became invisible in the outline.
+  return targetType.create(inheritedAttrs(targetType, sources[0]!), Fragment.fromArray(inlines));
+}
+
+/** The subset of `source`'s attrs that `targetType` defines — so merging
+ *  preserves `id` (and e.g. alignment) without passing attrs the target
+ *  node spec doesn't accept. Defaults fill anything not carried over. */
+function inheritedAttrs(targetType: NodeType, source: PMNode): Record<string, unknown> | null {
+  const spec = targetType.spec.attrs;
+  if (!spec) return null;
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(spec)) {
+    if (key in source.attrs) out[key] = source.attrs[key];
+  }
+  return out;
 }
 
 /** Marks of the last text node in `fragment`, walking backwards past
@@ -960,33 +977,64 @@ export function toggleCase(): Command {
 
     if (!dispatch) return true;
 
-    // Walk text nodes in [from, to] and rewrite each char's case
-    // according to the position of that char in the cleaned `next`
-    // string. Marks preserved per text node.
-    const tr = state.tr;
-    let offset = 0;
+    // Transform each text-node segment PER SEGMENT rather than slicing a
+    // single globally-cased string by original lengths — length-changing
+    // case maps (German ß→SS, Turkish İ→i̇) otherwise shift the slice
+    // boundaries and eat the segment's last character(s). Title case
+    // carries word state across segments so a word split across two text
+    // nodes (e.g. a mark boundary) still capitalizes only its first letter.
+    let inWord = false;
+    const caseSeg = (seg: string): string => {
+      switch (current) {
+        case 'lower':
+          return seg.toUpperCase();
+        case 'title':
+        case 'mixed':
+          return seg.toLowerCase();
+        case 'upper': {
+          let out = '';
+          for (const c of seg) {
+            if (/[A-Za-z0-9_]/.test(c)) {
+              out += inWord ? c.toLowerCase() : c.toUpperCase();
+              inWord = true;
+            } else if (c === "'" || c === '’') {
+              out += c; // apostrophe stays inside the word
+            } else {
+              out += c;
+              inWord = false;
+            }
+          }
+          return out;
+        }
+      }
+    };
+
+    // Compute replacements left-to-right (word state flows forward)…
+    const edits: Array<{ from: number; to: number; node: PMNode }> = [];
     state.doc.nodesBetween(from, to, (node, pos) => {
       if (!node.isText) return true;
       const t = node.text ?? '';
       const nodeStart = pos;
       const nodeEnd = pos + node.nodeSize;
-      const sliceFrom = Math.max(nodeStart, from);
-      const sliceTo = Math.min(nodeEnd, to);
-      const localFrom = sliceFrom - nodeStart;
-      const localTo = sliceTo - nodeStart;
-      const segLen = localTo - localFrom;
-      if (segLen <= 0) return true;
-      const replacement = next.slice(offset, offset + segLen);
-      offset += segLen;
-      const newText = t.slice(0, localFrom) + replacement + t.slice(localTo);
-      tr.replaceWith(nodeStart, nodeEnd, schema.text(newText, node.marks));
+      const localFrom = Math.max(nodeStart, from) - nodeStart;
+      const localTo = Math.min(nodeEnd, to) - nodeStart;
+      if (localTo <= localFrom) return true;
+      const newText = t.slice(0, localFrom) + caseSeg(t.slice(localFrom, localTo)) + t.slice(localTo);
+      edits.push({ from: nodeStart, to: nodeEnd, node: schema.text(newText, node.marks) });
       return true;
     });
 
-    // Preserve the selection so the user can cycle again without
-    // re-selecting. Case transforms preserve string length, so the
-    // original from/to positions are still valid in the new doc.
-    tr.setSelection(TextSelection.create(tr.doc, from, to));
+    // …then apply them back-to-front so an earlier edit's positions stay
+    // valid even when a later one changed length.
+    const tr = state.tr;
+    for (let i = edits.length - 1; i >= 0; i--) {
+      const e = edits[i]!;
+      tr.replaceWith(e.from, e.to, e.node);
+    }
+
+    // Re-select the (possibly length-shifted) transformed range so the
+    // user can cycle case again without re-selecting.
+    tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(from), tr.mapping.map(to)));
 
     dispatch(tr);
     return true;

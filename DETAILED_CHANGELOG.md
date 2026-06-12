@@ -28,6 +28,51 @@ in each release, see `CHANGELOG.md`.
   retries without the device constraint, so it opens the system default;
   a genuinely device-less machine still surfaces "microphone unavailable."
 
+The following came out of validating the 2026-06-10 audit against current
+code (`reference-docs/AUDIT-2026-06-10.md`):
+
+- **Change Case truncated text under length-growing case maps**
+  (`src/editor/condense.ts`, `toggleCase`). It cased the whole selection to
+  one string and re-sliced it back across text nodes by the *original*
+  segment lengths, so a character whose uppercase is longer (German ß→SS,
+  Turkish İ→i̇) shifted every later slice and ate the final character.
+  Rewritten to transform each text-node segment in place (length-safe),
+  with title-case carrying word state across segments (so a word split by a
+  mark boundary capitalizes only its first letter), edits applied
+  back-to-front so positions stay valid, and the selection re-mapped
+  through the transaction. Regression tests in `tests/editor/condense.test.ts`.
+
+- **Condense/merge dropped a merged heading's id** (`condense.ts`,
+  `mergeRun`). `targetType.create(null, …)` discarded all attrs, so a
+  demolish-mode merge whose first touched block was a tag/analytic emitted
+  the merged heading with `id: null` — the documented "cursor appears in
+  the card above" defect (`schema/ids.ts`): the heading still renders, but
+  the nav pane skips it for caret-tracking/selection, and it's only
+  repaired on the next `.cmir` load by `stampMissingHeadingIds`. `mergeRun`
+  now carries the first source's attrs that the target type supports
+  (notably `id`).
+
+- **Find-bar decorations rebuilt on every view update**
+  (`src/editor/find-replace-plugin.ts`). `props.decorations` rebuilt the
+  full match `DecorationSet` on every update, including selection-only
+  ones. Added a per-plugin-instance memo keyed on reference identity of
+  (doc, matches, scope, currentIndex) — the plugin's `apply` returns the
+  same state object when nothing relevant changed, so selection moves now
+  reuse the prior set instead of re-allocating thousands of decorations.
+
+- **Voice grammar-recreate fallback had a use-after-free window**
+  (`apps/desktop/src/voice/vosk.ts`, from the macOS fix above). The
+  fallback freed the old recognizer before building the replacement; if
+  `vosk_recognizer_new_grm` failed/threw, `this.ptr` was left pointing at
+  freed memory. It now builds the new recognizer first and frees the old
+  only on success.
+
+- **Persistent Flow host could be orphaned on abnormal quit**
+  (`apps/desktop/src/flow-bridge.ts`). Only `before-quit` killed the
+  PowerShell child, which is skipped on `app.exit()` or a `preventDefault`'d
+  quit. Added a `will-quit` handler and a synchronous `process.on('exit')`
+  backstop so the child (and its Excel COM reference) is always torn down.
+
 ## 0.1.0-alpha.12 — 2026-06-12
 
 - **Voice control failed to start in packaged builds.** The recognizer

@@ -120,9 +120,13 @@ export class Recognizer {
     // it does have. Costs a graph rebuild, but only fires on vocabulary
     // changes (viewport/navigation), and keeps dynamic vocab working.
     if (!this.grammarBacked) return;
+    // Build the replacement BEFORE freeing the old one: if recNewGrm fails
+    // (or koffi throws), `this.ptr` must still point at the live old
+    // recognizer, never at freed memory.
+    const next = api().recNewGrm(this.model.handle, this.sampleRate, JSON.stringify(phrases));
+    if (!next) throw new Error('voice: failed to recreate recognizer');
     api().recFree(this.ptr);
-    this.ptr = api().recNewGrm(this.model.handle, this.sampleRate, JSON.stringify(phrases));
-    if (!this.ptr) throw new Error('voice: failed to recreate recognizer');
+    this.ptr = next;
     if (this.wordsOn) api().recSetWords(this.ptr, 1);
   }
 

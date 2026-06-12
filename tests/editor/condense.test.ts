@@ -367,6 +367,19 @@ describe("condenseMerge — selection, headingMode: 'demolish'", () => {
     const out = next!.doc;
     expect(out.firstChild!.type.name).toBe('paragraph');
   });
+
+  it('preserves the first heading id when merging into a heading (nav stays linked)', () => {
+    const pocket = schema.nodes['pocket']!.create({ id: 'pkt-keep' }, schema.text('Heading'));
+    const doc = makeDoc([pocket, paragraph('after')]);
+    const state = setSelectionRange(doc, 'Heading', 0, 'after', 5);
+    const next = apply(state, condenseMerge({ withPilcrows: false, headingMode: 'demolish' }));
+    expect(next).not.toBeNull();
+    const merged = next!.doc.firstChild!;
+    expect(merged.type.name).toBe('pocket');
+    // The id used to be dropped (create(null, …)) → nav couldn't find the
+    // merged heading. It must carry over from the first source.
+    expect(merged.attrs['id']).toBe('pkt-keep');
+  });
 });
 
 // ---- Selection-based, headingMode = 'strict' ----
@@ -540,5 +553,33 @@ describe('toggleCase', () => {
     // case — proving the selection truly stayed on the rewritten text.
     const after = apply(next!, toggleCase());
     expect(caseStateOf(after!.doc, 'Hello')).toBe('Hello World');
+  });
+
+  it('handles length-growing case maps without eating characters (ß→SS)', () => {
+    const doc = makeDoc([paragraph('die straße nach berlin bleibt offen')]);
+    const state = setSelectionRange(doc, 'die', 0, 'offen', 5);
+    const next = apply(state, toggleCase());
+    // The trailing "N" used to be eaten because ß→SS shifts the slice.
+    expect(caseStateOf(next!.doc, 'DIE')).toBe('DIE STRASSE NACH BERLIN BLEIBT OFFEN');
+    // Selection still wraps the whole (now longer) run.
+    expect(next!.selection.empty).toBe(false);
+    expect(next!.doc.textBetween(next!.selection.from, next!.selection.to, '', '')).toBe(
+      'DIE STRASSE NACH BERLIN BLEIBT OFFEN',
+    );
+  });
+
+  it('title-cases a word split across a mark boundary as one word', () => {
+    // "HELLO" as two text nodes ("HEL" + bold "LO") — title case must
+    // carry word state across the seam, capitalizing only the first
+    // letter (→ "Hel"+"lo"), not restarting and producing "Hel"+"Lo".
+    const p = schema.nodes['paragraph']!.create(null, [
+      schema.text('HEL'),
+      schema.text('LO', [schema.marks['bold']!.create()]),
+    ]);
+    const doc = makeDoc([p]);
+    const state = setSelectionRange(doc, 'HEL', 0, 'LO', 2);
+    const next = apply(state, toggleCase()); // UPPER → Title
+    expect(caseStateOf(next!.doc, 'Hel')).toBe('Hel');
+    expect(caseStateOf(next!.doc, 'lo')).toBe('lo');
   });
 });
