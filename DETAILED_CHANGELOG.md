@@ -133,6 +133,15 @@ code (`reference-docs/AUDIT-2026-06-10.md`):
   re-exports as a plain `<w:br/>` — because the doc model has no node for
   it; tracked separately. Test in `tests/round-trip/inverse.test.ts`.
 
+- **Demolish-mode condense flattened tables** (`condense.ts`). The demolish
+  path flattens every container in range into a single textblock run;
+  `flattenForDemolish` recursed into a `table` too, pulling its cell
+  paragraphs into the merge and destroying the rows/cells. The replacement
+  builder also has nowhere to place an atomic block mid-merge. The command
+  now scans the affected range for a `table` and bails (no-op) when it finds
+  one, leaving the doc — and the table — intact. Test in
+  `tests/editor/condense.test.ts`.
+
 - **Block-level content controls dropped on import** (`import/importer.ts`).
   The body loop handled only `w:p`/`w:tbl`, so a `<w:sdt>` (structured
   document tag / content control) and everything inside it was skipped. It

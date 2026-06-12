@@ -69,6 +69,11 @@ see `DETAILED_CHANGELOG.md`.
   elements. (A page break still comes back as a line break — the break
   type isn't tracked yet.)
 
+- **Condensing no longer destroys a table caught in the selection.** A
+  demolish-mode condense over a range containing a table used to flatten
+  the table into loose paragraphs; it now leaves the document untouched so
+  the table survives.
+
 - **Content controls no longer drop their contents on import.** Text inside
   a Word content control (a "structured document tag") was skipped; it now
   imports normally.

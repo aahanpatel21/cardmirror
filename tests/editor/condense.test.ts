@@ -333,6 +333,20 @@ describe("condenseMerge — selection, headingMode: 'respect'", () => {
 // ---- Selection-based, headingMode = 'demolish' ----
 
 describe("condenseMerge — selection, headingMode: 'demolish'", () => {
+  it('does not flatten a table caught in the selection — bails instead', () => {
+    const cell = schema.nodes['table_cell']!.create(
+      null,
+      schema.nodes['paragraph']!.create(null, schema.text('cell text')),
+    );
+    const row = schema.nodes['table_row']!.create(null, cell);
+    const table = schema.nodes['table']!.create(null, row);
+    const doc = makeDoc([paragraph('before'), table, paragraph('after')]);
+    const state = setSelectionRange(doc, 'before', 0, 'after', 5);
+    const next = apply(state, condenseMerge({ withPilcrows: false, headingMode: 'demolish' }));
+    // Bailed (no dispatch) — the doc, and the table, are left intact.
+    expect(next).toBeNull();
+  });
+
   it("user's example: selection mid-Body-A → mid-Body-B absorbs Card B into Card A", () => {
     const doc = makeDoc([
       card(tag('TagA'), citePara('CiteA'), cardBody('BodyAtextA')),

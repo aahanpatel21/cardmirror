@@ -685,6 +685,17 @@ function condenseMergeSelectionDemolish(opts: MergeOptions): Command {
     });
     if (replaceFrom === -1 || replaceTo === -1) return false;
 
+    // A table can't be merged into a flat textblock run without destroying
+    // its rows/cells, and the demolish replacement has nowhere to put an
+    // atomic block mid-merge. Bail (no-op) rather than flatten it — the
+    // doc is left intact and the user can handle the table separately.
+    let touchesTable = false;
+    state.doc.nodesBetween(replaceFrom, replaceTo, (n) => {
+      if (n.type.name === 'table') touchesTable = true;
+      return !touchesTable;
+    });
+    if (touchesTable) return false;
+
     // Find first and last touched textblock indices in `flat`.
     let firstTouchedIdx = -1;
     let lastTouchedIdx = -1;
