@@ -4,13 +4,17 @@
  * User selects raw citation info (URL, byline, abstract, article
  * chunk — whatever they have). On invocation we send the selection
  * + today's date + the configurable system prompt to Anthropic.
- * The model returns JSON shaped like:
+ * The model replies in a delimited block format (NOT JSON — quotes in a
+ * cite would otherwise need escaping):
  *
- *   { "cite": "<formatted debate-style cite>",
- *     "tokens": ["Smith 24", ...] }
+ *   [[CITE]]
+ *   <formatted debate-style cite>
+ *   [[TOKENS]]
+ *   <one token per line, e.g. "Smith 24">
+ *   [[END]]
  *
  * We replace the user's selection with the cite text and apply the
- * named-style `cite_mark` to every substring listed in `tokens` —
+ * named-style `cite_mark` to every substring listed under TOKENS —
  * those are the "Lastname ShortDate" pieces that get F8 cite
  * highlighting in the editor.
  *

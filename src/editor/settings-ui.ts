@@ -2857,11 +2857,11 @@ function buildCardCutterRadio(
   options: [string, string][],
 ): HTMLElement {
   const wrap = document.createElement('div');
-  wrap.className = 'pmd-mobile-layout-editor';
+  wrap.className = 'pmd-heading-mode-editor';
   const groupName = `pmd-${key}-${Math.random().toString(36).slice(2, 8)}`;
   for (const [value, label] of options) {
     const row = document.createElement('label');
-    row.className = 'pmd-mobile-layout-row';
+    row.className = 'pmd-heading-mode-row';
     const input = document.createElement('input');
     input.type = 'radio';
     input.name = groupName;
@@ -2872,7 +2872,7 @@ function buildCardCutterRadio(
     });
     row.appendChild(input);
     const span = document.createElement('span');
-    span.className = 'pmd-mobile-layout-row-label';
+    span.className = 'pmd-heading-mode-row-label';
     span.textContent = label;
     row.appendChild(span);
     wrap.appendChild(row);
