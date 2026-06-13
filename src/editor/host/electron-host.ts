@@ -52,6 +52,20 @@ export interface FlowResult {
   error?: string;
 }
 
+/** Final tallies from a bulk-compress run. */
+export interface BulkCompressSummary {
+  total: number;
+  compressed: number;
+  skipped: number;
+  failed: number;
+  bytesBefore: number;
+  bytesAfter: number;
+}
+/** Throttled progress during a bulk-compress run (`done` of `total`). */
+export interface BulkCompressProgress extends BulkCompressSummary {
+  done: number;
+}
+
 /** The shape we expect the preload script to expose. Defined here
  *  (and not imported from the desktop workspace) so the editor
  *  doesn't take a build-time dependency on Electron-specific code. */
@@ -110,6 +124,10 @@ interface ElectronAPI {
     }) => void,
   ): () => void;
   writeFileAtPath(filePath: string, bytes: Uint8Array): Promise<void>;
+  bulkCompress(
+    dir: string,
+    onProgress: (p: BulkCompressProgress) => void,
+  ): Promise<BulkCompressSummary>;
   writeJournal(entry: JournalEntry): Promise<void>;
   readJournals(): Promise<JournalEntry[]>;
   deleteJournal(uid: string): Promise<void>;
@@ -417,6 +435,13 @@ export class ElectronHost implements Host {
 
   async writeFileAtPath(filePath: string, bytes: Uint8Array): Promise<void> {
     await api().writeFileAtPath(filePath, bytes);
+  }
+
+  async bulkCompress(
+    dir: string,
+    onProgress: (p: BulkCompressProgress) => void,
+  ): Promise<BulkCompressSummary> {
+    return api().bulkCompress(dir, onProgress);
   }
 
   async writeJournal(entry: JournalEntry): Promise<void> {

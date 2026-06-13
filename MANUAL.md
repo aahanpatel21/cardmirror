@@ -1046,7 +1046,12 @@ dictation errors (it doesn't change command recognition).
 ### Two formats
 
 - **`.cmir`** — CardMirror's native format. Lossless, and required for
-  autosave and crash recovery. Use it for your working files.
+  autosave and crash recovery. Use it for your working files. Files are
+  saved compressed (roughly 10× smaller than before) and open just as fast;
+  older uncompressed files still open and shrink the next time you save them.
+  To shrink a whole existing library at once, use **Bulk compress** on the
+  Home screen (desktop) — it compresses every `.cmir` in a folder in place,
+  skipping ones already done. *(A temporary migration helper.)*
 - **`.docx`** — Word/Verbatim format. Use it to share. CardMirror writes
   docx that's indistinguishable from Verbatim's own output; some
   CardMirror-only extras (private notes, AI notes, flashcards) are left

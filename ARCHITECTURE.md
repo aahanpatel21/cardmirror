@@ -64,6 +64,24 @@ We do **not** commit to byte equivalence — Word's docx isn't byte-stable
 across saves anyway (rsids, timestamps). Semantic equivalence is the
 contract.
 
+### Native format (`.cmir`)
+
+`.cmir` is the lossless native form: a JSON envelope (`format`,
+`formatVersion`, the PM doc JSON, optional threads + `docId`) round-tripped
+through `serializeNative` / `parseNative` (`native/index.ts`), the single
+chokepoint every reader and writer funnels through (`docid.ts` is the one
+direct-bytes bypass). The envelope is **gzip-compressed** (~10× smaller);
+compression is a container concern, so `formatVersion` is unchanged. The
+format is **self-describing by magic bytes** — legacy plaintext begins with
+`{` (0x7B), gzip with 0x1F 0x8B — so `parseNative` sniffs two bytes and
+inflates or passes through, and old uncompressed files keep opening with no
+version flag. The codec is `fflate` (`native/codec.ts`), chosen because the
+read/write path is synchronous and runs in the renderer + browser builds
+where `node:zlib` is absent. Inflation happens only on open/dive, never on
+the command-bar listing or repeated in-file search. (In alpha this shipped
+one-shot — read + write together — plus a temporary Home-screen
+bulk-compress tool to migrate existing libraries in place; §16-adjacent.)
+
 ## 4. Schema
 
 Structural skeleton:

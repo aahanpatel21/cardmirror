@@ -42,6 +42,9 @@ export interface HomeScreenCallbacks {
    *  hosts that can't do recursive folder I/O (the web edition), in
    *  which case the button isn't shown. */
   bulkConvert?: () => void;
+  /** Open the (temporary) bulk-compress migration tool. Electron-only,
+   *  same as bulkConvert. */
+  bulkCompress?: () => void;
 }
 
 class HomeScreen {
@@ -91,20 +94,21 @@ class HomeScreen {
     header.appendChild(tagline);
     inner.appendChild(header);
 
-    // Number-key actions. Order matters: index 0..6 map to the 1..7
+    // Number-key actions. Order matters: index 0..7 map to the 1..8
     // keyboard shortcuts (handled in onKeyDown), mirroring the number-key
     // panels elsewhere. Reading order down the page: 1-3 primary action
-    // cards, 4 Manage quick cards, 5 Bulk convert, 6 Review all, 7 Manage
-    // flashcards (their cards are built further down). 5-7 guard on the
-    // same conditions that show their card, so a key only fires when its
-    // button is on screen (no bulk-convert off Electron; no Learn actions
-    // before any flashcards exist).
+    // cards, 4 Manage quick cards, 5 Bulk convert, 6 Bulk compress, 7
+    // Review all, 8 Manage flashcards (their cards are built further down).
+    // 5-8 guard on the same conditions that show their card, so a key only
+    // fires when its button is on screen (no bulk convert/compress off
+    // Electron; no Review all before any flashcards exist).
     this.actionRunners = [
       () => this.callbacks?.newDoc(),
       () => this.callbacks?.newSpeechDoc(),
       () => this.callbacks?.open(),
       () => this.callbacks?.manageQuickCards(),
       () => this.callbacks?.bulkConvert?.(),
+      () => this.callbacks?.bulkCompress?.(),
       () => {
         if (learnStore.totalCount({ kind: 'all' }) > 0) {
           openLearnSession({ kind: 'all' }, { title: 'Review — all' });
@@ -184,6 +188,19 @@ class HomeScreen {
         ),
       );
     }
+    // Bulk compress — temporary migration tool (Electron only).
+    if (callbacks.bulkCompress) {
+      qcGrid.appendChild(
+        labeledGroup(
+          'Compress',
+          this.actionCard(
+            'Bulk compress',
+            'Shrink every .cmir in a folder (~10× smaller), in place.',
+            () => this.callbacks?.bulkCompress?.(),
+          ),
+        ),
+      );
+    }
     qcSection.appendChild(qcGrid);
     inner.appendChild(qcSection);
 
@@ -249,13 +266,13 @@ class HomeScreen {
       this.hide();
       return;
     }
-    // 1-7 trigger New / New speech / Open / Manage quick cards / Bulk
-    // convert / Review all / Manage flashcards, mirroring the number-key
-    // button panels elsewhere. Bare keys only — the home screen has no
-    // text inputs to conflict with, but still ignore the chord variants
-    // so a stray modifier doesn't fire an action unexpectedly.
+    // 1-8 trigger New / New speech / Open / Manage quick cards / Bulk
+    // convert / Bulk compress / Review all / Manage flashcards, mirroring
+    // the number-key button panels elsewhere. Bare keys only — the home
+    // screen has no text inputs to conflict with, but still ignore the
+    // chord variants so a stray modifier doesn't fire an action unexpectedly.
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    const idx = { '1': 0, '2': 1, '3': 2, '4': 3, '5': 4, '6': 5, '7': 6 }[e.key];
+    const idx = { '1': 0, '2': 1, '3': 2, '4': 3, '5': 4, '6': 5, '7': 6, '8': 7 }[e.key];
     if (idx === undefined) return;
     const run = this.actionRunners[idx];
     if (run) {

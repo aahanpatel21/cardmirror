@@ -84,6 +84,7 @@ import { VoiceController } from './voice/controller.js';
 import { openCardEditor } from './learn-create-ui.js';
 import { openLearnManage } from './learn-manage-ui.js';
 import { openBulkConvert } from './bulk-convert-ui.js';
+import { openBulkCompress } from './bulk-compress-ui.js';
 import { homeScreen, type HomeScreenCallbacks } from './home-screen.js';
 import { recordRecent, removeRecent, type RecentFile } from './recents-store.js';
 import { isAutosaveOnForPath, setAutosaveForPath } from './autosave-prefs-store.js';
@@ -4468,6 +4469,7 @@ const homeCallbacks: HomeScreenCallbacks = {
   },
   // Bulk convert needs recursive folder I/O — desktop only.
   bulkConvert: getHost().kind === 'electron' ? () => openBulkConvert() : undefined,
+  bulkCompress: getHost().kind === 'electron' ? () => openBulkCompress() : undefined,
 };
 
 /** Mount a fresh blank starter doc in this window, resetting the

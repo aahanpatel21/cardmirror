@@ -31,6 +31,7 @@ import { registerVoiceIpc } from './voice/ipc';
 import { registerFlowIpc } from './flow-bridge.js';
 import { promises as fs, realpathSync } from 'node:fs';
 import * as path from 'node:path';
+import { gzipSync, gunzipSync } from 'node:zlib';
 import { startFastPasteBridge, stopFastPasteBridge } from './fast-paste-bridge.js';
 
 const DEV_SERVER_URL = 'http://localhost:5173';
@@ -615,6 +616,112 @@ ipcMain.handle(
     }
     await walk(dir);
     return out;
+  },
+);
+
+// ── Bulk-compress (temporary migration tool) ────────────────────────
+// Rewrites every .cmir under a folder gzip-compressed, in place. The
+// app reads compressed files transparently and writes them on save, but
+// existing bulk-converted corpora would only shrink as files are
+// re-saved — so this migrates them in one pass. Properties:
+//   - idempotent: already-gzip files are skipped (re-runnable, mixed
+//     folders fine);
+//   - lossless: each rewrite is inflated and compared to the original
+//     before the destructive replace;
+//   - atomic: temp file + rename, so an interrupt can't corrupt a file;
+//   - mtime-preserving: restores each file's mtime so the command bar's
+//     recency ordering isn't disturbed.
+// Runs in main (not the renderer like bulk-convert) to avoid streaming
+// the whole corpus across IPC and to get atomic rename + utimes.
+interface BulkCompressSummary {
+  total: number;
+  compressed: number;
+  skipped: number;
+  failed: number;
+  bytesBefore: number;
+  bytesAfter: number;
+}
+
+ipcMain.handle(
+  'host:bulk-compress',
+  async (event, dir: string): Promise<BulkCompressSummary> => {
+    if (typeof dir !== 'string' || !dir) throw new Error('bulk-compress: no folder');
+
+    const files: string[] = [];
+    async function walk(cur: string): Promise<void> {
+      let entries;
+      try {
+        entries = await fs.readdir(cur, { withFileTypes: true });
+      } catch {
+        return; // unreadable dir — skip
+      }
+      for (const ent of entries) {
+        const full = path.join(cur, ent.name);
+        if (ent.isDirectory()) await walk(full);
+        else if (ent.isFile() && ent.name.toLowerCase().endsWith('.cmir')) files.push(full);
+      }
+    }
+    await walk(dir);
+
+    const summary: BulkCompressSummary = {
+      total: files.length,
+      compressed: 0,
+      skipped: 0,
+      failed: 0,
+      bytesBefore: 0,
+      bytesAfter: 0,
+    };
+    const sender = event.sender;
+    let lastSent = 0;
+    const sendProgress = (force = false): void => {
+      const now = Date.now();
+      if (!force && now - lastSent < 100) return;
+      lastSent = now;
+      if (!sender.isDestroyed()) {
+        sender.send('host:bulk-compress:progress', {
+          done: summary.compressed + summary.skipped + summary.failed,
+          ...summary,
+        });
+      }
+    };
+
+    for (const file of files) {
+      try {
+        const buf = await fs.readFile(file);
+        summary.bytesBefore += buf.length;
+        // Already compressed (gzip magic) → leave it, count as skipped.
+        if (buf.length >= 2 && buf[0] === 0x1f && buf[1] === 0x8b) {
+          summary.skipped++;
+          summary.bytesAfter += buf.length;
+          sendProgress();
+          continue;
+        }
+        const gz = gzipSync(buf, { level: 6 });
+        // Verify losslessness before the destructive replace.
+        if (Buffer.compare(gunzipSync(gz), buf) !== 0) {
+          throw new Error('compression verification failed');
+        }
+        const st = await fs.stat(file);
+        const tmp = `${file}.compress-tmp`;
+        await fs.writeFile(tmp, gz);
+        try {
+          await fs.rename(tmp, file); // atomic on POSIX/Windows same-volume
+        } catch (err) {
+          await fs.unlink(tmp).catch(() => {});
+          throw err;
+        }
+        // Restore the original mtime so recency sorting isn't disturbed.
+        await fs.utimes(file, st.atime, st.mtime).catch(() => {});
+        summary.compressed++;
+        summary.bytesAfter += gz.length;
+      } catch (err) {
+        summary.failed++;
+        console.error('bulk-compress failed for', file, err);
+      }
+      sendProgress();
+    }
+    sendProgress(true);
+    return summary;
   },
 );
 

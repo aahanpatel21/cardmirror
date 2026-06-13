@@ -7609,6 +7609,26 @@ body.pmd-recovery-active.pmd-multi-doc #app {
   min-height: 1.2em;
 }
 
+/* Bulk-compress: intro blurb + determinate progress bar. */
+.pmd-bulk-blurb {
+  margin: 0 0 0.4rem 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--pmd-c-text-muted);
+}
+.pmd-bulk-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--pmd-c-surface-sunken, color-mix(in srgb, currentColor 12%, transparent));
+  overflow: hidden;
+}
+.pmd-bulk-progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--pmd-c-accent, var(--pmd-c-comment-thread));
+  transition: width 120ms linear;
+}
+
 .pmd-reference-overlay {
   position: fixed;
   inset: 0;

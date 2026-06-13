@@ -5,6 +5,42 @@ behavior, rationale, and (where useful) the implementation context
 behind a change. For a shorter, jargon-free summary of what's new
 in each release, see `CHANGELOG.md`.
 
+## Unreleased
+
+- **`.cmir` gzip compression** (`native/codec.ts`, `native/index.ts`,
+  `docid.ts`). The native file is now a gzip-wrapped JSON envelope — the JSON
+  shape and `formatVersion` are unchanged, since compression is a container
+  concern. The format is self-describing by magic bytes: legacy plaintext
+  always begins with `{` (0x7B), gzip with 0x1F 0x8B, which never collide, so
+  `parseNative` sniffs the first two bytes and either inflates or passes the
+  bytes through. Old uncompressed files keep opening with no version flag;
+  `serializeNative` minifies then gzips (level 6). `looksLikeNative` and the
+  one direct-bytes bypass (`docid.ts`) are gzip-aware; `stampDocId` mirrors
+  the input's format (compressed stays compressed, plaintext stays plaintext).
+  Codec is **fflate** (synchronous, dependency-free): `parseNative`/
+  `serializeNative` run in the Electron renderer and the browser build, where
+  `node:zlib` isn't available and `CompressionStream` is async — going async
+  would ripple through every call site. ~10× smaller corpus-wide; inflation on
+  open is a small fraction of the JSON parse and happens only on open/dive
+  (never on the file listing or repeated in-file search). Alpha policy:
+  one-shot read+write, no two-phase rollout — users update rather than sharing
+  across versions.
+
+- **Bulk-compress migration tool** (`bulk-compress-ui.ts`; `host:bulk-compress`
+  in `apps/desktop/src/main.ts`, exposed via preload + `electron-host.ts`).
+  Existing files only shrink as they're re-saved, so a bulk-converted corpus
+  would stay uncompressed indefinitely; this Home-screen modal (Electron only)
+  rewrites every `.cmir` under a chosen folder compressed, in place. The
+  per-file loop runs in the **main process** — not the renderer like
+  bulk-convert — to avoid streaming the whole corpus across IPC and to get
+  atomic rename + `utimes`. Each file is read, **skipped if already gzip**
+  (idempotent / re-runnable / mixed-folder safe), gzipped (`node:zlib`),
+  **verified** by inflating and comparing to the original, written to a temp
+  file, **atomically renamed** over the original, and its **mtime restored**
+  (so the command bar's recency ordering isn't disturbed). Progress streams
+  back throttled (~10/s). Deliberately a transitional tool — isolated in its
+  own file + handler so it's a clean deletion after a few releases.
+
 ## 0.1.0-alpha.13 — 2026-06-12
 
 - **AI edit coordinator** (`ai/edit-coordinator.ts`, wired in `index.ts` +

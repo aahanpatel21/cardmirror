@@ -5,6 +5,27 @@ changes in each release, written for users of the editor. For
 in-depth rationale and implementation context behind each entry,
 see `DETAILED_CHANGELOG.md`.
 
+## Unreleased
+
+### Changed
+
+- **`.cmir` files are now compressed — about 10× smaller.** CardMirror saves
+  its native files gzip-compressed, so a typical card file drops to roughly a
+  tenth of its size, with no real change to how fast files open (decompression
+  is a tiny fraction of the work opening a file already does). Older
+  uncompressed files keep opening normally; they shrink the next time you save
+  them.
+
+### Added
+
+- **Bulk compress (Home screen, desktop).** A migration tool that rewrites
+  every `.cmir` in a folder and its subfolders in compressed form, in place —
+  for shrinking an existing library without re-saving each file by hand. Files
+  already compressed are skipped, each file is verified before it's replaced,
+  and its modified date is preserved (so your "recent files" ordering is
+  untouched). A transitional tool — it'll be retired once libraries have
+  migrated.
+
 ## 0.1.0-alpha.13 — 2026-06-12
 
 ### Added

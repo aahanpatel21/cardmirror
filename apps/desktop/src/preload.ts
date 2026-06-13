@@ -145,6 +145,35 @@ contextBridge.exposeInMainWorld('electronAPI', {
   writeFileAtPath: (filePath: string, bytes: Uint8Array) =>
     ipcRenderer.invoke('host:write-file-at-path', filePath, bytes),
 
+  /** Bulk-compress every `.cmir` under `dir` in place (temporary
+   *  migration tool). `onProgress` fires (throttled) as files are
+   *  processed. Resolves with the final summary. */
+  bulkCompress: (
+    dir: string,
+    onProgress: (p: {
+      done: number;
+      total: number;
+      compressed: number;
+      skipped: number;
+      failed: number;
+      bytesBefore: number;
+      bytesAfter: number;
+    }) => void,
+  ) => {
+    const listener = (_evt: unknown, p: Parameters<typeof onProgress>[0]): void => onProgress(p);
+    ipcRenderer.on('host:bulk-compress:progress', listener);
+    return (
+      ipcRenderer.invoke('host:bulk-compress', dir) as Promise<{
+        total: number;
+        compressed: number;
+        skipped: number;
+        failed: number;
+        bytesBefore: number;
+        bytesAfter: number;
+      }>
+    ).finally(() => ipcRenderer.removeListener('host:bulk-compress:progress', listener));
+  },
+
   /** Crash-recovery journal API. Stores per-doc snapshots under
    *  `app.getPath('userData')/journals/{uid}.cmir-journal`. */
   writeJournal: (entry: JournalEntry) =>
