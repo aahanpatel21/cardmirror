@@ -5,7 +5,7 @@ behavior, rationale, and (where useful) the implementation context
 behind a change. For a shorter, jargon-free summary of what's new
 in each release, see `CHANGELOG.md`.
 
-## Unreleased
+## 0.1.0-alpha.14 — 2026-06-13
 
 - **macOS voice no-audio: capture fixes + temporary diagnostics**
   (`editor/voice/capture.ts`). The mic could be selected and the stream
