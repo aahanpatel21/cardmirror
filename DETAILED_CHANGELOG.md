@@ -5,7 +5,7 @@ behavior, rationale, and (where useful) the implementation context
 behind a change. For a shorter, jargon-free summary of what's new
 in each release, see `CHANGELOG.md`.
 
-## Unreleased
+## 0.1.0-alpha.15 — 2026-06-17
 
 - **Per-apply gap normalization for the formatting family**
   (`editor/ribbon-commands.ts`, `editor/index.ts`). Formatting operating ranges
