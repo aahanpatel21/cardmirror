@@ -39,9 +39,10 @@ see `DETAILED_CHANGELOG.md`.
   continuous underline instead of leaving broken spaces; and turning a style
   off no longer strands it on the spaces next to the word (it used to leave the
   space before and after still underlined or highlighted, dangling between the
-  now-plain word and its styled neighbor). Only the style you acted on is
-  touched, and only around your selection — nothing else shifts, and if you
-  deliberately format just a space, that's left as you set it.
+  now-plain word and its styled neighbor). Applying any one of these tidies the
+  spacing of all the formatting around the edit at once, so it stays consistent.
+  It only runs around what you just changed — not the rest of the document — and
+  if you deliberately format just a space, that's left as you set it.
 
 - **Cursor no longer jumps to the next paragraph after deleting a selection
   that can't merge.** When a selection includes the paragraph break after it

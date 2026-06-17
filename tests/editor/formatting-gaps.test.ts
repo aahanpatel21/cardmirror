@@ -137,18 +137,26 @@ describe('withGapFix — cleanup on toggle-off', () => {
 
 // ---- surgical ----
 
-describe('withGapFix — surgical', () => {
-  it('applying underline does not touch a highlight gap (per mark type)', () => {
-    // A dangling highlighted space sits between two plain words; underlining
-    // a different word must leave the highlight exactly as it was.
-    const doc = docOf(['aa', []], [' ', [HL()]], ['bb cc dd']);
-    const next = run(doc, 'cc', applyUnderline(() => false));
-    expect(mask(next.doc, 'highlight')).toBe('  _        '); // unchanged
+describe('withGapFix — full normalization, local scope', () => {
+  it('applying one style also cleans an ADJACENT dangling gap of another style', () => {
+    // "aa" + the space after it are highlighted; "bb" is plain (a dangling
+    // highlight). Underlining "bb" runs the full gap pass over the area, which
+    // also strips that adjacent dangling highlight space.
+    const doc = docOf(['aa', [HL()]], [' ', [HL()]], ['bb cc']);
+    const next = run(doc, 'bb', applyUnderline(() => false));
+    expect(mask(next.doc, 'highlight')).toBe('__      '); // only "aa" left
+    expect(mask(next.doc, 'underline_mark')).toBe('   __   '); // "bb"
   });
 
-  it('leaves a far gap (neither bookend styled) untouched (per location)', () => {
-    // Highlight "one"; the unrelated "  " between plain "three"/"four" with no
-    // mark must stay unmarked, and nothing far away is added.
+  it('does NOT touch a gap outside the changed area (local scope)', () => {
+    // A dangling highlight far from the edit stays put — the pass only runs
+    // around what changed, not the whole paragraph.
+    const doc = docOf(['aa', [HL()]], [' ', [HL()]], ['bb cc dd ee ff']);
+    const next = run(doc, 'ee', applyUnderline(() => false));
+    expect(mask(next.doc, 'highlight')).toBe('___              '); // unchanged
+  });
+
+  it('leaves a far gap (neither bookend styled) untouched', () => {
     const doc = docOf(['one two three four']);
     const next = run(doc, 'one', applyHighlight(() => 'yellow'));
     expect(mask(next.doc, 'highlight')).toBe('___               ');

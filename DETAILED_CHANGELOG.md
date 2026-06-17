@@ -13,27 +13,28 @@ in each release, see `CHANGELOG.md`.
   double-clicked `word ` styles only the word) — right for toggle-ON, but a
   toggle-OFF left the adjacent space still styled, and word-by-word toggle-ON
   left visible breaks between styled words. Both are now handled by running the
-  gap logic automatically after each formatting apply. The core of
-  `fixFormattingGaps` is shared via `forEachGap` (the word-to-word gap walker);
-  a new `withGapFix(category, command, effectivePt?)` wraps each formatting
-  factory (`applyUnderline`, `applyBodyMark` cite/emphasis, `applyHighlight`,
+  gap logic automatically after each formatting apply. A new
+  `withGapFix(command, effectivePt?)` wraps each formatting factory
+  (`applyUnderline`, `applyBodyMark` cite/emphasis, `applyHighlight`,
   `applyShading`, `setHighlightColor`, `setShadingColor`, `adjustFontSize`,
   `setFontSize`). After the wrapped command runs, it reads the ranges its mark
   steps changed (positions are stable across `AddMarkStep`/`RemoveMarkStep`),
   expands each to the adjacent bookend word via `expandToAdjacentBookends`, and
-  runs `applyCategoryGapTarget` over those gaps in the command's OWN
-  transaction (one undo step). The fix is **surgical**: only the category the
-  user acted on is normalized, and only around the changed ranges — a far gap,
-  or a gap for a mark the user didn't press, is never touched. Each gap is
-  three-way: BOTH bookends carry the mark → bridge (fill it); EXACTLY ONE → strip
-  (the dangling case the apply created); NEITHER → leave it (an orphan the user
-  didn't act on isn't ours to clear). And a changed range that is itself
-  whitespace-only is skipped entirely — explicitly formatting only whitespace is
-  honored even when a flanking word is styled. This replaces the bespoke
-  `clearDanglingBoundaryStyle`. The
-  shared underline handling now covers `underline_direct` (structural blocks
-  like tags), in both the wrapper and `fixFormattingGaps` itself, so the manual
-  "Fix Formatting Gaps" command also bridges direct underline in tags.
+  runs the FULL gap target — `applyFullGapTarget`, every formatting family, the
+  same rule the manual Fix Formatting Gaps command uses — over those gaps via
+  `forEachGap`, in the command's OWN transaction (one undo step). So applying
+  any one style also tidies the others' gaps around the edit (bridge a style
+  both new neighbors share, strip one the bookends don't agree on). Two limits
+  keep it from surprising: it runs only around the **changed ranges** (a far
+  gap elsewhere in the paragraph is untouched), and a changed range that is
+  itself **whitespace-only** is skipped — explicitly formatting only whitespace
+  is honored even when a flanking word is styled. (`font_size` gaps are
+  normalized only when an `effectivePt` resolver is supplied — the size
+  commands; the visible styles always are.) Replaces the bespoke
+  `clearDanglingBoundaryStyle`. The shared underline handling now covers
+  `underline_direct` (structural blocks like tags), in both `applyFullGapTarget`
+  and `fixFormattingGaps`, so the manual command also bridges direct underline
+  in tags.
 
 - **Bulk structural re-apply / replace over a shadow selection**
   (`editor/ribbon-commands.ts`). `selectAllOfStyle` (right-click a ribbon style
