@@ -379,6 +379,10 @@ used under their free license. See
 [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md) for the full
 third-party attributions and license terms.
 
+This project was funded by the subscribers at
+[Debate Decoded](https://debate-decoded.ghost.io/) — subscribing is the
+best way to support my work.
+
 ## License
 
 CardMirror is licensed under the
