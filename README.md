@@ -371,6 +371,10 @@ of on-screen elements, hat/marker-based addressing, and composable voice
 commands informed the initial design of CardMirror's voice interaction
 pattern.
 
+The card sharing feature was conceived and prototyped by
+[q cooper](https://github.com/mosuqc); their proof-of-concept demonstrated
+the cross-machine send-and-receive flow the built-in version is based on.
+
 The app's interface icons are from the
 [Untitled UI free icons](https://www.untitledui.com/free-icons),
 used under their free license. See
