@@ -13,9 +13,23 @@
  */
 
 import { Docx } from '../docx.js';
+import { CANONICAL_STYLES_XML } from '../styles.js';
 import { OoxmlDoc, type Paragraph, type Run } from './ooxml-doc.js';
 import { COMBINED_STYLE_MAP } from './template-styles.js';
 import { fixDanglingStyleRefs } from './style-fixup.js';
+
+/** Style groups the cleaner requires (matched by name). When a document lacks
+ *  any of them it can't classify formatting, so we inject the canonical
+ *  Verbatim styles first instead of failing. */
+const REQUIRED_STYLE_GROUPS: string[][] = [
+  ['Style13ptBold', 'Style 13 pt Bold'],
+  ['StyleUnderline', 'Style Underline'],
+  ['Emphasis'],
+];
+
+function requiredStylesMissing(doc: OoxmlDoc): boolean {
+  return REQUIRED_STYLE_GROUPS.some((variants) => !variants.some((v) => doc.styles.has(v)));
+}
 
 /** Yield to the event loop so the UI can repaint progress between chunks of
  *  the otherwise-synchronous conversion pass. */
@@ -475,6 +489,15 @@ export async function cleanDocumentBytes(
 
   const docx = await Docx.load(fileBytes);
   const doc = await OoxmlDoc.fromDocx(docx);
+
+  // If the document is missing the required Verbatim styles, inject the
+  // canonical definitions so the cleaner can classify formatting instead of
+  // failing. Only fires when a required style is actually absent, so
+  // documents that already have them are untouched.
+  if (requiredStylesMissing(doc)) {
+    doc.injectMissingStyles(CANONICAL_STYLES_XML);
+  }
+
   const protectedIds = computeProtectedClosure(doc, protectedNamesLower);
 
   normalizeStyleDefinitions(doc);
