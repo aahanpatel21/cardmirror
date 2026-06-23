@@ -1,8 +1,0 @@
-__pycache__/
-*.pyc
-out/
-config.json
-*.mov
-*.mkv
-*.mp4
-frame0.png
