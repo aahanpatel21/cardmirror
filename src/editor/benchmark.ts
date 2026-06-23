@@ -252,17 +252,21 @@ function nodePos(
 const findById = (doc: ProseNode, id: string): { node: ProseNode; pos: number } | null =>
   nodePos(doc, (n) => n.attrs?.['id'] === id);
 
-/** The cite_paragraph inside the card owning `tagId`, found by SEARCH (not
- *  position arithmetic) — the live editor's normalization plugins can insert a
- *  card_body that shifts the cite off the computed offset, so we locate it by
- *  structure instead. */
-function findMyCite(doc: ProseNode, tagId: string): { node: ProseNode; pos: number } | null {
+/** A textblock child of the card owning `tagId` whose text matches `text` —
+ *  found by TEXT (node-type-agnostic), so it survives normalization. Used to
+ *  locate the cite line we typed (a body paragraph isn't a "cite paragraph"
+ *  until the cite mark is applied) and to position the body relative to it. */
+function findChildByText(
+  doc: ProseNode,
+  tagId: string,
+  text: string,
+): { node: ProseNode; pos: number } | null {
   const found = cardOfTag(doc, tagId);
   if (!found) return null;
   const { card, cardPos } = found;
   let result: { node: ProseNode; pos: number } | null = null;
   card.forEach((child, offset) => {
-    if (!result && child.type.name === 'cite_paragraph') {
+    if (!result && child.isTextblock && child.textContent === text) {
       result = { node: child, pos: cardPos + 1 + offset };
     }
   });
@@ -386,7 +390,7 @@ async function benchEdit(
   onProgress?: ProgressFn,
 ): Promise<{ steps: EditStep[]; totalMs: number } | null> {
   const sch = view.state.schema;
-  const need = ['pocket', 'card', 'tag', 'cite_paragraph', 'card_body'];
+  const need = ['pocket', 'card', 'tag', 'card_body'];
   const needMarks = ['cite_mark', 'underline_mark', 'emphasis_mark', 'highlight'];
   if (need.some((n) => !sch.nodes[n]) || needMarks.some((m) => !sch.marks[m])) return null;
   const steps: EditStep[] = [];
@@ -449,13 +453,15 @@ async function benchEdit(
   );
 
   await measureStep(
-    'Add cite',
+    'Type a cite line',
     () => {
       const tg = findById(view.state.doc, tagId);
       if (!tg) throw new Error('tag missing');
       const at = tg.pos + tg.node.nodeSize; // just after the tag, inside the card
-      const cite = sch.nodes['cite_paragraph']!.create(null, sch.text(CITETXT));
-      const tr = view.state.tr.insert(at, cite);
+      // A plain body paragraph — it only becomes "the cite" once the cite mark
+      // is applied to it (the next step).
+      const line = sch.nodes['card_body']!.create(null, sch.text(CITETXT));
+      const tr = view.state.tr.insert(at, line);
       tr.setSelection(TextSelection.create(tr.doc, at + 1));
       benchDispatch(view, tr.scrollIntoView());
     },
@@ -466,8 +472,8 @@ async function benchEdit(
   await measureStep(
     'Cite mark on author/date',
     () => {
-      const c = findMyCite(view.state.doc, tagId);
-      if (!c) throw new Error('cite missing');
+      const c = findChildByText(view.state.doc, tagId, CITETXT);
+      if (!c) throw new Error('cite line missing');
       // Interior range (skip the textblock's first/last position).
       const from = c.pos + 2;
       const to = c.pos + c.node.content.size;
@@ -483,9 +489,9 @@ async function benchEdit(
   await measureStep(
     'Paste a real card body',
     () => {
-      const c = findMyCite(view.state.doc, tagId);
-      if (!c) throw new Error('cite missing');
-      // Insert as a new card_body block right AFTER the cite (below it, in the card).
+      const c = findChildByText(view.state.doc, tagId, CITETXT);
+      if (!c) throw new Error('cite line missing');
+      // Insert as a new card_body block right AFTER the cite line (below it).
       const after = c.pos + c.node.nodeSize;
       const cb = sch.nodes['card_body']!.create(null, sch.text(SAMPLE_TEXT));
       const tr = view.state.tr.insert(after, cb);
