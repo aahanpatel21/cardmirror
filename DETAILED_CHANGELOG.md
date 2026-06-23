@@ -5,6 +5,150 @@ behavior, rationale, and (where useful) the implementation context
 behind a change. For a shorter, jargon-free summary of what's new
 in each release, see `CHANGELOG.md`.
 
+## 0.1.0-alpha.19 — 2026-06-22
+
+- **Clean — a client-side `.docx` style cleaner** (`ooxml/style-clean/style-cleaner.ts`,
+  `ooxml/style-clean/ooxml-doc.ts`, `ooxml/style-clean/template-styles.ts`,
+  `ooxml/style-clean/style-fixup.ts`, `editor/clean-ui.ts`, `editor/home-screen.ts`).
+  A faithful TypeScript port of the scouting-assistant `style_cleaner.py`, running
+  entirely in the renderer over a small python-docx-equivalent shim
+  (`OoxmlDoc`/`Styles`/`Style`/`Paragraph`/`Run`) on the JSZip `Docx` layer.
+  Pipeline: normalize style aliases → convert direct formatting to semantic styles
+  (cite/underline/emphasis run classification; heading detection by effective
+  outline level + bold resolved through the `basedOn` chain; case-insensitive
+  Analytic matching) → rename/remove to the canonical Verbatim set
+  (`COMBINED_STYLE_MAP`) → strip hyperlinks → repair dangling style refs. Validated
+  byte-identical to the Python reference on clean files. Engine work beyond the
+  port: a Chromium-only double-`<?xml?>`-declaration bug — the `XMLSerializer`
+  emits the declaration itself, so prepending a second one broke the re-parse and
+  silently yielded zero styles — fixed in `serializeXmlDoc`; O(1) style lookups via
+  a lazily-built id/name index (the Python's O(styles × runs) scans timed out on
+  3,786-style merged docs); and removal of the prune passes (the canonical
+  reduction already covers them, and with O(1) lookups they gave no speedup —
+  `style-pruner.ts` became `style-fixup.ts`, keeping only the dangling-ref repair).
+  The Home-screen UI cleans a file or a recursed folder, defaults the destination
+  to each source's own folder (writing `cleaned_…`), shows a per-file progress bar,
+  and exposes **protected styles** (never removed/reassigned, their `basedOn`/`link`
+  dependencies kept) behind a gear that opens a separate modal.
+
+- **Injecting + repairing required styles so more docs clean** (`ooxml/style-clean/style-cleaner.ts`,
+  `ooxml/style-clean/ooxml-doc.ts`). When a document lacks the required Verbatim
+  styles, `OoxmlDoc.injectMissingStyles` imports the canonical definitions before
+  cleaning (gated on `requiredStylesMissing`, so styled docs are untouched, and
+  invalidating the style index so the additions resolve). A separate
+  `normalizeRequiredStyleNames` pass runs *before* the availability check to repair
+  styles present under the canonical styleId but an unrecognized name — e.g. a
+  Verbatim `!!Style Underline` — which the name-based check would otherwise call
+  "missing" while injection (keyed on styleId) couldn't add a duplicate. Computing
+  "missing" after the repair also makes the legacy-remap mixed/pure mode correct.
+
+- **Legacy debate styles, shared between the cleaner and the importer**
+  (`ooxml/legacy-styles.ts`, `ooxml/style-clean/legacy-remap.ts`, `import/importer.ts`,
+  `ooxml/styles.ts`). A single source of truth (`legacyRole`, `isUnambiguousLegacy`,
+  `buildLegacyHeadingMap`) classifies the pre-Verbatim vocabulary — `Tags`/`Cards`/
+  `Cites`/`Block Headings`/`Nothing` paragraph styles, `Author-Date`/`Debate
+  Underline` character styles, plus earlier-Verbatim ids like `StyleBoldUnderline`.
+  The **cleaner's** `remapLegacyStyles` runs only when a doc actually *uses* an
+  unambiguous legacy style (resolved from usage, so a merged doc that merely defines
+  them is untouched), reassigns each paragraph/run by name to the canonical style,
+  and picks heading levels per document: in a "mixed" doc (Verbatim styles present)
+  it trusts each heading's own outline level (0→H1 … 3→H4); in a pure pre-Verbatim
+  doc it infers depth (deepest heading above tags → Block, growing up). Tags are
+  Heading 4 regardless. The **importer** consumes the same table: `parseRPr`
+  classifies legacy character styles via `legacyRole` (and now `Cite → cite_mark`,
+  for files that store the cite under its alias-as-styleId), and a per-document
+  `planLegacy` maps legacy paragraph styles to schema nodes with the same adaptive
+  heading logic — so opening a legacy `.docx` reconstructs cards/tags/cites/headings
+  instead of importing flat text. `StyleInfo` gained an `outlineLevel` for this.
+
+- **Multiple file-search folders** (`editor/settings.ts`, `editor/settings-ui.ts`,
+  `editor/quick-card-search-ui.ts`). The single `fileSearchRoot` setting became a
+  `fileSearchRoots` list, with a `sanitizeFileSearchRoots` migration from the old
+  single value and a new `folderList` settings control (rows with a remove ×, plus
+  "+ Add folder"). The palette loads every folder, keyed per-root so the existing
+  per-root background index-update events merge in incrementally, and the merged
+  view is de-duplicated by absolute path so nested/overlapping folders never search
+  a file twice. The main-process indexer was already per-root, so it was unchanged.
+
+- **Read mode permits drag-move + dropzone/receive edits** (`editor/read-mode-plugin.ts`,
+  `editor/reading-marker.ts`, `editor/drag-controller.ts`, `editor/dropzone-ui.ts`,
+  `editor/pairing/receive-pill-ui.ts`, `editor/nav-panel.ts`). Read mode's
+  `filterTransaction` rejected every doc change except the reading marker; a new
+  `READ_MODE_DRAG_META` is now also allowed (and dirties read mode so its redo
+  works). The drag controller tags its move/copy and shelf-drop commits with it, so
+  drag-move, cross-pane drops, and dropzone/receive drag-outs all land while
+  reading; the nav panel no longer blocks starting a drag in read mode (its drop
+  commits through the same controller). Dropzone and receive-pill click-inserts are
+  tagged too, and in read mode append to the bottom of the doc (no editing caret to
+  target). Plain typing stays locked.
+
+- **Editor no longer locks after a blocking pop-up on Windows/Linux**
+  (`editor/speech-doc-send.ts`, `editor/index.ts`, `editor/mobile-shell.ts`).
+  `window.alert`/`confirm` steals OS-level focus from the contenteditable; macOS
+  Chromium restores it on dismiss, Windows/Linux don't. The no-speech-doc `alert`
+  (the `` ` `` path) — and the image-insert error alerts, the mobile unit-delete
+  confirm, and the web "needs desktop" alert — now reclaim focus via `view.focus()`
+  after the modal, matching the pattern the existing mid-text `confirm` paths
+  already used.
+
+- **Pointer-centric drag auto-scroll** (`editor/drag-autoscroll.ts`,
+  `editor/pill-tray.ts`, `editor/drag-controller.ts`, `editor/drag-editor-surface.ts`,
+  `editor/nav-panel.ts`). Auto-scroll was tied to the drag's source surface and so
+  didn't follow the pointer across panes. Replaced both per-surface implementations
+  with a single `autoScrollUnderPointer`, driven once per move from the controller's
+  `setPointer`: it `elementFromPoint`s the surface under the pointer (the pickup
+  pill is `pointer-events:none`, so this sees through it) and nudges the nearest
+  vertically-scrollable ancestor near its edge — so nav→editor, nav→nav, and
+  editor→editor drags all scroll the right pane. The downward scroll is suppressed
+  over the bottom-left pill-tray column (`pointerOverPillTrayColumn`) so a drag
+  toward the dropzone/send/receive pills isn't fought by scrolling, and the up-band
+  is offset below a `position: sticky` header pinned at a scroll container's top
+  (`stickyTopInset`) so the multi-pane nav's sticky level bar no longer eats it.
+
+## 0.1.0-alpha.18 — 2026-06-21
+
+- **Cross-machine card sharing — identity, crypto, and relay**
+  (`apps/desktop/src/pairing-crypto.ts`, `apps/desktop/src/pairing-ipc.ts`,
+  `apps/desktop/src/pairing-build.ts`, `dev/mock-relay/server.js`,
+  `src/editor/pairing/relay-client.ts`, `src/editor/pairing/inbox-store.ts`,
+  `src/editor/pairing/pairing-ids.ts`). Each install has a generated-once X25519
+  keypair persisted to `userData/pairing-keys.json` (load-or-create, so updates
+  never regenerate it); the public key, base64url-encoded with a `cmk1.` prefix, is
+  the machine's shareable **code**, and a hash of it is the relay routing id.
+  Sending seals each card (the dropzone's existing `Slice.toJSON()` payload) to the
+  recipient's public key with an ephemeral-X25519 + AES-256-GCM sealed box, so the
+  relay only ever stores opaque ciphertext — never the card, the sender, or the
+  recipient. The Electron main process holds the relay base URL + bearer token
+  (`pairing-ipc.ts`; token injected at build time into `pairing-build.ts`), POSTs
+  one sealed message per recipient, and runs a poller (default 30 s) that GETs
+  messages for its own routing id, unseals, `DELETE`s, and broadcasts them to the
+  renderer; the inbox is persisted to `userData/pairing-inbox.json`. The relay
+  forgets messages after 3 hours. A `dev/mock-relay` store-and-forward server
+  implements the exact contract for local testing; production points at the
+  scouting-assistant `/relay`. The renderer `relay-client` is transport-agnostic
+  (delegates to the main-process bridge), so a web edition can be added without a
+  client rewrite.
+
+- **Cross-machine card sharing — Send/Receive pills + settings**
+  (`src/editor/pairing/send-pill-ui.ts`, `src/editor/pairing/receive-pill-ui.ts`,
+  `src/editor/pairing/pairing-wiring.ts`, `src/editor/settings.ts`,
+  `src/editor/settings-ui.ts`, `src/editor/index.ts`). Two pills sit in a fixed
+  `.pmd-pill-tray` next to the dropzone. The **Send** pill registers a `DragSurface`
+  with the drag controller: dragging a card onto it expands a list of your
+  recipients and groups as drop rows; dropping resolves recipient codes (a group
+  fans out to its members) and routes the slice through the relay. The **Receive**
+  pill is dropzone-style, backed by an `inbox-store`: incoming cards show the sender
+  (your nickname for their code, else their self-name, else the code) and a relative
+  time, the count badge tracks unread, and it green-pulses on arrival per the
+  `pairingReceiveFlash` setting (`once` / `off` / `repeat`-every-10s-until-opened);
+  opening it marks all read. Setup lives in **Settings → Card Sharing**:
+  `pairingEnabled`, your own code (copy / regenerate — regenerating cuts off old
+  shares), `pairingDisplayName`, a `pairingPartners` editor (nickname + code),
+  `pairingGroups` (labeled member sets), and `pairingPollSeconds`. Directed
+  addressing means you only ever poll for messages addressed to your own code and
+  never address one to yourself, so there's no self-echo or delete-race. Desktop
+  only for this version.
+
 ## 0.1.0-alpha.17 — 2026-06-20
 
 - **Quote-insensitive text matching** (`editor/word-break.ts`,
