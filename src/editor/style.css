@@ -11268,9 +11268,10 @@ body.pmd-multi-doc .pmd-cardcutter-trim {
   background: rgba(0, 0, 0, 0.5);
 }
 .pmd-bench-dialog {
-  width: min(840px, 92vw);
-  max-height: 90vh;
-  overflow-y: auto;
+  width: min(640px, 92vw);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
   background: var(--pmd-c-surface, #fff);
   color: var(--pmd-c-text, #1a1a1a);
   border: 1px solid var(--pmd-c-divider, #ddd);
@@ -11298,37 +11299,74 @@ body.pmd-multi-doc .pmd-cardcutter-trim {
 .pmd-bench-score-lbl {
   font-size: 0.7rem;
   letter-spacing: 0.18em;
+  text-transform: uppercase;
   color: var(--pmd-c-text-muted, #888);
   margin-top: 0.25rem;
 }
-.pmd-bench-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 0.6rem;
+
+/* Scrollable result list (between the fixed score and footer). */
+.pmd-bench-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.25rem;
 }
-.pmd-bench-card {
-  border: 1px solid var(--pmd-c-divider, #e3e3e3);
-  border-radius: 8px;
-  padding: 0.6rem 0.7rem;
-  background: var(--pmd-c-surface-soft, #f7f7f8);
+.pmd-bench-section {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--pmd-c-divider, #ececec);
 }
-.pmd-bench-card-title {
+.pmd-bench-section:first-child {
+  border-top: 0;
+}
+.pmd-bench-section-title {
   font-weight: 700;
-  font-size: 0.8rem;
-  margin-bottom: 0.35rem;
+  font-size: 0.82rem;
+  margin-bottom: 0.25rem;
 }
-.pmd-bench-card-row {
+.pmd-bench-row {
   display: flex;
   justify-content: space-between;
-  gap: 0.5rem;
-  font-size: 0.82rem;
-  padding: 0.1rem 0;
+  align-items: baseline;
+  gap: 1rem;
+  font-size: 0.85rem;
+  padding: 0.12rem 0;
+}
+.pmd-bench-row-label {
   color: var(--pmd-c-text-muted, #666);
 }
-.pmd-bench-card-val {
+.pmd-bench-row-val {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   color: var(--pmd-c-text, #1a1a1a);
+  white-space: nowrap;
+}
+.pmd-bench-noteref {
+  font-size: 0.62em;
+  font-weight: 700;
+  color: var(--pmd-c-accent, #2563eb);
+  margin-left: 0.15em;
+  vertical-align: super;
+}
+
+/* Footnotes block. */
+.pmd-bench-notes .pmd-bench-note-row {
+  display: flex;
+  gap: 0.4rem;
+  font-size: 0.76rem;
+  color: var(--pmd-c-text-muted, #888);
+  line-height: 1.4;
+  padding: 0.12rem 0;
+}
+.pmd-bench-note-num {
+  flex: 0 0 1.1rem;
+  font-weight: 700;
+  color: var(--pmd-c-accent, #2563eb);
+}
+.pmd-bench-note-meth {
+  font-size: 0.72rem;
+  color: var(--pmd-c-text-muted, #999);
+  margin: 0.6rem 0 0;
+  line-height: 1.4;
 }
 .pmd-bench-graph {
   margin-top: 1rem;
@@ -11343,11 +11381,6 @@ body.pmd-multi-doc .pmd-cardcutter-trim {
   height: auto;
   border-radius: 6px;
   display: block;
-}
-.pmd-bench-note {
-  font-size: 0.75rem;
-  color: var(--pmd-c-text-muted, #888);
-  margin: 1rem 0 0;
 }
 .pmd-bench-msg {
   font-size: 0.95rem;

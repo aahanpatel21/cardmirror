@@ -99,73 +99,72 @@ function showResults(r: BenchmarkResults): void {
   scoreNum.textContent = String(r.score);
   const scoreLbl = document.createElement('div');
   scoreLbl.className = 'pmd-bench-score-lbl';
-  scoreLbl.textContent = 'SCORE';
+  labelWithNote(scoreLbl, 'Score');
   scoreWrap.append(scoreNum, scoreLbl);
   dialog.appendChild(scoreWrap);
 
-  const grid = document.createElement('div');
-  grid.className = 'pmd-bench-grid';
+  // Scrollable list of result sections.
+  const list = document.createElement('div');
+  list.className = 'pmd-bench-list';
+
   if (r.scroll) {
-    grid.appendChild(
-      card('Scroll', [
+    list.appendChild(
+      section('Scroll', [
         ['Avg FPS', String(r.scroll.fps)],
         ['1% low FPS', String(r.scroll.lowFps1pct)],
-        ['p99 frame', `${r.scroll.p99FrameMs} ms`],
+        ['p99 frame time', `${r.scroll.p99FrameMs} ms`],
         ['Jank frames', String(r.scroll.jankFrames)],
       ]),
     );
   }
-  grid.appendChild(
-    card(
+  list.appendChild(
+    section(
       'Navigation',
       r.nav
         ? [
-            ['Median', `${r.nav.medianMs} ms`],
-            ['p90', `${r.nav.p90Ms} ms`],
+            ['Median jump', `${r.nav.medianMs} ms`],
+            ['p90 jump', `${r.nav.p90Ms} ms`],
             ['Jumps', String(r.nav.samples.length)],
           ]
-        : [['—', 'needs ≥4 headings']],
+        : [['Not run', 'needs ≥4 headings']],
     ),
   );
-  grid.appendChild(
-    card('Drag-move', r.drag ? [['Section', `${r.drag.ms} ms`]] : [['—', 'needs ≥3 sections']]),
+  list.appendChild(
+    section(
+      'Drag-move',
+      r.drag ? [['Move a section', `${r.drag.ms} ms`]] : [['Not run', 'needs ≥3 sections']],
+    ),
   );
   if (r.edit) {
     const rows: [string, string][] = [['Total', `${r.edit.totalMs} ms`]];
     for (const s of r.edit.steps) rows.push([s.label, s.ms == null ? '—' : `${s.ms} ms`]);
-    grid.appendChild(card('Editing sequence', rows));
+    list.appendChild(section('Editing & card-cutting', rows));
   } else {
-    grid.appendChild(card('Editing sequence', [['—', 'unavailable']]));
+    list.appendChild(section('Editing & card-cutting', [['Not run', 'unavailable']]));
   }
-  grid.appendChild(
-    card('Relayout', r.relayout ? [['Full document', `${r.relayout.ms} ms`]] : [['—', 'n/a']]),
+  list.appendChild(
+    section('Relayout', r.relayout ? [['Full document', `${r.relayout.ms} ms`]] : [['Not run', 'n/a']]),
   );
-  grid.appendChild(
-    card('Long tasks', [
+  list.appendChild(
+    section('Long tasks', [
       ['Count', String(r.longTasks.count)],
       ['Total', `${r.longTasks.totalMs} ms`],
       ['Longest', `${r.longTasks.maxMs} ms`],
     ]),
   );
-  grid.appendChild(
-    card('Document', [
+  list.appendChild(
+    section('Document', [
       ['Headings', String(r.docInfo.headings)],
       ['Cards', String(r.docInfo.cards)],
       ['Characters', r.docInfo.chars.toLocaleString()],
     ]),
   );
-  dialog.appendChild(grid);
 
   if (r.scroll && r.scroll.frameMs.length > 2) {
-    dialog.appendChild(frameGraph(r.scroll.frameMs));
+    list.appendChild(frameGraph(r.scroll.frameMs));
   }
-
-  const note = document.createElement('p');
-  note.className = 'pmd-bench-note';
-  note.textContent =
-    "Self-reported (CardMirror's own renderer). FPS is capped by your display's " +
-    'refresh rate. For the apples-to-apples comparison against Word, see the perf/ rig.';
-  dialog.appendChild(note);
+  list.appendChild(notesSection());
+  dialog.appendChild(list);
 
   dialog.appendChild(
     footer([
@@ -178,25 +177,100 @@ function showResults(r: BenchmarkResults): void {
   );
 }
 
-function card(title: string, rows: [string, string][]): HTMLElement {
-  const c = document.createElement('div');
-  c.className = 'pmd-bench-card';
+// ── Sections + footnotes ─────────────────────────────────────────────
+
+const FOOTNOTES: { label: string; text: string }[] = [
+  {
+    label: 'Score',
+    text: 'A single rough figure combining frame rate and the operation latencies — higher is better, no units. Only meaningful for comparing runs on the same machine and display.',
+  },
+  {
+    label: '1% low FPS',
+    text: 'Frame rate during the worst 1% of frames (from the p99 frame time). A better gauge of perceived smoothness than the average — the slow frames are the ones you feel.',
+  },
+  {
+    label: 'p99 frame time',
+    text: '99% of frames were drawn at least this fast. Lower is smoother.',
+  },
+  {
+    label: 'Jank frames',
+    text: 'Frames that took more than 1.5× the median frame time — the visible hitches during a scroll.',
+  },
+  {
+    label: 'Relayout',
+    text: 'Time to force a full layout + repaint of the entire document; a proxy for the layout half of opening it.',
+  },
+  {
+    label: 'Long tasks',
+    text: 'Main-thread tasks longer than 50 ms (they block input) recorded over the whole run.',
+  },
+];
+
+function noteIndex(label: string): number | null {
+  const i = FOOTNOTES.findIndex((f) => f.label === label);
+  return i >= 0 ? i + 1 : null;
+}
+
+/** Set `el`'s text to `label`, plus a footnote superscript if it's one of the
+ *  explained terms. */
+function labelWithNote(el: HTMLElement, label: string): void {
+  el.textContent = label;
+  const n = noteIndex(label);
+  if (n != null) {
+    const sup = document.createElement('sup');
+    sup.className = 'pmd-bench-noteref';
+    sup.textContent = String(n);
+    el.appendChild(sup);
+  }
+}
+
+function section(title: string, rows: [string, string][]): HTMLElement {
+  const sec = document.createElement('div');
+  sec.className = 'pmd-bench-section';
   const t = document.createElement('div');
-  t.className = 'pmd-bench-card-title';
-  t.textContent = title;
-  c.appendChild(t);
+  t.className = 'pmd-bench-section-title';
+  labelWithNote(t, title);
+  sec.appendChild(t);
   for (const [label, value] of rows) {
     const row = document.createElement('div');
-    row.className = 'pmd-bench-card-row';
+    row.className = 'pmd-bench-row';
     const l = document.createElement('span');
-    l.textContent = label;
+    l.className = 'pmd-bench-row-label';
+    labelWithNote(l, label);
     const v = document.createElement('span');
-    v.className = 'pmd-bench-card-val';
+    v.className = 'pmd-bench-row-val';
     v.textContent = value;
     row.append(l, v);
-    c.appendChild(row);
+    sec.appendChild(row);
   }
-  return c;
+  return sec;
+}
+
+function notesSection(): HTMLElement {
+  const sec = document.createElement('div');
+  sec.className = 'pmd-bench-section pmd-bench-notes';
+  const t = document.createElement('div');
+  t.className = 'pmd-bench-section-title';
+  t.textContent = 'Notes';
+  sec.appendChild(t);
+  FOOTNOTES.forEach((f, i) => {
+    const row = document.createElement('div');
+    row.className = 'pmd-bench-note-row';
+    const num = document.createElement('span');
+    num.className = 'pmd-bench-note-num';
+    num.textContent = `${i + 1}`;
+    const txt = document.createElement('span');
+    txt.textContent = `${f.label} — ${f.text}`;
+    row.append(num, txt);
+    sec.appendChild(row);
+  });
+  const meth = document.createElement('p');
+  meth.className = 'pmd-bench-note-meth';
+  meth.textContent =
+    "Self-reported by CardMirror's own renderer; frame rate is capped by your display's " +
+    'refresh rate. For the apples-to-apples comparison against Word, see the perf/ rig.';
+  sec.appendChild(meth);
+  return sec;
 }
 
 function frameGraph(frameMs: number[]): HTMLElement {

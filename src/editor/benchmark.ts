@@ -15,14 +15,33 @@
  */
 
 import { TextSelection } from 'prosemirror-state';
+import type { Command } from 'prosemirror-state';
 import type { Node as ProseNode } from 'prosemirror-model';
 import type { EditorView } from 'prosemirror-view';
 import { newHeadingId } from '../schema/index.js';
 import { preciseScrollIntoView } from './precise-scroll.js';
-import { applyCite } from './ribbon-commands.js';
+import { applyCite, applyUnderline, applyEmphasis, applyHighlight } from './ribbon-commands.js';
+import { condenseBranchC } from './condense.js';
 import { applyPlainPasteFromText } from './paste-plugin.js';
 import { dragController } from './drag-controller.js';
 import { collectHeadings, computeHeadingRange, headingInsertPos } from './headings.js';
+
+/** A long, realistic body so the card-cutting sweep is visible and meaningful. */
+const LONG_BODY =
+  'Recent scholarship converges on the conclusion that the proposed policy would ' +
+  'produce substantial and measurable benefits across multiple domains. Analysts ' +
+  'note that the mechanism operates through several reinforcing channels, each of ' +
+  'which has been documented independently in the peer-reviewed literature. First, ' +
+  'the intervention lowers transaction costs for the affected actors, which in turn ' +
+  'accelerates adoption and compounds over time. Second, the distributional effects ' +
+  'are progressive, concentrating gains among the populations least able to absorb ' +
+  'shocks under the status quo. Third, the historical record from comparable cases ' +
+  'suggests that implementation risks, while real, are manageable with modest ' +
+  'administrative investment. Critics raise concerns about unintended consequences, ' +
+  'but the best available evidence indicates those concerns are overstated and that ' +
+  'robust safeguards already exist. Taken together, the weight of the evidence ' +
+  'strongly favors action over continued delay, and the cost of inaction grows ' +
+  'larger with every passing year that the underlying problems are left unaddressed.';
 
 const HEADING_NODES = new Set(['pocket', 'hat', 'block', 'tag']);
 
@@ -274,9 +293,85 @@ async function measureStep(
   await sleep(STEP_PAUSE_MS);
 }
 
+/** Like measureStep, but the sweep returns the summed apply time so the visual
+ *  inter-segment delays aren't counted in the metric. */
+async function measureSweep(
+  label: string,
+  sweep: () => Promise<number>,
+  onProgress: ProgressFn | undefined,
+  steps: EditStep[],
+): Promise<void> {
+  onProgress?.(label);
+  await nextPaint();
+  let ms: number | null = null;
+  try {
+    ms = await sweep();
+  } catch (err) {
+    console.warn('[benchmark] sweep failed:', label, err);
+  }
+  steps.push({ label, ms });
+  await sleep(STEP_PAUSE_MS);
+}
+
+interface Range {
+  from: number;
+  to: number;
+}
+
+/** Content range of the last card_body in the card owning `tagId` (the pasted
+ *  body). Mark sweeps don't change text length, so it stays valid across them. */
+function lastBodyRange(doc: ProseNode, tagId: string): Range | null {
+  const found = cardOfTag(doc, tagId);
+  if (!found) return null;
+  const { card, cardPos } = found;
+  let result: Range | null = null;
+  card.forEach((child, offset) => {
+    if (child.type.name === 'card_body') {
+      const start = cardPos + 1 + offset;
+      result = { from: start + 1, to: start + child.nodeSize - 1 };
+    }
+  });
+  return result;
+}
+
+/** Split a body range into N segments, each with a wide read span
+ *  (underline/highlight) and a narrow emphasis span. */
+function segmentRanges(range: Range, n: number): { read: Range; emph: Range }[] {
+  const out: { read: Range; emph: Range }[] = [];
+  const len = range.to - range.from;
+  if (len < n * 4) return out;
+  const seg = len / n;
+  for (let i = 0; i < n; i++) {
+    const s = Math.floor(range.from + i * seg);
+    const sl = Math.floor(range.from + (i + 1) * seg) - s;
+    out.push({
+      read: { from: s + Math.floor(sl * 0.08), to: s + Math.floor(sl * 0.85) },
+      emph: { from: s + Math.floor(sl * 0.3), to: s + Math.floor(sl * 0.48) },
+    });
+  }
+  return out;
+}
+
+/** Apply `cmd` to each range top→bottom, with a brief visible delay between
+ *  them; return the summed apply+paint time (the metric, excluding delays). */
+async function sweepMark(view: EditorView, ranges: Range[], cmd: Command): Promise<number> {
+  let total = 0;
+  for (const r of ranges) {
+    if (r.to <= r.from) continue;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, r.from, r.to)));
+    const t0 = performance.now();
+    cmd(view.state, view.dispatch.bind(view), view);
+    await nextPaint();
+    total += performance.now() - t0;
+    await sleep(45); // visible top-to-bottom sweep
+  }
+  return round1(total);
+}
+
 /** A narrated editing sequence: new heading → type → new tag → type → cite →
- *  cite-mark → paste body → cut it. Each discrete step is paused so the user
- *  can watch. All on the live doc; the caller reverts via the snapshot. */
+ *  cite-mark → paste a long body → card-cutting sweeps (underline → emphasis →
+ *  highlight, top→bottom) → condense. Each step is paused so the user can watch;
+ *  all on the live doc, reverted by the caller via the snapshot. */
 async function benchEdit(
   view: EditorView,
   onProgress?: ProgressFn,
@@ -355,8 +450,11 @@ async function benchEdit(
       const at = tg.pos + tg.node.nodeSize;
       const cite = view.state.doc.nodeAt(at);
       if (!cite || cite.type.name !== 'cite_paragraph') throw new Error('cite missing');
-      const from = at + 1;
-      const to = at + 1 + cite.content.size;
+      // Interior range (skip the textblock's first/last position) — selecting the
+      // exact content boundaries trips withGapFix's edge merge.
+      const from = at + 2;
+      const to = at + cite.content.size;
+      if (to <= from) throw new Error('cite too short');
       view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
       applyCite()(view.state, view.dispatch.bind(view), view);
     },
@@ -365,7 +463,7 @@ async function benchEdit(
   );
 
   await measureStep(
-    'Paste body below cite',
+    'Paste a long card body',
     () => {
       const tg = findById(view.state.doc, tagId);
       if (!tg) throw new Error('tag missing');
@@ -374,7 +472,7 @@ async function benchEdit(
       if (!cite) throw new Error('cite missing');
       const end = at + cite.nodeSize - 1; // caret at end of the cite paragraph
       view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, end)));
-      applyPlainPasteFromText(view, 'Pasted body text for the benchmark, just below the cite.', {
+      applyPlainPasteFromText(view, LONG_BODY, {
         condenseOnPaste: () => false,
         paragraphIntegrity: () => false,
         usePilcrows: () => false,
@@ -385,16 +483,35 @@ async function benchEdit(
     steps,
   );
 
+  // Card-cutting: underline → emphasis → highlight, each sweeping top→bottom
+  // through the pasted body (positions are stable across mark-only edits, so
+  // the segments computed once stay valid), then condense the card.
+  const body = lastBodyRange(view.state.doc, tagId);
+  const segs = body ? segmentRanges(body, 7) : [];
+  await measureSweep(
+    'Underline (top→bottom)',
+    () => sweepMark(view, segs.map((s) => s.read), applyUnderline()),
+    onProgress,
+    steps,
+  );
+  await measureSweep(
+    'Emphasis (top→bottom)',
+    () => sweepMark(view, segs.map((s) => s.emph), applyEmphasis()),
+    onProgress,
+    steps,
+  );
+  await measureSweep(
+    'Highlight (top→bottom)',
+    () => sweepMark(view, segs.map((s) => s.read), applyHighlight(() => 'yellow')),
+    onProgress,
+    steps,
+  );
   await measureStep(
-    'Cut the pasted body',
+    'Condense the card',
     () => {
-      const found = cardOfTag(view.state.doc, tagId);
-      if (!found) throw new Error('card missing');
-      const last = found.card.lastChild;
-      if (!last || last.type.name === 'tag') throw new Error('nothing to cut');
-      const cardEnd = found.cardPos + found.card.nodeSize - 1;
-      const lastStart = cardEnd - last.nodeSize;
-      view.dispatch(view.state.tr.delete(lastStart, cardEnd));
+      const r = lastBodyRange(view.state.doc, tagId);
+      if (r) view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, r.from)));
+      condenseBranchC()(view.state, view.dispatch.bind(view), view);
     },
     onProgress,
     steps,
