@@ -7,6 +7,20 @@ see `DETAILED_CHANGELOG.md`.
 
 ## Unreleased
 
+### Added
+
+- **Benchmark — measure how fast CardMirror runs on your machine.** A new button
+  in Settings → General runs a battery of real in-editor operations on the open
+  document — continuous scrolling, jumping between headings, and a full
+  card-cutting sequence (type and mark a cite, paste a messy multi-paragraph
+  card, condense it clean, then underline / emphasis / highlight and shrink) —
+  while sampling frame rate, frame-time percentiles (including a 1%-low that
+  captures stutter), and per-operation latency. It shows a scrollable readout
+  with a scroll-frame-time graph, footnoted metrics, and an overall score. The
+  whole run happens on a snapshot of your document and is fully reverted when you
+  close the results, so it never touches your file — and it only runs when the
+  document is editable (not in read mode).
+
 ### Fixed
 
 - **Clean handles a whole messy library without choking.** Cleaning a large

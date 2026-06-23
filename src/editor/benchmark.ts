@@ -2,12 +2,11 @@
  * In-app performance benchmark — a game-style suite that runs a battery of real
  * in-editor operations on the currently open document and reports frame rate,
  * frame-time percentiles, and operation latencies. Surfaced in Settings →
- * Benchmark (see `benchmark-ui.ts`).
+ * General (see `benchmark-ui.ts`).
  *
  * Self-instrumented via `requestAnimationFrame` + `PerformanceObserver`, so it
- * measures CardMirror's OWN rendering. It is deliberately NOT the cross-app
- * comparison — that's the black-box screen-capture rig in `perf/`, which is the
- * only fair way to put Word and CardMirror on the same axis.
+ * measures CardMirror's OWN rendering — a "how fast is it on my machine" readout,
+ * not a cross-application comparison.
  *
  * The editor must be VISIBLE while this runs (occluded content gets its paints
  * culled by the compositor, which would falsify the frame times), so the UI

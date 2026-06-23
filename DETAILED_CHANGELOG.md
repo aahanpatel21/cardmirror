@@ -7,6 +7,36 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Benchmark — an in-app, game-style performance suite** (`editor/benchmark.ts`,
+  `editor/benchmark-ui.ts`, `editor/benchmark-sample.ts`; surfaced via
+  `buildBenchmarkSection` in `editor/settings-ui.ts`; wired through
+  `beginBenchmark`/`endBenchmark` in `editor/index.ts`). A button in
+  Settings → General runs a battery of real in-editor operations on the open
+  document and reports rendering performance as a scrollable readout with a
+  scroll-frame-time graph, footnoted metrics, and a single composite score.
+  Tests: a continuous top→bottom scroll sampling each frame's interval (mean fps,
+  p50/p95/p99 frame time, a 1%-low derived from p99, jank-frame count); nav jumps
+  to headings spread across the doc via the same `preciseScrollIntoView` the nav
+  pane uses (median + p90 click→settled); a forced relayout; a long-task tally via
+  `PerformanceObserver`; and a scripted card-cutting sequence that builds a card
+  the way a debater does — new heading + tag, then a real cite line that becomes
+  the cite only once the cite mark is applied to its author/short-cite, then a
+  paste of a real multi-paragraph card from the corpus **with extra blank lines
+  between paragraphs**, a condense to drop the blanks and make it "cutting ready",
+  and underline/emphasis/highlight sweeps (reported as the **average time per mark
+  application**, since totals only track card length) plus a Smart Shrink. It is
+  self-instrumented via `requestAnimationFrame` + `PerformanceObserver` — it
+  measures CardMirror's own renderer, not a cross-application comparison.
+  Implementation notes: the run executes against a `view.updateState` snapshot
+  with a `benchmarkActive` flag that suppresses autosave / dirty-tracking / nav
+  rebuilds, and the document is reverted to that snapshot when the user **closes**
+  the results (by any path, once-guarded), so a benchmark never touches the file
+  or the undo history. The cut spans are re-derived per paragraph from the
+  post-condense document by sequential text match, so they survive condense's
+  whitespace cleanup. The benchmark no-ops in read mode (it edits the document,
+  which read mode locks). The fixture is auto-extracted into `benchmark-sample.ts`
+  and guarded by `tests/editor/benchmark-sample.test.ts`.
+
 - **Clean — robustness on a full-library bulk run** (`apps/desktop/src/main.ts`,
   `ooxml/style-clean/legacy-remap.ts`, `ooxml/style-clean/style-cleaner.ts`,
   `editor/clean-ui.ts`). Cleaning an entire file library surfaced three failure
