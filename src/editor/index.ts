@@ -26,6 +26,7 @@ import {
   subscribeTimer,
 } from './timer-state.js';
 import { openSettings } from './settings-ui.js';
+import { isBenchmarkActive, setBenchmarkActive } from './benchmark.js';
 import { openReference } from './reference-ui.js';
 import {
   getSpeechDocResolver,
@@ -822,6 +823,30 @@ export function setActiveView(v: EditorView | null): void {
  *  modules (multi-pane shell) can register listeners that need it. */
 export function getActiveView(): EditorView | null {
   return view;
+}
+
+/** Benchmark lifecycle (Settings → Benchmark). The mutating edit/drag tests run
+ *  on the live doc, but `dispatchTransaction` checks `isBenchmarkActive()` and
+ *  skips the autosave / dirty / nav-rebuild side effects, so nothing touches
+ *  disk and the nav doesn't churn. `endBenchmark` reverts the whole editor state
+ *  (doc + selection + undo history) from the pre-run snapshot and refreshes the
+ *  chrome that was suppressed. */
+export function beginBenchmark(): EditorState | null {
+  const v = getActiveView();
+  if (!v) return null;
+  setBenchmarkActive(true);
+  return v.state;
+}
+export function endBenchmark(snapshot: EditorState | null): void {
+  const v = getActiveView();
+  if (v && snapshot) v.updateState(snapshot);
+  setBenchmarkActive(false);
+  if (v) {
+    scheduleHeavyUpdate();
+    refreshFontSizeDisplay();
+    refreshCursorColorDisplay();
+    refreshFormattingPanelButtonStates();
+  }
 }
 
 // Live context for ribbon commands that read settings at keypress
@@ -3808,12 +3833,17 @@ function mountView(doc: PMNode, threads: Thread[] = []): void {
       const next = view.state.apply(tx);
       view.updateState(next);
       if (tx.docChanged) {
-        currentDoc = next.doc;
-        markNonPristineStarter();
-        markCurrentDocDirty();
-        // Re-arm the autosave debounce. No-ops when the setting
-        // is off, so the call is cheap to fire unconditionally.
-        notifyEditForAutosave();
+        // Suppress persistence while the benchmark drives temporary edits — they
+        // are reverted from a snapshot, must never reach disk, and shouldn't
+        // mark the doc dirty (see beginBenchmark/endBenchmark).
+        if (!isBenchmarkActive()) {
+          currentDoc = next.doc;
+          markNonPristineStarter();
+          markCurrentDocDirty();
+          // Re-arm the autosave debounce. No-ops when the setting
+          // is off, so the call is cheap to fire unconditionally.
+          notifyEditForAutosave();
+        }
         // The cached whole-doc word count is now stale. Null it so a
         // selection collapse before the debounced recount re-walks the
         // doc rather than showing a stale total (the debounced
@@ -3834,7 +3864,7 @@ function mountView(doc: PMNode, threads: Thread[] = []): void {
       // it for selection-only transactions avoids rebuilding the nav's
       // `<li>`s on every cursor move — a perf win, and it keeps a plain
       // nav click from re-rendering the outline mid-double-click.
-      if (tx.docChanged) {
+      if (tx.docChanged && !isBenchmarkActive()) {
         needsCommentsGC = true;
         scheduleHeavyUpdate();
       }

@@ -5,7 +5,7 @@
  * with a frame-time graph.
  */
 
-import { getActiveView } from './index.js';
+import { getActiveView, beginBenchmark, endBenchmark } from './index.js';
 import { runBenchmark, type BenchmarkResults } from './benchmark.js';
 
 let running = false;
@@ -18,6 +18,9 @@ export async function launchBenchmarkOverlay(): Promise<void> {
     return;
   }
   running = true;
+  // Snapshot the editor state + suppress autosave; the edit/drag tests mutate
+  // the live doc and we revert from this snapshot when done.
+  const snapshot = beginBenchmark();
   const chip = makeChip();
   document.body.appendChild(chip.el);
   // One frame so the chip paints and the (now modal-free) editor is on screen.
@@ -29,6 +32,9 @@ export async function launchBenchmarkOverlay(): Promise<void> {
     console.error('[benchmark] failed', err);
   } finally {
     chip.el.remove();
+    // Revert the document (and re-enable autosave) — it's back exactly as it
+    // was, undo history included.
+    endBenchmark(snapshot);
     running = false;
   }
   if (results) showResults(results);
@@ -121,6 +127,16 @@ function showResults(r: BenchmarkResults): void {
         : [['—', 'needs ≥4 headings']],
     ),
   );
+  grid.appendChild(
+    card('Drag-move', r.drag ? [['Section', `${r.drag.ms} ms`]] : [['—', 'needs ≥3 sections']]),
+  );
+  if (r.edit) {
+    const rows: [string, string][] = [['Total', `${r.edit.totalMs} ms`]];
+    for (const s of r.edit.steps) rows.push([s.label, s.ms == null ? '—' : `${s.ms} ms`]);
+    grid.appendChild(card('Editing sequence', rows));
+  } else {
+    grid.appendChild(card('Editing sequence', [['—', 'unavailable']]));
+  }
   grid.appendChild(
     card('Relayout', r.relayout ? [['Full document', `${r.relayout.ms} ms`]] : [['—', 'n/a']]),
   );

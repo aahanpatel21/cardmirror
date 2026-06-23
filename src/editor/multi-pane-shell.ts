@@ -53,6 +53,7 @@ function formatFromFilename(name: string): DocFormat | null {
 import { NavigationPanel, installNavResizeHandle } from './nav-panel.js';
 import { EditorDragSurface } from './drag-editor-surface.js';
 import { dragController, rewriteHeadingIds } from './drag-controller.js';
+import { isBenchmarkActive } from './benchmark.js';
 import { countReadAloudWords, formatReadTime, formatNumber } from './word-count.js';
 import { openWordCount } from './word-count-ui.js';
 import { isAutosaveOnForPath, setAutosaveForPath } from './autosave-prefs-store.js';
@@ -2266,7 +2267,9 @@ function buildDocRecord(
       // No-ops when autosave is off for this record. Also flip
       // the dirty flag so the pane's close-X knows there are
       // unsaved changes to prompt about.
-      if (tx.docChanged) {
+      // Suppressed while the benchmark drives temporary edits (reverted from a
+      // snapshot — must never reach disk or mark the record dirty).
+      if (tx.docChanged && !isBenchmarkActive()) {
         record.dirty = true;
         scheduleAutosaveForRecord(record);
         scheduleJournalForRecord(record);

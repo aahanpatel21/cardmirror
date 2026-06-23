@@ -1165,8 +1165,7 @@ export type SettingsCategory =
   | 'editing'
   | 'shortcuts'
   | 'comments-ai'
-  | 'pairing'
-  | 'benchmark';
+  | 'pairing';
 
 /**
  * Human-readable metadata for each setting, used by the settings UI.

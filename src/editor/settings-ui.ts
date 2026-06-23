@@ -173,7 +173,6 @@ export const CATEGORY_TABS: { id: SettingsCategory; label: string }[] = [
   { id: 'shortcuts', label: 'Keyboard' },
   { id: 'comments-ai', label: 'Comments & AI' },
   { id: 'pairing', label: 'Card Sharing' },
-  { id: 'benchmark', label: 'Benchmark' },
   // Accessibility intentionally lives at the far right — its
   // override-anything panel is a "last-resort" customization
   // surface, separated from the everyday tabs.
@@ -431,22 +430,20 @@ class SettingsModal {
         }
         panel.appendChild(row);
       }
-      if (entries.length === 0 && id !== 'benchmark') {
+      if (entries.length === 0) {
         const empty = document.createElement('p');
         empty.className = 'pmd-settings-empty';
         empty.textContent = 'No settings in this section yet.';
         panel.appendChild(empty);
       }
-      // The Benchmark tab isn't settings — it's an action surface (run the
-      // in-app perf suite). Built here for the same reason install-info is.
-      if (id === 'benchmark') {
-        panel.appendChild(buildBenchmarkSection(() => this.close()));
-      }
       // "About this install" diagnostic block at the bottom of
       // General — read-only labels users can copy-paste into bug
       // reports. Lives here rather than in SETTING_METADATA
-      // because it isn't a user-editable setting.
+      // because it isn't a user-editable setting. The Benchmark
+      // action (run the in-app perf suite) lives here too — not its
+      // own tab, just an action button alongside the diagnostics.
       if (id === 'general') {
+        panel.appendChild(buildBenchmarkSection(() => this.close()));
         panel.appendChild(buildInstallInfoSection());
         panel.appendChild(this.buildSettingsBackupSection());
       }
