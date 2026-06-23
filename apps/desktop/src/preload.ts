@@ -45,6 +45,7 @@ interface PairingConfigIpc {
   enabled: boolean;
   displayName: string;
   schemaVersion: string;
+  minReceiverVersion?: string;
   pollSeconds: number;
 }
 interface PairingSendIpc {
@@ -505,11 +506,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('pairing:inbox-changed', listener);
   },
   onPairingVersionMismatch(
-    handler: (info: { partnerVersion: string; localVersion: string }) => void,
+    handler: (info: {
+      partnerVersion: string;
+      localVersion: string;
+      requiredVersion: string;
+    }) => void,
   ): () => void {
     const listener = (
       _evt: unknown,
-      info: { partnerVersion: string; localVersion: string },
+      info: { partnerVersion: string; localVersion: string; requiredVersion: string },
     ): void => handler(info);
     ipcRenderer.on('pairing:version-mismatch', listener);
     return () => ipcRenderer.removeListener('pairing:version-mismatch', listener);

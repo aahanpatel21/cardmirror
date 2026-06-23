@@ -46,6 +46,9 @@ export interface PairingConfigIpc {
   displayName: string;
   /** App version, for the cross-version guard. */
   schemaVersion: string;
+  /** Compatibility floor stamped on cards this build sends — the minimum
+   *  receiver version that can read them. Blank = any version may receive. */
+  minReceiverVersion?: string;
   /** Poll cadence in seconds. */
   pollSeconds: number;
 }
@@ -237,7 +240,11 @@ interface ElectronAPI {
   pairingInboxMarkAllRead?(): Promise<void>;
   onPairingInboxChanged?(handler: (items: PairingInboxItemIpc[]) => void): () => void;
   onPairingVersionMismatch?(
-    handler: (info: { partnerVersion: string; localVersion: string }) => void,
+    handler: (info: {
+      partnerVersion: string;
+      localVersion: string;
+      requiredVersion: string;
+    }) => void,
   ): () => void;
 
   /** Return every open doc across every window with its current
@@ -707,7 +714,11 @@ export class ElectronHost implements Host {
   }
 
   onPairingVersionMismatch(
-    handler: (info: { partnerVersion: string; localVersion: string }) => void,
+    handler: (info: {
+      partnerVersion: string;
+      localVersion: string;
+      requiredVersion: string;
+    }) => void,
   ): () => void {
     return api().onPairingVersionMismatch?.(handler) ?? (() => {});
   }

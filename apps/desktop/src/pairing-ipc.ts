@@ -53,6 +53,9 @@ interface PairingConfig {
   enabled: boolean;
   displayName: string;
   schemaVersion: string;
+  /** Compatibility floor this build stamps on outgoing cards — the minimum
+   *  receiver version that can read them. Blank = any version may receive. */
+  minReceiverVersion: string;
   pollSeconds: number;
 }
 
@@ -65,6 +68,9 @@ interface SendItem {
 /** The plaintext sealed inside each message — never visible to the host. */
 interface InnerPayload {
   schemaVersion?: string;
+  /** Compatibility floor: the minimum receiver version that can read this card.
+   *  Absent/blank = any version may receive it (the tolerant default). */
+  minReceiverVersion?: string;
   senderCode?: string;
   senderName?: string;
   via?: string;
@@ -96,6 +102,7 @@ let config: PairingConfig = {
   enabled: false,
   displayName: '',
   schemaVersion: 'unknown',
+  minReceiverVersion: '',
   pollSeconds: 30,
 };
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -161,12 +168,61 @@ function broadcastInbox(): void {
   }
 }
 
-function broadcastVersionMismatch(partnerVersion: string, localVersion: string): void {
+function broadcastVersionMismatch(
+  partnerVersion: string,
+  localVersion: string,
+  requiredVersion: string,
+): void {
   for (const w of BrowserWindow.getAllWindows()) {
     if (!w.isDestroyed()) {
-      w.webContents.send('pairing:version-mismatch', { partnerVersion, localVersion });
+      w.webContents.send('pairing:version-mismatch', {
+        partnerVersion,
+        localVersion,
+        requiredVersion,
+      });
     }
   }
+}
+
+/** Compare two semver-ish versions (`X.Y.Z` or `X.Y.Z-pre.N`). Returns <0 if
+ *  `a` is older than `b`, 0 if equal, >0 if newer. A release with no pre-release
+ *  ranks above the same core with one (`1.0.0` > `1.0.0-alpha.1`); numeric
+ *  pre-release identifiers compare numerically (so `alpha.9` < `alpha.10`). */
+function compareVersions(a: string, b: string): number {
+  const parse = (v: string) => {
+    const [core = '', pre = ''] = v.trim().split('-');
+    const nums = core.split('.').map((n) => parseInt(n, 10) || 0);
+    return {
+      nums: [nums[0] ?? 0, nums[1] ?? 0, nums[2] ?? 0],
+      pre: pre ? pre.split('.') : [],
+    };
+  };
+  const pa = parse(a);
+  const pb = parse(b);
+  for (let i = 0; i < 3; i++) {
+    if (pa.nums[i] !== pb.nums[i]) return pa.nums[i]! - pb.nums[i]!;
+  }
+  // No pre-release outranks a pre-release on the same core.
+  if (pa.pre.length === 0 && pb.pre.length > 0) return 1;
+  if (pa.pre.length > 0 && pb.pre.length === 0) return -1;
+  const n = Math.max(pa.pre.length, pb.pre.length);
+  for (let i = 0; i < n; i++) {
+    const x = pa.pre[i];
+    const y = pb.pre[i];
+    if (x === undefined) return -1; // fewer identifiers ranks lower
+    if (y === undefined) return 1;
+    const xnum = /^\d+$/.test(x);
+    const ynum = /^\d+$/.test(y);
+    if (xnum && ynum) {
+      const d = parseInt(x, 10) - parseInt(y, 10);
+      if (d !== 0) return d;
+    } else if (xnum !== ynum) {
+      return xnum ? -1 : 1; // numeric identifiers rank below alphanumeric
+    } else if (x !== y) {
+      return x < y ? -1 : 1;
+    }
+  }
+  return 0;
 }
 
 // ── Relay HTTP ───────────────────────────────────────────────────────
@@ -219,16 +275,19 @@ async function pollOnce(): Promise<void> {
         continue;
       }
 
-      // Cross-version guard (the version travels inside the ciphertext): a
-      // partner on a different app version may have an incompatible slice
-      // schema. Drop it, tell the UI, clear it from the relay.
+      // Compatibility floor (travels inside the ciphertext): a card may declare
+      // the minimum receiver version that can safely read it. Reject ONLY when
+      // that floor is set and we're older than it — a blank floor means any
+      // version may receive, so cross-version sharing is tolerant by default.
+      // Drop the rejected card, tell the UI, and clear it from the relay.
       const partnerVersion = inner.schemaVersion || 'unknown';
-      if (partnerVersion !== config.schemaVersion) {
+      const requiredMin = (inner.minReceiverVersion ?? '').trim();
+      if (requiredMin && compareVersions(config.schemaVersion, requiredMin) < 0) {
         console.log(
-          `[pairing] dropping card from a different version: ` +
-            `partner=${partnerVersion} local=${config.schemaVersion}`,
+          `[pairing] dropping card requiring >= ${requiredMin} ` +
+            `(local ${config.schemaVersion}, from ${partnerVersion})`,
         );
-        broadcastVersionMismatch(partnerVersion, config.schemaVersion);
+        broadcastVersionMismatch(partnerVersion, config.schemaVersion, requiredMin);
         deleteMessage(m.msgId);
         continue;
       }
@@ -299,6 +358,8 @@ export function registerPairingIpc(): void {
         enabled: !!cfg?.enabled,
         displayName: typeof cfg?.displayName === 'string' ? cfg.displayName : '',
         schemaVersion: typeof cfg?.schemaVersion === 'string' ? cfg.schemaVersion : 'unknown',
+        minReceiverVersion:
+          typeof cfg?.minReceiverVersion === 'string' ? cfg.minReceiverVersion : '',
         pollSeconds:
           typeof cfg?.pollSeconds === 'number' && Number.isFinite(cfg.pollSeconds)
             ? cfg.pollSeconds
@@ -342,6 +403,9 @@ export function registerPairingIpc(): void {
             // Seal everything-but-routing to the recipient's public key.
             const inner: InnerPayload = {
               schemaVersion: config.schemaVersion,
+              // Omit when blank so the payload stays minimal and older receivers
+              // never see an unexpected field; absent = tolerant.
+              minReceiverVersion: config.minReceiverVersion || undefined,
               senderCode,
               senderName: config.displayName,
               via: payload.via,

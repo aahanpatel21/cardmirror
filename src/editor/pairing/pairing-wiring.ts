@@ -15,7 +15,7 @@
 import type { EditorView } from 'prosemirror-view';
 import { getElectronHost } from '../host/index.js';
 import { settings } from '../settings.js';
-import { appVersion } from '../install-info.js';
+import { appVersion, CARD_COMPAT_MIN_VERSION } from '../install-info.js';
 import { showToast } from '../toast.js';
 import { inboxStore } from './inbox-store.js';
 import { SendPillController } from './send-pill-ui.js';
@@ -43,6 +43,7 @@ function applyConfig(): void {
       enabled: settings.get('pairingEnabled'),
       displayName: settings.get('pairingDisplayName'),
       schemaVersion: appVersion,
+      minReceiverVersion: CARD_COMPAT_MIN_VERSION,
       pollSeconds: settings.get('pairingPollSeconds'),
     })
     .then(({ ownCode }) => {
@@ -73,13 +74,16 @@ export function initPairingWiring(): void {
   const electron = getElectronHost();
   if (electron?.onPairingVersionMismatch) {
     electron.onPairingVersionMismatch((info) => {
-      // Throttle so a backlog of mismatched cards doesn't spam toasts.
+      // Throttle so a backlog of incompatible cards doesn't spam toasts.
       const now = Date.now();
       if (now - lastMismatchToast < 8000) return;
       lastMismatchToast = now;
+      const need = info.requiredVersion
+        ? ` (${info.requiredVersion} or newer)`
+        : '';
       showToast(
-        `Someone is on a different CardMirror version (${info.partnerVersion}) — ` +
-          `update both to share cards.`,
+        `A shared card needs a newer CardMirror version${need} — ` +
+          `update to receive it.`,
       );
     });
   }

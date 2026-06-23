@@ -17,6 +17,25 @@ import { getHost } from './host/index.js';
  *  the command palette can surface it without re-importing the manifest. */
 export const appVersion: string = pkg.version;
 
+/**
+ * Compatibility floor for shared cards (cross-machine card sharing).
+ *
+ * Stamped onto every card this build SENDS as `minReceiverVersion`. A receiver
+ * accepts a card unless this floor is set AND the receiver's own version is
+ * below it — so **blank (the default) means any version can receive**, and
+ * cross-version sharing just works.
+ *
+ * Only raise this when a future release changes the shared-card payload in a way
+ * OLDER versions genuinely can't read. Set it to that release's own version
+ * (e.g. `'0.1.0-alpha.40'`): from then on, clients older than it refuse the card
+ * and prompt the user to update, while equal-or-newer clients accept it. This is
+ * how a breaking version can lock out already-shipped older clients without
+ * pushing them an update — but note it only governs clients that already carry
+ * this floor logic (≥ this release); versions shipped before it still use their
+ * old guard.
+ */
+export const CARD_COMPAT_MIN_VERSION = '';
+
 export interface InstallInfoEntry {
   label: string;
   /** Human-friendly main value, e.g. "0.1.0-alpha.1". */
