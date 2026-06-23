@@ -416,6 +416,11 @@ export const RSTYLE_TO_MARK: Record<string, string> = {
   // Pre-modern Verbatim shipped "Style Style Bold + 12 pt"
   // (styleId `StyleStyleBold12pt`) as the cite character style.
   StyleStyleBold12pt: 'cite_mark',
+  // Some files carry the cite style under its alias as the styleId
+  // (`Cite`) instead of `Style13ptBold` — e.g. after a rename, or in an
+  // older/variant Verbatim distribution. Safe to map: an `rStyle` only ever
+  // references a character style, so a run-level `Cite` is the cite mark.
+  Cite: 'cite_mark',
 
   // ─── Emphasis / structural marks ────────────────────────────
   Emphasis: 'emphasis_mark',
