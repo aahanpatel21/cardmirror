@@ -15,12 +15,22 @@
  */
 
 import { TextSelection } from 'prosemirror-state';
+import type { Transaction } from 'prosemirror-state';
 import type { Mark, Node as ProseNode } from 'prosemirror-model';
 import type { EditorView } from 'prosemirror-view';
 import { newHeadingId } from '../schema/index.js';
 import { preciseScrollIntoView } from './precise-scroll.js';
 import { condenseBranchC } from './condense.js';
+import { readModePlugin } from './read-mode-plugin.js';
+import { READ_MODE_DRAG_META } from './reading-marker.js';
 import { SAMPLE_CARD } from './benchmark-sample.js';
+
+/** Dispatch a benchmark edit, tagged so it bypasses read mode's edit lock — the
+ *  benchmark's edits are controlled and reverted, so they're safe while reading.
+ *  (Without this, read mode silently drops every edit and the test no-ops.) */
+function benchDispatch(view: EditorView, tr: Transaction): void {
+  view.dispatch(tr.setMeta(READ_MODE_DRAG_META, true));
+}
 
 /** The sample card's plain text (runs concatenated) — inserted raw, then re-cut
  *  to the runs' formatting by the card-cutting sweep. */
@@ -268,7 +278,7 @@ async function measureStep(
     fn();
   } catch (err) {
     ok = false;
-    console.warn('[benchmark] edit step failed:', label, err);
+    console.error('[benchmark] edit step failed:', label, err);
   }
   await nextPaint();
   steps.push({ label, ms: ok ? round1(performance.now() - t0) : null });
@@ -289,7 +299,7 @@ async function measureSweep(
   try {
     ms = await sweep();
   } catch (err) {
-    console.warn('[benchmark] sweep failed:', label, err);
+    console.error('[benchmark] sweep failed:', label, err);
   }
   steps.push({ label, ms });
   await sleep(STEP_PAUSE_MS);
@@ -342,7 +352,7 @@ async function sweepMark(view: EditorView, ranges: Range[], mark: Mark): Promise
     const t0 = performance.now();
     const tr = view.state.tr.addMark(r.from, r.to, mark);
     tr.setSelection(TextSelection.create(tr.doc, r.from, r.to)).scrollIntoView();
-    view.dispatch(tr);
+    benchDispatch(view, tr);
     await nextPaint();
     total += performance.now() - t0;
     await sleep(18); // brisk visible top-to-bottom sweep (the card is long)
@@ -373,6 +383,12 @@ async function benchEdit(
   // (the nav test leaves the viewport mid-document).
   scrollGate(view).scrollTop = 0;
   await nextPaint();
+  console.error(
+    '[benchmark] editing: docSize=',
+    view.state.doc.content.size,
+    'readMode=',
+    readModePlugin.getState(view.state)?.on === true,
+  );
 
   await measureStep(
     'New heading at top',
@@ -380,7 +396,7 @@ async function benchEdit(
       const pocket = sch.nodes['pocket']!.create({ id: pocketId }, sch.text(HEAD));
       const tr = view.state.tr.insert(0, pocket);
       tr.setSelection(TextSelection.create(tr.doc, 1 + HEAD.length));
-      view.dispatch(tr.scrollIntoView());
+      benchDispatch(view, tr.scrollIntoView());
     },
     onProgress,
     steps,
@@ -388,7 +404,7 @@ async function benchEdit(
 
   await measureStep(
     'Type in heading',
-    () => view.dispatch(view.state.tr.insertText(' — Pocket')),
+    () => benchDispatch(view, view.state.tr.insertText(' — Pocket')),
     onProgress,
     steps,
   );
@@ -402,7 +418,7 @@ async function benchEdit(
       const card = sch.nodes['card']!.createChecked(null, [tag]);
       const tr = view.state.tr.insert(at, card);
       tr.setSelection(TextSelection.create(tr.doc, at + 2 + TAGTXT.length));
-      view.dispatch(tr.scrollIntoView());
+      benchDispatch(view, tr.scrollIntoView());
     },
     onProgress,
     steps,
@@ -410,7 +426,7 @@ async function benchEdit(
 
   await measureStep(
     'Type in tag',
-    () => view.dispatch(view.state.tr.insertText(' — Smith 2024')),
+    () => benchDispatch(view, view.state.tr.insertText(' — Smith 2024')),
     onProgress,
     steps,
   );
@@ -424,7 +440,7 @@ async function benchEdit(
       const cite = sch.nodes['cite_paragraph']!.create(null, sch.text(CITETXT));
       const tr = view.state.tr.insert(at, cite);
       tr.setSelection(TextSelection.create(tr.doc, at + 1));
-      view.dispatch(tr.scrollIntoView());
+      benchDispatch(view, tr.scrollIntoView());
     },
     onProgress,
     steps,
@@ -445,7 +461,7 @@ async function benchEdit(
       if (to <= from) throw new Error('cite too short');
       const tr = view.state.tr.addMark(from, to, sch.marks['cite_mark']!.create());
       tr.setSelection(TextSelection.create(tr.doc, from, to)).scrollIntoView();
-      view.dispatch(tr);
+      benchDispatch(view, tr);
     },
     onProgress,
     steps,
@@ -464,7 +480,7 @@ async function benchEdit(
       const cb = sch.nodes['card_body']!.create(null, sch.text(SAMPLE_TEXT));
       const tr = view.state.tr.insert(after, cb);
       tr.setSelection(TextSelection.create(tr.doc, after + 1)).scrollIntoView();
-      view.dispatch(tr);
+      benchDispatch(view, tr);
     },
     onProgress,
     steps,
@@ -513,11 +529,12 @@ async function benchEdit(
     () => {
       const r = findSampleBody(view.state.doc, tagId);
       if (r) {
-        view.dispatch(
+        benchDispatch(
+          view,
           view.state.tr.setSelection(TextSelection.create(view.state.doc, r.from)).scrollIntoView(),
         );
       }
-      condenseBranchC()(view.state, view.dispatch.bind(view), view);
+      condenseBranchC()(view.state, (tr) => benchDispatch(view, tr), view);
     },
     onProgress,
     steps,
