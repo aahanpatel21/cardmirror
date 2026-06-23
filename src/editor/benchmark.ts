@@ -21,9 +21,8 @@ import type { EditorView } from 'prosemirror-view';
 import { newHeadingId } from '../schema/index.js';
 import { preciseScrollIntoView } from './precise-scroll.js';
 import { condenseBranchC } from './condense.js';
-import { readModePlugin } from './read-mode-plugin.js';
 import { READ_MODE_DRAG_META } from './reading-marker.js';
-import { SAMPLE_CARD } from './benchmark-sample.js';
+import { SAMPLE_CARD, CITE_RUNS } from './benchmark-sample.js';
 
 /** Dispatch a benchmark edit, tagged so it bypasses read mode's edit lock — the
  *  benchmark's edits are controlled and reverted, so they're safe while reading.
@@ -35,6 +34,7 @@ function benchDispatch(view: EditorView, tr: Transaction): void {
 /** The sample card's plain text (runs concatenated) — inserted raw, then re-cut
  *  to the runs' formatting by the card-cutting sweep. */
 const SAMPLE_TEXT = SAMPLE_CARD.map((r) => r[0]).join('');
+const CITE_TEXT = CITE_RUNS.map((r) => r[0]).join('');
 
 const HEADING_NODES = new Set(['pocket', 'hat', 'block', 'tag']);
 
@@ -368,6 +368,7 @@ function runRanges(bodyFrom: number, matches: (code: string) => boolean): Range[
  *  delays). scrollIntoView keeps the cutter on screen. */
 async function sweepMark(view: EditorView, ranges: Range[], mark: Mark): Promise<number> {
   let total = 0;
+  let count = 0;
   for (const r of ranges) {
     if (r.to <= r.from) continue;
     const t0 = performance.now();
@@ -376,9 +377,12 @@ async function sweepMark(view: EditorView, ranges: Range[], mark: Mark): Promise
     benchDispatch(view, tr);
     await nextPaint();
     total += performance.now() - t0;
+    count++;
     await sleep(18); // brisk visible top-to-bottom sweep (the card is long)
   }
-  return round1(total);
+  // AVERAGE per mark application — totals just track card length / span count,
+  // and nobody is bottlenecked on a whole card's worth of rapid-fire marks.
+  return count ? round1(total / count) : 0;
 }
 
 /** A narrated editing sequence: new heading → type → new tag → type → cite →
@@ -398,18 +402,11 @@ async function benchEdit(
   const tagId = newHeadingId();
   const HEAD = 'Benchmark';
   const TAGTXT = 'Benchmark Tag';
-  const CITETXT = 'Smith, John. 2024. Journal of Testing.';
 
   // Jump to the very top so the new card and the card-cutting happen on screen
   // (the nav test leaves the viewport mid-document).
   scrollGate(view).scrollTop = 0;
   await nextPaint();
-  console.error(
-    '[benchmark] editing: docSize=',
-    view.state.doc.content.size,
-    'readMode=',
-    readModePlugin.getState(view.state)?.on === true,
-  );
 
   await measureStep(
     'New heading at top',
@@ -458,9 +455,9 @@ async function benchEdit(
       const tg = findById(view.state.doc, tagId);
       if (!tg) throw new Error('tag missing');
       const at = tg.pos + tg.node.nodeSize; // just after the tag, inside the card
-      // A plain body paragraph — it only becomes "the cite" once the cite mark
-      // is applied to it (the next step).
-      const line = sch.nodes['card_body']!.create(null, sch.text(CITETXT));
+      // A plain body paragraph with the real citation text — it only becomes
+      // "the cite" once the cite mark is applied (the next step).
+      const line = sch.nodes['card_body']!.create(null, sch.text(CITE_TEXT));
       const tr = view.state.tr.insert(at, line);
       tr.setSelection(TextSelection.create(tr.doc, at + 1));
       benchDispatch(view, tr.scrollIntoView());
@@ -472,14 +469,24 @@ async function benchEdit(
   await measureStep(
     'Cite mark on author/date',
     () => {
-      const c = findChildByText(view.state.doc, tagId, CITETXT);
+      const c = findChildByText(view.state.doc, tagId, CITE_TEXT);
       if (!c) throw new Error('cite line missing');
-      // Interior range (skip the textblock's first/last position).
-      const from = c.pos + 2;
-      const to = c.pos + c.node.content.size;
-      if (to <= from) throw new Error('cite too short');
-      const tr = view.state.tr.addMark(from, to, sch.marks['cite_mark']!.create());
-      tr.setSelection(TextSelection.create(tr.doc, from, to)).scrollIntoView();
+      const base = c.pos + 1; // content start of the cite line
+      const mark = sch.marks['cite_mark']!.create();
+      let tr = view.state.tr;
+      let off = 0;
+      const marked: Range[] = [];
+      for (const [text, code] of CITE_RUNS) {
+        if (code.includes('c') && text.length > 0) {
+          marked.push({ from: base + off, to: base + off + text.length });
+        }
+        off += text.length;
+      }
+      if (marked.length === 0) throw new Error('no cite-mark span');
+      for (const r of marked) tr = tr.addMark(r.from, r.to, mark);
+      tr.setSelection(
+        TextSelection.create(tr.doc, marked[0]!.from, marked[marked.length - 1]!.to),
+      ).scrollIntoView();
       benchDispatch(view, tr);
     },
     onProgress,
@@ -489,7 +496,7 @@ async function benchEdit(
   await measureStep(
     'Paste a real card body',
     () => {
-      const c = findChildByText(view.state.doc, tagId, CITETXT);
+      const c = findChildByText(view.state.doc, tagId, CITE_TEXT);
       if (!c) throw new Error('cite line missing');
       // Insert as a new card_body block right AFTER the cite line (below it).
       const after = c.pos + c.node.nodeSize;
@@ -508,7 +515,7 @@ async function benchEdit(
   const body = findSampleBody(view.state.doc, tagId);
   const bf = body ? body.from : -1;
   await measureSweep(
-    'Underline (top→bottom)',
+    'Underline (avg per mark)',
     () =>
       sweepMark(
         view,
@@ -519,7 +526,7 @@ async function benchEdit(
     steps,
   );
   await measureSweep(
-    'Emphasis (top→bottom)',
+    'Emphasis (avg per mark)',
     () =>
       sweepMark(
         view,
@@ -530,7 +537,7 @@ async function benchEdit(
     steps,
   );
   await measureSweep(
-    'Highlight (top→bottom)',
+    'Highlight (avg per mark)',
     () =>
       sweepMark(
         view,

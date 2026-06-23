@@ -109,3 +109,11 @@ export const SAMPLE_CARD: [string, string][] = [
   ["and make sure that health promotion gains more importance within the hospital setting.", "u"],
   [" There is now much better and stronger evidence for many health promotion interventions directed at patients, staff and the community. Likewise, tools have been developed to help health professionals to prioritize and implement EUR/05/5051709 page 17 health promotion. The evidence of health promotion activities, strategies and quality tools, that will allow better implementation of health promotion in hospitals in the future, will be presented in the following chapters. ", ""],
 ];
+
+/** The card's real cite line as `[text, markcode]` runs — `c` = the cite mark
+ *  (the bold author/short-cite). Typed as a body paragraph, then cite-marked. */
+export const CITE_RUNS: [string, string][] = [
+  ["Oliver ", ""],
+  ["Groene 5", "c"],
+  [", MA, MPH, PhD cand.; Technical Officer, Hospital Programme, Country Policies, Systems and Services, Division of Country Support, WHO Regional Office for Europe, \"Health Promotion in Hospitals - From Principles to Implementation,\" 05/2005, http://www.euro.who.int/__data/assets/pdf_file/0008/99827/E86220.pdf", ""],
+];

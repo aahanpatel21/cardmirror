@@ -130,8 +130,10 @@ function showResults(r: BenchmarkResults): void {
     ),
   );
   if (r.edit) {
-    const rows: [string, string][] = [['Total', `${r.edit.totalMs} ms`]];
-    for (const s of r.edit.steps) rows.push([s.label, s.ms == null ? '—' : `${s.ms} ms`]);
+    const rows: [string, string][] = r.edit.steps.map((s) => [
+      s.label,
+      s.ms == null ? '—' : `${s.ms} ms`,
+    ]);
     list.appendChild(section('Editing & card-cutting', rows));
   } else {
     list.appendChild(section('Editing & card-cutting', [['Not run', 'unavailable']]));
