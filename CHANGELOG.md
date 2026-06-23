@@ -49,6 +49,13 @@ see `DETAILED_CHANGELOG.md`.
   locked to prevent accidents. Clicking a dropzone or received-card item in read
   mode appends it to the **bottom** of the document instead of at the cursor.
 
+- **Card sharing works across CardMirror versions.** Sending a card to a machine
+  on a different version no longer fails with a version-mismatch warning —
+  cross-version transfers are now accepted by default. (A card can still carry a
+  minimum-version requirement, so a future release that changes the card format
+  could ask older versions to update first, but by default sharing just works.
+  Both machines need this version or newer to get the tolerant behavior.)
+
 ### Fixed
 
 - **Windows/Linux: the editor could lock up after a pop-up.** Pressing `` ` `` to

@@ -105,6 +105,29 @@ in each release, see `CHANGELOG.md`.
   is offset below a `position: sticky` header pinned at a scroll container's top
   (`stickyTopInset`) so the multi-pane nav's sticky level bar no longer eats it.
 
+- **Tolerant card-sharing version guard with a compatibility floor**
+  (`editor/install-info.ts`, `editor/pairing/pairing-wiring.ts`,
+  `apps/desktop/src/pairing-ipc.ts`, `editor/host/electron-host.ts`,
+  `apps/desktop/src/preload.ts`). The cross-version guard previously dropped any
+  received card whose sender version didn't `===` the receiver's, so two machines
+  on different CardMirror versions couldn't share at all. It's now a compatibility
+  *floor*: each sealed card carries an optional `minReceiverVersion`, and the
+  poller accepts it unless that floor is set AND the local version is below it
+  (`compareVersions`, a self-contained semver-ish comparator — numeric
+  pre-release identifiers compare numerically, a bare release outranks a
+  pre-release on the same core). A blank floor means any version may receive, so
+  sharing is tolerant by default. The floor is a single documented constant,
+  `CARD_COMPAT_MIN_VERSION` (currently `''`), stamped onto every outgoing card; a
+  future release that changes the shared-card payload incompatibly sets it to its
+  own version, after which clients older than that refuse the card and prompt to
+  update while equal-or-newer clients accept — a breaking version can thus lock
+  out already-shipped older clients (that carry this floor logic) without pushing
+  them an update. `minReceiverVersion` is threaded through the pairing config, the
+  sealed `InnerPayload`, and the configure/version-mismatch IPC types; the mismatch
+  toast now reads "a shared card needs a newer CardMirror version (X or newer) —
+  update to receive it." Note this governs clients from this release forward;
+  alpha.18's exact-match guard is unchanged in already-built copies.
+
 ## 0.1.0-alpha.18 — 2026-06-21
 
 - **Cross-machine card sharing — identity, crypto, and relay**
