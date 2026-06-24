@@ -11320,6 +11320,22 @@ body.pmd-multi-doc .pmd-cardcutter-trim {
   flex-direction: column;
   gap: 0.3rem;
 }
+.pmd-settings-manual {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--pmd-c-border-soft);
+  display: flex;
+  justify-content: center;
+}
+.pmd-settings-manual-link {
+  font-size: 0.85rem;
+  color: var(--pmd-c-accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+.pmd-settings-manual-link:hover {
+  text-decoration: underline;
+}
 
 /* Small corner chip shown while the benchmark drives the (visible) editor. */
 .pmd-bench-chip {

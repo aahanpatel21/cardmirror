@@ -48,13 +48,19 @@ see `DETAILED_CHANGELOG.md`.
   typing "I accept the risk". Prepending, or saving to a different folder, never
   touches your originals and skips the warning.
 
+- **A User Manual link in Settings.** Settings → General now has a link to the
+  user manual at the bottom, so it's easy to find (and stays reachable on Windows
+  and Linux, where the native menu bar — which used to hold the link — is gone).
+
 ### Fixed
 
-- **Alt-key shortcuts work on Windows.** On Windows the native menu bar reserves
-  `Alt`+letter for menus, so an editor command bound to a bare `Alt` chord (for
-  example `Alt+A`) did nothing — the menu swallowed it before the editor saw it.
-  Those bindings are now delivered to the editor while CardMirror is focused, so
-  `Alt`-key shortcuts (including ones you rebind yourself) work like the rest.
+- **Alt-key shortcuts work on Windows and Linux.** The native menu bar reserved
+  `Alt`+letter for its menus, so an editor command bound to a bare `Alt` chord
+  (for example `Alt+A`) did nothing — the menu swallowed it before the editor saw
+  it. CardMirror no longer shows a native menu bar on Windows and Linux (every
+  menu command's keyboard shortcut still works, and the menu's actions are
+  reachable from the app's own UI), so `Alt`-key shortcuts — including ones you
+  rebind yourself — now work like the rest. macOS keeps its menu bar.
 
 - **Clean handles a whole messy library without choking.** Cleaning a large
   folder no longer trips over Word lock files (`~$…`), macOS `._…` sidecars, or

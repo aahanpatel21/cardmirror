@@ -446,6 +446,7 @@ class SettingsModal {
         panel.appendChild(buildBenchmarkSection(() => this.close()));
         panel.appendChild(buildInstallInfoSection());
         panel.appendChild(this.buildSettingsBackupSection());
+        panel.appendChild(buildManualLinkSection());
       }
       this.dialog.appendChild(panel);
       panels[id] = panel;
@@ -1342,6 +1343,34 @@ function buildInstallInfoSection(): HTMLElement {
   }
 
   return wrap;
+}
+
+/** GitHub-hosted copy of MANUAL.md — opened from Settings → General (and, on
+ *  macOS, the Help menu). Pinned in settings so it stays reachable now that
+ *  Windows/Linux no longer carry a native menu bar. */
+const MANUAL_URL = 'https://github.com/ant981228/cardmirror/blob/main/MANUAL.md';
+
+/** A "User Manual" link pinned at the bottom of Settings → General. */
+function buildManualLinkSection(): HTMLElement {
+  const section = document.createElement('section');
+  section.className = 'pmd-settings-manual';
+  const link = document.createElement('a');
+  link.className = 'pmd-settings-manual-link';
+  link.href = MANUAL_URL;
+  link.textContent = 'User Manual ↗';
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.addEventListener('click', (e) => {
+    // On the desktop, route through the host so it opens in the OS browser
+    // rather than a new Electron window. On web, let the anchor open the tab.
+    const electron = getElectronHost();
+    if (electron) {
+      e.preventDefault();
+      void electron.openExternal(MANUAL_URL);
+    }
+  });
+  section.appendChild(link);
+  return section;
 }
 
 /** Settings → Benchmark: a game-style in-app perf suite. The button closes the

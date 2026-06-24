@@ -7,21 +7,25 @@ in each release, see `CHANGELOG.md`.
 
 ## 0.1.0-alpha.20 — 2026-06-23
 
-- **Bare-Alt editor shortcuts reach the editor on Windows** (`editor/index.ts`,
-  `editor/host/electron-host.ts`, `apps/desktop/src/preload.ts`,
-  `apps/desktop/src/main.ts`). On Windows the native menu bar reserves `Alt`+key
-  for mnemonics, so a non-menu editor command bound to a bare-Alt chord (Alt
-  without Mod) never reached the keymap — the menu consumed it. The renderer now
-  reports those bindings (`pushEditorAccelerators`, recomputed on every rebind),
-  and main — **win32 only** — registers each as a `globalShortcut` while one of
-  our windows is focused (registered on `focus`, released on `blur` once no
-  window holds focus, so the chord isn't stolen system-wide), routing a hit
-  through the existing `menu-command` → `onMenuCommand` → `runRibbon` path that
-  the native menu items use. Menu-bound commands are excluded (they already get a
-  real menu accelerator, which works on Windows), and the whole thing is gated
-  off macOS/Linux, where the menu doesn't eat Alt and registering would
-  double-fire with the in-editor keymap. Also fixes the default bare-Alt bindings
-  (e.g. `selectCurrentHeading`'s `Alt-A`) on Windows, not just user rebinds.
+- **No native menu bar on Windows/Linux — Alt-key editor shortcuts now work**
+  (`apps/desktop/src/main.ts`, `editor/settings-ui.ts`, `editor/style.css`). On
+  Windows/Linux the native application menu reserved `Alt`+`<key>` for mnemonics,
+  swallowing any editor command bound to a bare-Alt chord (Alt without Mod) before
+  it reached the keymap — a rebind of "create analytic" to `Alt+A` did nothing,
+  as did defaults like `selectCurrentHeading`'s `Alt-A`. An initial fix that
+  forwarded those bindings through focus-scoped `globalShortcut`s was scrapped: a
+  global shortcut grabs the chord at the OS level, so it can never be *captured*
+  in the keybindings editor, making such bindings impossible to set or change.
+  Instead the native menu is now installed on **macOS only**
+  (`setApplicationMenu(process.platform === 'darwin' ? buildMenu() : null)` at
+  both call sites), where Option doesn't trigger mnemonics and the global menu bar
+  is expected. Every menu command's accelerator is already a renderer keybinding
+  (handled by the editor keymap + the editor-unfocused global handler), so
+  dropping the bar loses no shortcut; Cut/Copy/Paste/Undo work natively in the
+  contenteditable. To keep the manual reachable without the menu, a **User Manual**
+  link (`buildManualLinkSection`, opened via `openExternal`) is pinned at the
+  bottom of Settings → General. Also removed the obsolete **Copy GPU Info**
+  Help-menu item.
 
 - **Benchmark — an in-app, game-style performance suite** (`editor/benchmark.ts`,
   `editor/benchmark-ui.ts`, `editor/benchmark-sample.ts`; surfaced via
