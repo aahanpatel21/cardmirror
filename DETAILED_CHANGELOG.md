@@ -58,6 +58,16 @@ in each release, see `CHANGELOG.md`.
   earlier "don't break emphasis on a continuous phrase" fix (now it's just "don't
   touch it"). Regression test added in `formatting-gaps.test.ts`.
 
+- **Hyphens are exempt from gap filling, like the other dashes/operators**
+  (`editor/ribbon-commands.ts`). The gap normalizer's fillable-gap-char set
+  (`GAP_REGEX` / `GAP_CHAR_RE`, plus the duplicate inside `fixFormattingGaps`) is
+  a deliberate allowlist — `.,;:?()!` and space — so em-dash, en-dash, `=`, and
+  `+` already break gaps rather than getting bridged/stripped. The hyphen was the
+  lone dash that had slipped into the list, so underlining/emphasizing/citing two
+  hyphen-joined words (`well-known`) pulled the hyphen into the run. Removed `\-`
+  from all four copies of the char-class and documented the allowlist so it isn't
+  re-added. Regression tests (hyphen + em-dash) in `formatting-gaps.test.ts`.
+
 ## 0.1.0-alpha.20 — 2026-06-23
 
 - **No native menu bar on Windows/Linux — Alt-key editor shortcuts now work**

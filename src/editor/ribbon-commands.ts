@@ -1265,9 +1265,16 @@ export function highlightAcronym(activeColor: () => string): Command {
  * a lookahead at the right bookend. The lookahead keeps `/g`'s lastIndex
  * from eating a single-char interior word that's the right bookend of one
  * gap and the left bookend of the next.
+ *
+ * Gap chars are a deliberate ALLOWLIST — `. , ; : ? ( ) !` and space. Dashes
+ * (hyphen `-`, em-dash `—`, en-dash `–`) and operators like `=` / `+` are NOT
+ * in it: they join words (`well-known`, `A—B`, `x=y`), so a dash/operator
+ * between two formatted words is a real seam the user chose — never auto-bridged
+ * or stripped. Keep `GAP_CHAR_RE` and the duplicate in `fixFormattingGaps` in
+ * sync with this class.
  */
-const GAP_REGEX = /[A-Za-z0-9'"‘’“”][.,;:?()\-! ]+(?=[A-Za-z0-9'"‘’“”])/g;
-const GAP_CHAR_RE = /[.,;:?()\-! ]/;
+const GAP_REGEX = /[A-Za-z0-9'"‘’“”][.,;:?()! ]+(?=[A-Za-z0-9'"‘’“”])/g;
+const GAP_CHAR_RE = /[.,;:?()! ]/;
 /** A gap "bookend" / word character — the class `GAP_REGEX` uses on both
  *  sides of a gap. A changed range with NONE of these is pure gap content
  *  (whitespace and/or punctuation) the user selected deliberately. */
@@ -3393,7 +3400,7 @@ async function runElectronPlainPaste(
  *
  * The regex is
  *
- *   /[A-Za-z0-9'"‘’“”][.,;:?()\-! ]+(?=[A-Za-z0-9'"‘’“”])/g
+ *   /[A-Za-z0-9'"‘’“”][.,;:?()! ]+(?=[A-Za-z0-9'"‘’“”])/g
  *
  * — left bookend (1 word char) + 1+ gap chars + lookahead at the
  * right bookend. Lookahead is critical: it lets single-char interior
@@ -3470,7 +3477,7 @@ export function fixFormattingGaps(
     // (not a bookend char). With the lookahead, the consumed match
     // is "...d " only; the next iteration can start at "a" and
     // match "a " for the second gap.
-    const gapRegex = /[A-Za-z0-9'"‘’“”][.,;:?()\-! ]+(?=[A-Za-z0-9'"‘’“”])/g;
+    const gapRegex = /[A-Za-z0-9'"‘’“”][.,;:?()! ]+(?=[A-Za-z0-9'"‘’“”])/g;
 
     type Add = {
       from: number;

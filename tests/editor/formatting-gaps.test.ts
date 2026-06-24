@@ -386,3 +386,17 @@ describe('withGapFix — an unrelated command leaves the named-style family alon
     expect(mask(next.doc, 'highlight')).toBe('      _____'); // only "gamma"
   });
 });
+
+describe('withGapFix — dashes and operators are not fillable gap chars', () => {
+  it('a hyphen between two underlined words is not bridged (it joins words)', () => {
+    const doc = docOf(['alpha', [U()]], ['-beta']);
+    const next = run(doc, 'beta', applyUnderline());
+    expect(mask(next.doc, 'underline_mark')).toBe('_____ ____'); // hyphen stays plain
+  });
+
+  it('an em-dash between two underlined words is not bridged either', () => {
+    const doc = docOf(['alpha', [U()]], ['—beta']);
+    const next = run(doc, 'beta', applyUnderline());
+    expect(mask(next.doc, 'underline_mark')).toBe('_____ ____'); // em-dash stays plain
+  });
+});

@@ -41,6 +41,11 @@ see `DETAILED_CHANGELOG.md`.
   shading, and font-size changes now leave underline / emphasis / cite alone —
   they only tidy their own formatting.
 
+- **Hyphens are no longer swept into formatting gaps.** When you underline,
+  emphasize, or cite two words joined by a hyphen (e.g. `well-known`), the hyphen
+  between them is now left as-is instead of being pulled into the formatting —
+  matching how em-dashes, en-dashes, `=`, and `+` already behave.
+
 ## 0.1.0-alpha.20 — 2026-06-23
 
 ### Added
