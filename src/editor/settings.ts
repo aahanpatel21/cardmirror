@@ -1229,6 +1229,7 @@ export interface SettingMeta {
     | 'voiceDashStyle'
     | 'voiceDictationModel'
     | 'clod'
+    | 'clodCustomize'
     | 'aiCitePrompt'
     | 'translationConfig'
     | 'multiDocLayoutMode'
@@ -1960,6 +1961,16 @@ export const SETTING_METADATA: SettingMeta[] = [
     category: 'comments-ai',
     dependsOn: 'aiFeaturesEnabled',
     mobile: true,
+  },
+  {
+    key: 'clodActivitiesByTime',
+    label: 'Customize Clod',
+    description:
+      'Set the name and pronouns for Clod, write your own activity phrases for each time of day, and adjust when those periods begin. Opens a full editor.',
+    kind: 'clodCustomize',
+    category: 'comments-ai',
+    dependsOn: 'aiFeaturesEnabled',
+    aliases: ['clod', 'persona', 'clod activities', 'pronouns', 'clod name'],
   },
   {
     key: 'aiCitePrompt',

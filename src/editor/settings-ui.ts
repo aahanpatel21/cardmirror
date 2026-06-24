@@ -1009,33 +1009,27 @@ class SettingsModal {
       row.appendChild(buildPairingReceiveFlashEditor());
       return row;
     } else if (meta.kind === 'clod') {
-      // Standard boolean toggle with an easter-egg twist:
-      // Mod (Ctrl/Cmd) + Alt + Shift + click opens the Clod
-      // customization dialog (activity pools per time period,
-      // time-period boundaries). The three-modifier combo is
-      // deliberately obscure — you have to know it's there.
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.className = 'pmd-settings-toggle';
       checkbox.checked = !!settings.get(meta.key);
-      // The click event arrives BEFORE `change`, so we can detect
-      // the easter-egg combo and bail out of the normal toggle path
-      // when triggered.
-      checkbox.addEventListener('click', (e) => {
-        if (!(e instanceof MouseEvent)) return;
-        const mod = e.ctrlKey || e.metaKey;
-        if (!(mod && e.altKey && e.shiftKey)) return;
-        e.preventDefault();
-        // Browsers fire `change` even when click default is prevented
-        // for some checkbox states; restore the checked value
-        // explicitly so the toggle doesn't flip as a side-effect.
-        checkbox.checked = !!settings.get(meta.key);
-        void import('./ai/clod-configurator.js').then((m) => m.openClodConfigurator());
-      });
       checkbox.addEventListener('change', () => {
         settings.set(meta.key as 'clodEnabled', checkbox.checked as never);
       });
       label.appendChild(checkbox);
+    } else if (meta.kind === 'clodCustomize') {
+      // Opens the Clod customization dialog — persona name + pronouns, the
+      // activity pools per time period, and the time-period boundaries. This
+      // was previously reachable only via a hidden modifier-click on the
+      // toggle; it's now a plain button.
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'pmd-settings-btn';
+      btn.textContent = 'Customize…';
+      btn.addEventListener('click', () => {
+        void import('./ai/clod-configurator.js').then((m) => m.openClodConfigurator());
+      });
+      label.appendChild(btn);
     }
 
     row.appendChild(label);

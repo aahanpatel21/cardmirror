@@ -24,6 +24,16 @@ in each release, see `CHANGELOG.md`.
   input's handler) doesn't both step back *and* close. Stepping back also
   re-focuses the search box.
 
+- **Clod customizer surfaced as a real setting** (`editor/settings.ts`,
+  `editor/settings-ui.ts`, `editor/mobile-settings-ui.ts`). The configurator
+  (persona name + pronouns, the activity pools per time period, the time-period
+  boundaries) was reachable only via a deliberately obscure Mod+Alt+Shift+click
+  on the **Enable Clod mode** toggle. Replaced that easter egg with a plain
+  toggle plus a new **Customize Clod** setting row (new `clodCustomize` kind — a
+  button that opens the same `openClodConfigurator()` dialog), placed right
+  after the toggle and gated on `aiFeaturesEnabled` like the rest of the AI
+  settings. Desktop-only; mobile keeps just the toggle.
+
 ## 0.1.0-alpha.20 — 2026-06-23
 
 - **No native menu bar on Windows/Linux — Alt-key editor shortcuts now work**

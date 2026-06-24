@@ -163,7 +163,7 @@ function buildEditor(meta: SettingMeta): HTMLElement {
     case 'readers':
       return buildReadersEditor();
     case 'clod':
-      // Desktop renders a full activity configurator; on mobile the
+      // Desktop adds a separate "Customize Clod" button; on mobile the
       // on/off toggle (plain "Thinking…" vs Clod activities in the
       // AI progress pill) is the part that matters.
       return buildToggle(meta.key);

@@ -15,6 +15,12 @@ see `DETAILED_CHANGELOG.md`.
   pinning it. Pinning still has its own ★ star (and **Alt-P**), so the
   right-click is free for the more useful action.
 
+- **Clod customization is a normal setting now.** The Clod persona editor — its
+  name and pronouns, your own activity phrases per time of day, and when those
+  time periods begin — used to be hidden behind a secret modifier-click on the
+  **Enable Clod mode** toggle. It's now a visible **Customize…** button right
+  below that toggle in Settings → Comments & AI.
+
 ### Fixed
 
 - **Escape leaves a dived-into file even when the search box isn't focused.**
