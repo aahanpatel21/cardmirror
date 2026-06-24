@@ -5,7 +5,7 @@ behavior, rationale, and (where useful) the implementation context
 behind a change. For a shorter, jargon-free summary of what's new
 in each release, see `CHANGELOG.md`.
 
-## Unreleased
+## 0.1.0-alpha.20 — 2026-06-23
 
 - **Bare-Alt editor shortcuts reach the editor on Windows** (`editor/index.ts`,
   `editor/host/electron-host.ts`, `apps/desktop/src/preload.ts`,
