@@ -5,6 +5,16 @@ changes in each release, written for users of the editor. For
 in-depth rationale and implementation context behind each entry,
 see `DETAILED_CHANGELOG.md`.
 
+## Unreleased
+
+### Changed
+
+- **Right-click a file in search to dive into it.** In the Search Everything
+  palette's file search (the `f` prefix), right-clicking a file now dives
+  into it to search its contents — the same as pressing **Tab** — instead of
+  pinning it. Pinning still has its own ★ star (and **Alt-P**), so the
+  right-click is free for the more useful action.
+
 ## 0.1.0-alpha.20 — 2026-06-23
 
 ### Added

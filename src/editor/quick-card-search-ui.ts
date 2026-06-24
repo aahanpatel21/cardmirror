@@ -1249,7 +1249,7 @@ class QuickCardSearchUI {
         top.appendChild(meta);
       }
       // Pin star on file rows — filled when pinned, faint otherwise.
-      // The star, and right-clicking the row, both toggle the pin.
+      // Click the star to toggle the pin.
       if (r.source === 'file' && r.filePath) {
         const path = r.filePath;
         const star = document.createElement('span');
@@ -1261,9 +1261,12 @@ class QuickCardSearchUI {
           this.togglePinPath(path);
         });
         top.appendChild(star);
+        // Right-click dives into the file — same as Tab. Pinning has its own
+        // star, so the context menu is free for the more useful action.
         row.addEventListener('contextmenu', (ev) => {
           ev.preventDefault();
-          this.togglePinPath(path);
+          this.selected = i;
+          void this.enterInFile();
         });
       }
       row.appendChild(top);

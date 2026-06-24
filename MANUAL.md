@@ -609,14 +609,14 @@ at your cursor (the same insertion the send-to-speech and Quick Card
 buttons use). If your cursor is in the middle of a paragraph, CardMirror
 asks you to confirm first — you can turn that prompt off in Settings.
 
-**Diving into a file (`f`, desktop only).** Press **Tab** on a selected
-file to dive *into* it without leaving the palette. With the query empty
-you get the file's outline — indented by level and collapsible, like the
-navigation pane — and as you type you search that file's blocks, tags,
-cites, and analytics. **Enter** inserts the chosen object straight into
-your current document; **Esc** returns you to the file list with your
-search restored. Undo (**Mod-Z**) works while you're diving, so you can
-take an insert back without closing the palette.
+**Diving into a file (`f`, desktop only).** Press **Tab** on a selected file
+— or right-click any file — to dive *into* it without leaving the palette.
+With the query empty you get the file's outline — indented by level and
+collapsible, like the navigation pane — and as you type you search that
+file's blocks, tags, cites, and analytics. **Enter** inserts the chosen
+object straight into your current document; **Esc** returns you to the file
+list with your search restored. Undo (**Mod-Z**) works while you're diving,
+so you can take an insert back without closing the palette.
 
 **Pinning and speed.** Press **Alt-P** to pin or unpin the selected file
 (★). Pinned files sort to the top and stay parsed for instant search;

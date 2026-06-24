@@ -5,6 +5,16 @@ behavior, rationale, and (where useful) the implementation context
 behind a change. For a shorter, jargon-free summary of what's new
 in each release, see `CHANGELOG.md`.
 
+## Unreleased
+
+- **Right-click a file search result dives in instead of pinning**
+  (`editor/quick-card-search-ui.ts`). In the Search Everything palette, a
+  file row's context menu used to toggle the pin — redundant with the ★ star
+  sitting right on the row (and the **Alt-P** shortcut). Right-click now
+  selects that row and calls the same `enterInFile()` path **Tab** uses,
+  diving into the file to search its objects. The star and `Alt-P` still pin;
+  the outline rows' right-click (toggle-collapse) is unchanged.
+
 ## 0.1.0-alpha.20 — 2026-06-23
 
 - **No native menu bar on Windows/Linux — Alt-key editor shortcuts now work**
