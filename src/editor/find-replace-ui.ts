@@ -25,6 +25,7 @@ import {
   runReplace,
   runReplaceAll,
   scrollToCurrentMatch,
+  FIND_MATCH_CAP,
   type FindReplaceState,
   type FindSortMode,
 } from './find-replace-plugin.js';
@@ -36,6 +37,11 @@ type Mode = 'find' | 'replace';
 export type FindBarOpenOptions = { mode: Mode; sortMode: FindSortMode };
 
 const SNIPPET_PAD = 30;
+
+/** Cap on result rows rendered in the in-context panel. A list of thousands of
+ *  rows isn't scannable and is expensive to build (a snippet per row); past this
+ *  we show the first N and a "refine to narrow" footer. */
+const FIND_RESULT_ROW_CAP = 500;
 
 /** Build a (before, hit, after) text triple from the textblock that
  *  contains the given match. Trims whitespace at the snippet edges
@@ -91,6 +97,12 @@ export class FindReplaceBar {
   private resultsPanel: HTMLElement;
   private resultsList: HTMLElement;
   private resultsExpanded = false;
+  /** The match array the result rows were last built for. When unchanged, a
+   *  re-render only moves the active row instead of rebuilding every row. */
+  private lastRenderedMatches: unknown = null;
+  /** The match array the nav-pane hit markers were last pushed for. Skips the
+   *  O(N) re-map/re-render when only the active index changed. */
+  private lastNavHitMatches: unknown = null;
   private getView: () => EditorView | null;
   private getNavPanel: () => NavigationPanel | null;
   private mode: Mode = 'find';
@@ -309,26 +321,42 @@ export class FindReplaceBar {
     if (!this.resultsExpanded) return;
     const view = this.getView();
     const s = this.getState();
-    this.resultsList.innerHTML = '';
     if (!view || !s || s.matches.length === 0) {
+      this.resultsList.innerHTML = '';
+      this.lastRenderedMatches = null;
       const empty = document.createElement('div');
       empty.className = 'pmd-find-results-empty';
       empty.textContent = s && s.query ? 'No matches.' : 'Type to search.';
       this.resultsList.appendChild(empty);
       return;
     }
+    // Same match list (only the active index changed) and the rows are still
+    // present: just move the active highlight. Rebuilding every row + a snippet
+    // per match is O(N) and was the main per-step cost on huge searches.
+    if (
+      s.matches === this.lastRenderedMatches &&
+      this.resultsList.querySelector('.pmd-find-result-row')
+    ) {
+      this.updateActiveResultRow(s.currentIndex);
+      return;
+    }
+    this.lastRenderedMatches = s.matches;
+    this.resultsList.innerHTML = '';
     const CATEGORY_LABEL: Record<string, string> = {
       heading: 'Heading',
       tag: 'Tag',
+      analytic: 'Analytic',
+      undertag: 'Undertag',
       cite: 'Cite',
       other: 'Body',
     };
-    for (let i = 0; i < s.matches.length; i++) {
+    const shown = Math.min(s.matches.length, FIND_RESULT_ROW_CAP);
+    for (let i = 0; i < shown; i++) {
       const m = s.matches[i]!;
       const row = document.createElement('button');
       row.type = 'button';
       row.className = 'pmd-find-result-row';
-      row.dataset['active'] = i === s.currentIndex ? 'true' : 'false';
+      row.dataset['active'] = 'false';
       const cat = document.createElement('span');
       cat.className = `pmd-find-result-category pmd-find-result-category-${m.category}`;
       cat.textContent = CATEGORY_LABEL[m.category] ?? m.category;
@@ -364,12 +392,31 @@ export class FindReplaceBar {
       });
       this.resultsList.appendChild(row);
     }
-    // Scroll the active row into view so the user can see where
-    // they are in a long list.
-    const active = this.resultsList.querySelector<HTMLElement>(
+    if (s.matches.length > shown) {
+      const more = document.createElement('div');
+      more.className = 'pmd-find-results-more';
+      const total =
+        s.matches.length >= FIND_MATCH_CAP ? `${FIND_MATCH_CAP}+` : `${s.matches.length}`;
+      more.textContent = `Showing first ${shown} of ${total} — refine to narrow.`;
+      this.resultsList.appendChild(more);
+    }
+    this.updateActiveResultRow(s.currentIndex);
+  }
+
+  /** Move the "active" highlight to the row for `currentIndex` and scroll it into
+   *  view — without rebuilding the list. No-op for an index past the rendered cap
+   *  (the active match is still scrolled to in the editor by `scrollToCurrentMatch`). */
+  private updateActiveResultRow(currentIndex: number): void {
+    const prev = this.resultsList.querySelector<HTMLElement>(
       '.pmd-find-result-row[data-active="true"]',
     );
-    if (active) active.scrollIntoView({ block: 'nearest' });
+    if (prev) prev.dataset['active'] = 'false';
+    const rows = this.resultsList.querySelectorAll<HTMLElement>('.pmd-find-result-row');
+    const row = currentIndex >= 0 ? rows[currentIndex] : undefined;
+    if (row) {
+      row.dataset['active'] = 'true';
+      row.scrollIntoView({ block: 'nearest' });
+    }
   }
 
   open(opts: FindBarOpenOptions): void {
@@ -607,8 +654,13 @@ export class FindReplaceBar {
     const s = this.getState();
     if (!s || s.matches.length === 0) {
       nav.setFindHitPositions(null);
+      this.lastNavHitMatches = null;
       return;
     }
+    // Hit positions only change when the match list does — skip the O(N) re-map +
+    // re-render of every nav-pane marker when only the active index changed.
+    if (s.matches === this.lastNavHitMatches) return;
+    this.lastNavHitMatches = s.matches;
     nav.setFindHitPositions(s.matches.map((m) => m.from));
   }
 
@@ -657,7 +709,9 @@ export class FindReplaceBar {
       return;
     }
     const cur = s.currentIndex < 0 ? 0 : s.currentIndex + 1;
-    this.countLabel.textContent = `${cur} of ${s.matches.length}`;
+    const total =
+      s.matches.length >= FIND_MATCH_CAP ? `${FIND_MATCH_CAP}+` : `${s.matches.length}`;
+    this.countLabel.textContent = `${cur} of ${total}`;
     this.prevBtn.disabled = false;
     this.nextBtn.disabled = false;
     this.replaceBtn.disabled = false;

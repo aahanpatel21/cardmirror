@@ -82,12 +82,19 @@ const REFINE_TOLERANCE_PX = 1;
 
 export type PreciseScrollBlock = 'start' | 'center';
 
+/** Monotonic token — a newer `preciseScrollIntoView` call cancels any in-flight
+ *  refine loop from an older one, so a burst of scrolls (e.g. holding "next
+ *  match" in find on a large doc) doesn't stack overlapping materialize/refine
+ *  passes. Latest scroll wins. */
+let scrollGeneration = 0;
+
 export function preciseScrollIntoView(
   _view: EditorView,
   target: HTMLElement,
   block: PreciseScrollBlock = 'start',
 ): void {
   if (!target.isConnected) return;
+  const myGen = ++scrollGeneration;
 
   // Optimistic initial scroll. Browser uses whatever layout it
   // already has — placeholder heights for cv:auto-skipped cards,
@@ -111,6 +118,7 @@ export function preciseScrollIntoView(
 
   let iterations = 1;
   const refine = (): void => {
+    if (myGen !== scrollGeneration) return; // superseded by a newer scroll
     if (!target.isConnected) return;
     const rect = target.getBoundingClientRect();
     // Converged: target is within tolerance. Exit.

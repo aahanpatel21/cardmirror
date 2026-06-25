@@ -90,6 +90,33 @@ in each release, see `CHANGELOG.md`.
   classification stays a plain property read with an early-out on no outline
   level — the fast path for body text is unchanged.
 
+- **Find: O(log N) navigation, match/row caps, scroll coalescing, and
+  analytic/undertag categories** (`editor/find-replace-plugin.ts`,
+  `editor/find-replace-ui.ts`, `editor/precise-scroll.ts`, `editor/settings.ts`,
+  `editor/settings-ui.ts`, `editor/style.css`). Three things scaled with match
+  count on every navigation step; all three are now split so only the active
+  marker moves:
+  - The match decoration set was rebuilt from scratch each step (the memo was
+    keyed on `currentIndex`). Split into a base set — all matches with
+    `pmd-find-match`, cached on (doc, matches, scope) — plus a single current-match
+    overlay layered on via `.add` keyed on `currentIndex`, so a step is O(log N).
+  - The in-context results list re-`innerHTML`'d and rebuilt a row + a `buildSnippet`
+    per match each step; now built once per search (cached on the `matches` ref),
+    with only the active row's `data-active` toggled on navigation.
+  - The nav-pane hit markers re-mapped `matches.map(m => m.from)` and re-rendered
+    each step; now skipped when the match list is unchanged.
+  Caps: `FIND_MATCH_CAP` (10 000) bounds the match/decoration set on a pathological
+  query (the count shows `10000+`); the results list renders the first
+  `FIND_RESULT_ROW_CAP` (500) rows with a "refine to narrow" footer.
+  `preciseScrollIntoView` carries a generation token so a newer scroll cancels an
+  older one's rAF refine loop — holding "next match" no longer stacks materialize
+  passes. Separately, standalone `analytic` and `undertag` paragraphs are now
+  their own find categories (were lumped into `other`), ordered after `tag`
+  (analytic → undertag → cite), badge-colored to match the editor's analytic/
+  undertag colors and reorderable in Settings → Find; the `findCategoryOrder`
+  sanitizer slots a newly-added category into an existing saved order at its
+  canonical position rather than appending it.
+
 ## 0.1.0-alpha.20 — 2026-06-23
 
 - **No native menu bar on Windows/Linux — Alt-key editor shortcuts now work**

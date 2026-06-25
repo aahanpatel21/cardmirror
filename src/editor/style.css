@@ -294,6 +294,10 @@ button {
   --pmd-c-cat-tag-fg: #8a5a14;
   --pmd-c-cat-cite-bg: rgba(120, 80, 40, 0.15);
   --pmd-c-cat-cite-fg: #6e4a18;
+  --pmd-c-cat-analytic-bg: rgba(31, 56, 100, 0.14);
+  --pmd-c-cat-analytic-fg: #1f3864;
+  --pmd-c-cat-undertag-bg: rgba(56, 86, 35, 0.16);
+  --pmd-c-cat-undertag-fg: #385623;
 
   /* Speech-doc designation. Same accent in both indicators so the
      "this is the speech doc" affordance reads identically whether
@@ -462,6 +466,10 @@ button {
   --pmd-c-cat-tag-fg: #f5c66b;
   --pmd-c-cat-cite-bg: rgba(160, 110, 60, 0.22);
   --pmd-c-cat-cite-fg: #d9b389;
+  --pmd-c-cat-analytic-bg: rgba(138, 169, 209, 0.22);
+  --pmd-c-cat-analytic-fg: #8aa9d1;
+  --pmd-c-cat-undertag-bg: rgba(143, 179, 119, 0.22);
+  --pmd-c-cat-undertag-fg: #8fb377;
 
   /* Speech-doc designation — same warm-gold language but
      readable on dark. */
@@ -5414,6 +5422,13 @@ body.pmd-steady-cursor .pmd-italic-caret,
   color: var(--pmd-c-text-muted);
   font-style: italic;
 }
+.pmd-find-results-more {
+  padding: 0.45rem 0.7rem;
+  color: var(--pmd-c-text-muted);
+  font-style: italic;
+  text-align: center;
+  border-top: 1px solid var(--pmd-c-border-soft);
+}
 .pmd-find-result-row {
   display: flex;
   align-items: baseline;
@@ -5456,6 +5471,14 @@ body.pmd-steady-cursor .pmd-italic-caret,
 .pmd-find-result-category-cite {
   background: var(--pmd-c-cat-cite-bg);
   color: var(--pmd-c-cat-cite-fg);
+}
+.pmd-find-result-category-analytic {
+  background: var(--pmd-c-cat-analytic-bg);
+  color: var(--pmd-c-cat-analytic-fg);
+}
+.pmd-find-result-category-undertag {
+  background: var(--pmd-c-cat-undertag-bg);
+  color: var(--pmd-c-cat-undertag-fg);
 }
 .pmd-find-result-snippet {
   flex: 1 1 auto;

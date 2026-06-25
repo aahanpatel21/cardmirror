@@ -455,7 +455,7 @@ export interface Settings {
    *  proximity within each category. Must be a permutation of the
    *  four category names. Alt-F ignores this setting (proximity
    *  only). */
-  findCategoryOrder: ('heading' | 'tag' | 'cite' | 'other')[];
+  findCategoryOrder: ('heading' | 'tag' | 'analytic' | 'undertag' | 'cite' | 'other')[];
   /** Whether "New Speech Document" seeds the doc with a Pocket
    *  heading carrying the speech's name. On (default) matches
    *  Verbatim's `NewSpeech`. Off creates a fully blank doc — one
@@ -1039,7 +1039,7 @@ const DEFAULTS: Settings = {
   findResultsExpanded: false,
   findRememberLastQuery: false,
   findLastQuery: '',
-  findCategoryOrder: ['heading', 'tag', 'cite', 'other'],
+  findCategoryOrder: ['heading', 'tag', 'analytic', 'undertag', 'cite', 'other'],
   includeSpeechDocPocket: true,
   showCitePreview: true,
   flashcardDueDot: true,
@@ -2837,8 +2837,16 @@ function sanitizeFlashSeconds(raw: unknown): number[] {
 function sanitizeFindCategoryOrder(
   raw: unknown,
 ): Settings['findCategoryOrder'] {
-  const valid: Settings['findCategoryOrder'] = ['heading', 'tag', 'cite', 'other'];
-  if (!Array.isArray(raw)) return valid;
+  // `valid` is also the canonical order — used to place any missing category.
+  const valid: Settings['findCategoryOrder'] = [
+    'heading',
+    'tag',
+    'analytic',
+    'undertag',
+    'cite',
+    'other',
+  ];
+  if (!Array.isArray(raw)) return valid.slice();
   const seen = new Set<string>();
   const out: Settings['findCategoryOrder'] = [];
   for (const v of raw) {
@@ -2848,10 +2856,23 @@ function sanitizeFindCategoryOrder(
     seen.add(v);
     out.push(v as Settings['findCategoryOrder'][number]);
   }
-  // Append any categories missing from `raw` (so legacy / partial
-  // saves still produce a complete permutation).
-  for (const c of valid) {
-    if (!seen.has(c)) out.push(c);
+  // Insert any categories missing from `raw` at their CANONICAL position (right
+  // after their predecessor in `valid`) rather than at the end — so a legacy save
+  // that predates a newly-added category (e.g. `analytic`) places it where the
+  // default would (analytic next to tag), not dumped last.
+  for (let i = 0; i < valid.length; i++) {
+    const c = valid[i]!;
+    if (seen.has(c)) continue;
+    let insertAt = out.length;
+    for (let j = i - 1; j >= 0; j--) {
+      const predIdx = out.indexOf(valid[j]!);
+      if (predIdx >= 0) {
+        insertAt = predIdx + 1;
+        break;
+      }
+    }
+    out.splice(insertAt, 0, c);
+    seen.add(c);
   }
   return out;
 }

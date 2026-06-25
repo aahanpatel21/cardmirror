@@ -47,7 +47,7 @@ import { isWordChar, foldQuotes } from './word-break.js';
 /** Match category, derived from the containing textblock's node type
  *  at scan time. Used by the `categorized` sort mode to bubble
  *  structurally-significant matches to the top of the result list. */
-export type FindCategory = 'heading' | 'tag' | 'cite' | 'other';
+export type FindCategory = 'heading' | 'tag' | 'analytic' | 'undertag' | 'cite' | 'other';
 
 /** Sort modes the plugin supports. Both traverse top-to-bottom starting
  *  at the cursor and wrapping to the top of the document:
@@ -108,7 +108,14 @@ type Meta =
   | { type: 'setScope'; scope: { from: number; to: number } | null }
   | { type: 'clear' };
 
-const DEFAULT_CATEGORY_ORDER: FindCategory[] = ['heading', 'tag', 'cite', 'other'];
+const DEFAULT_CATEGORY_ORDER: FindCategory[] = [
+  'heading',
+  'tag',
+  'analytic',
+  'undertag',
+  'cite',
+  'other',
+];
 
 export const findReplaceKey = new PluginKey<FindReplaceState>('find-replace');
 
@@ -124,12 +131,14 @@ export const findReplaceKey = new PluginKey<FindReplaceState>('find-replace');
 
 /** Map a textblock node type name to its match category. The
  *  three doc-level outline heading types collapse to `heading`;
- *  card-anchor `tag` and `cite_paragraph` each get their own
- *  category; everything else (card_body, paragraph, analytic,
- *  undertag, table_cell, ...) is `other`. */
+ *  card-anchor `tag`, standalone `analytic`, `undertag`, and
+ *  `cite_paragraph` each get their own category; everything else
+ *  (card_body, paragraph, table_cell, ...) is `other`. */
 function categoryForTextblockType(name: string): FindCategory {
   if (name === 'pocket' || name === 'hat' || name === 'block') return 'heading';
   if (name === 'tag') return 'tag';
+  if (name === 'analytic') return 'analytic';
+  if (name === 'undertag') return 'undertag';
   if (name === 'cite_paragraph') return 'cite';
   return 'other';
 }
@@ -150,6 +159,12 @@ function rangeHasCiteMark(doc: PMNode, from: number, to: number): boolean {
   });
   return found;
 }
+
+/** Hard cap on matches collected per search — bounds the work and the decoration
+ *  set on a pathological query (a common short term in a huge doc), which could
+ *  otherwise choke the renderer. Generous enough that real searches never hit it;
+ *  the UI shows `N+` when reached. */
+export const FIND_MATCH_CAP = 10000;
 
 /** Scan the doc for every hit of `query`. Walks the plain
  *  `textBetween` representation of each textblock — matches that
@@ -173,6 +188,7 @@ function findMatches(
   // (and vice versa). Length-preserving, so offsets still map to doc positions.
   const needleNorm = foldQuotes(caseSensitive ? query : query.toLowerCase());
   state.doc.descendants((node, pos) => {
+    if (out.length >= FIND_MATCH_CAP) return false; // stop collecting past the cap
     if (!node.isTextblock) return true;
     // NOT textContent: inline atoms (images) have nodeSize 1 but
     // contribute nothing to textContent, so every character offset
@@ -227,6 +243,7 @@ function findMatches(
         category,
         subcategory,
       });
+      if (out.length >= FIND_MATCH_CAP) break;
       searchFrom = idx + needleNorm.length;
     }
     // Don't descend into the textblock's inline content — we already
@@ -272,12 +289,14 @@ function sortMatches(
   const prio: Record<FindCategory, number> = {
     heading: order.indexOf('heading'),
     tag: order.indexOf('tag'),
+    analytic: order.indexOf('analytic'),
+    undertag: order.indexOf('undertag'),
     cite: order.indexOf('cite'),
     other: order.indexOf('other'),
   };
   // Any category absent from a user-mangled order falls back to
   // last position so it's still searchable.
-  for (const k of ['heading', 'tag', 'cite', 'other'] as FindCategory[]) {
+  for (const k of ['heading', 'tag', 'analytic', 'undertag', 'cite', 'other'] as FindCategory[]) {
     if (prio[k] < 0) prio[k] = order.length;
   }
   matches.sort((a, b) => {
@@ -327,18 +346,17 @@ function rescanAfterDocChange(
 }
 
 export function findReplacePlugin(): Plugin<FindReplaceState> {
-  // Per-instance memo: ProseMirror calls `decorations` on every view
-  // update, including selection-only ones. Rebuilding the full match
-  // DecorationSet each time is wasteful with thousands of matches open.
-  // The plugin's `apply` returns the SAME state object when nothing
-  // relevant changed, so a reference-identity check on (doc, matches,
-  // scope, currentIndex) lets us reuse the prior set untouched.
-  let decoCache: {
+  // Per-instance memo of the BASE decoration set — the scope band + every match
+  // with the base class. Keyed on (doc, matches, scope) but NOT currentIndex, so
+  // navigating between results doesn't rebuild all N highlights: the current-match
+  // emphasis is layered on as a single overlay (see `decorations`). ProseMirror
+  // calls `decorations` on every view update; `apply` returns the SAME state
+  // object when nothing relevant changed, so the reference-identity check is cheap.
+  let baseCache: {
     doc: unknown;
     matches: unknown;
     scope: unknown;
-    currentIndex: number;
-    deco: DecorationSet | null;
+    set: DecorationSet;
   } | null = null;
   return new Plugin<FindReplaceState>({
     key: findReplaceKey,
@@ -457,43 +475,41 @@ export function findReplacePlugin(): Plugin<FindReplaceState> {
       decorations(state) {
         const s = findReplaceKey.getState(state);
         if (!s) return null;
+        if (s.matches.length === 0 && !s.scope) return null;
+        // Rebuild the BASE set only when the search (doc / matches / scope)
+        // changes — never on navigation. Navigation just moves the single
+        // current-match overlay below, so stepping through results is O(log N)
+        // rather than an O(N) rebuild of every highlight.
         if (
-          decoCache &&
-          decoCache.doc === state.doc &&
-          decoCache.matches === s.matches &&
-          decoCache.scope === s.scope &&
-          decoCache.currentIndex === s.currentIndex
+          !baseCache ||
+          baseCache.doc !== state.doc ||
+          baseCache.matches !== s.matches ||
+          baseCache.scope !== s.scope
         ) {
-          return decoCache.deco;
+          const decos: Decoration[] = [];
+          if (s.scope) {
+            // Faint band showing where "search within selection" applies; sits
+            // underneath the match decorations.
+            decos.push(Decoration.inline(s.scope.from, s.scope.to, { class: 'pmd-find-scope' }));
+          }
+          for (const m of s.matches) {
+            decos.push(Decoration.inline(m.from, m.to, { class: 'pmd-find-match' }));
+          }
+          baseCache = {
+            doc: state.doc,
+            matches: s.matches,
+            scope: s.scope,
+            set: decos.length === 0 ? DecorationSet.empty : DecorationSet.create(state.doc, decos),
+          };
         }
-        const decos: Decoration[] = [];
-        if (s.scope) {
-          // Wrap the scope range in a faint band so the user can
-          // see where "search within selection" applies. The band
-          // sits underneath the match decorations.
-          decos.push(
-            Decoration.inline(s.scope.from, s.scope.to, {
-              class: 'pmd-find-scope',
-            }),
-          );
-        }
-        for (let i = 0; i < s.matches.length; i++) {
-          const m = s.matches[i]!;
-          const className =
-            i === s.currentIndex
-              ? 'pmd-find-match pmd-find-match-current'
-              : 'pmd-find-match';
-          decos.push(Decoration.inline(m.from, m.to, { class: className }));
-        }
-        const deco = decos.length === 0 ? null : DecorationSet.create(state.doc, decos);
-        decoCache = {
-          doc: state.doc,
-          matches: s.matches,
-          scope: s.scope,
-          currentIndex: s.currentIndex,
-          deco,
-        };
-        return deco;
+        // Layer the current match's emphasis on top of the cached base as a
+        // single decoration — its class merges onto the base `pmd-find-match`
+        // span. Cheap (`.add` of one), so this runs per render without a memo.
+        const cur = s.currentIndex >= 0 ? s.matches[s.currentIndex] : null;
+        if (!cur) return baseCache.set;
+        return baseCache.set.add(state.doc, [
+          Decoration.inline(cur.from, cur.to, { class: 'pmd-find-match-current' }),
+        ]);
       },
     },
   });

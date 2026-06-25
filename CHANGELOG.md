@@ -21,6 +21,12 @@ see `DETAILED_CHANGELOG.md`.
   **Enable Clod mode** toggle. It's now a visible **Customize…** button right
   below that toggle in Settings → Comments & AI.
 
+- **Analytics and undertags get their own categories in Find.** In the
+  categorized results list they used to lump in with body text under "Other";
+  now they're their own **Analytic** and **Undertag** groups — colored to match
+  the editor — ordered right after Tags (analytics, then undertags, then cites).
+  Reorder them like the other categories under Settings → Find.
+
 ### Fixed
 
 - **Escape leaves a dived-into file even when the search box isn't focused.**
@@ -54,6 +60,15 @@ see `DETAILED_CHANGELOG.md`.
   paragraph at outline level 4 → Tag), mirroring what the style cleaner already
   does. The bold / size / underline checks gate it, so an ordinary non-debate doc
   that merely uses outline levels is unaffected.
+
+- **Find stays fast on large documents with many matches.** Stepping between
+  results — next/previous, or clicking a result — used to rebuild every
+  highlight, the whole results list, and all the nav-pane markers on each step,
+  which crawled once a search had thousands of hits. Now only the active match
+  moves per step, so navigation stays quick no matter the match count. Find also
+  caps at 10,000 matches (shown as `10000+`) and 500 listed rows ("Showing first
+  500 of … — refine to narrow"), and rapid jumps no longer pile up scrolling
+  work — so a pathological search can't choke the editor.
 
 ## 0.1.0-alpha.20 — 2026-06-23
 

@@ -3194,8 +3194,10 @@ function buildFindCategoryOrderEditor(): HTMLElement {
   const labels: Record<string, string> = {
     heading: 'Headings (Pocket / Hat / Block)',
     tag: 'Tags',
+    analytic: 'Analytics',
+    undertag: 'Undertags',
     cite: 'Cites',
-    other: 'Other (body, analytics, undertags, …)',
+    other: 'Other (body, …)',
   };
 
   function render(): void {
