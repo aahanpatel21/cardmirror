@@ -6247,26 +6247,37 @@ async function initSingleDocBoot(): Promise<void> {
     await runStartupRecovery();
   }
   if (isFirst) {
+    const electron = getElectronHost();
     // At-launch update check, gated on the same first-window rule
     // as the recovery UI — we don't want every spawned window in
-    // a session to re-check or to re-pop "Update available" if
-    // the user dismissed it on the first window. Setting is OFF
-    // by default in this release; users opt in via Settings →
-    // General → "About this install." Main-process IPC handler
-    // is a no-op in dev (non-packaged) builds, so the gate here
-    // is renderer-side defense in depth.
-    if (settings.get('checkForUpdatesOnLaunch')) {
-      const electron = getElectronHost();
-      if (electron) {
-        try {
-          await electron.triggerAutoUpdateCheck();
-        } catch (err) {
-          // Auto-launch check failures stay silent — the user
-          // didn't ask for feedback. Manual checks have their
-          // own error-dialog path.
-          console.warn('Auto-launch update check failed:', err);
-        }
+    // a session to re-check or to re-pop "Update available" if the
+    // user dismissed it on the first window. The main-process IPC
+    // handler is a no-op in dev (non-packaged) builds, so the gate
+    // here is renderer-side defense in depth.
+    if (electron && settings.get('checkForUpdatesOnLaunch')) {
+      try {
+        await electron.triggerAutoUpdateCheck();
+      } catch (err) {
+        // Auto-launch check failures stay silent — the user didn't
+        // ask for feedback. Manual checks have their own error path.
+        console.warn('Auto-launch update check failed:', err);
       }
+    }
+    // Plus a DAILY background check (also silent unless an update is
+    // found), so an app left running for days still notices updates.
+    // Re-reads the setting each tick, so turning "Check for updates
+    // automatically" off stops it; first window only, like above.
+    if (electron) {
+      window.setInterval(
+        () => {
+          if (settings.get('checkForUpdatesOnLaunch')) {
+            void electron.triggerAutoUpdateCheck().catch((err) => {
+              console.warn('Daily update check failed:', err);
+            });
+          }
+        },
+        24 * 60 * 60 * 1000,
+      );
     }
   }
 }

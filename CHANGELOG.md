@@ -26,6 +26,11 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Changed
 
+- **"Check for updates on launch" is now "Check for updates automatically" — and
+  it also checks daily.** With it enabled, the desktop app checks for updates at
+  launch and once every 24 hours while it's running, staying silent and only
+  surfacing a prompt when an update is actually available.
+
 - **Cmd-R no longer reloads the desktop app by accident.** A stray Cmd-R mid-edit
   used to reload the whole window, which felt like a crash. Reload now lives only
   in the View menu; the Cmd-Shift-R force-reload shortcut — far harder to hit by

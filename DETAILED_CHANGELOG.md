@@ -7,6 +7,16 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Auto-update: renamed the setting and added a daily background check**
+  (`editor/settings-ui.ts`, `editor/index.ts`). The toggle "Check for updates on
+  launch" is renamed "Check for updates automatically." Alongside the existing
+  at-launch trigger (first window only — `triggerAutoUpdateCheck` →
+  `runUpdateCheck({ alertOnLatest: false, alertOnError: false })`), the boot path
+  now also arms a 24h `setInterval` (first window only) that re-fires the same
+  silent check, re-reading `checkForUpdatesOnLaunch` each tick so toggling it off
+  stops the checks. Both paths stay silent unless an update is found. The setting
+  key (`checkForUpdatesOnLaunch`) is unchanged, so there's no settings migration.
+
 - **Bundle metric-compatible open-source substitutes for the proprietary / system
   fonts the picker offers** (`editor/style.css`, `editor/font-detect.ts`,
   `editor/fonts/`). The picker listed Calibri / Cambria / Times New Roman / Arial /
