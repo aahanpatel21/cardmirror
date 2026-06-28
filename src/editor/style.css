@@ -2245,6 +2245,23 @@ code {
   font-size: var(--pmd-run-font-size, var(--pmd-size-emphasis));
 }
 
+/* Ligatures must not span a formatting boundary. A non-glyph-changing decoration
+   — highlight / shading background, underline / emphasis underline — applied to
+   PART of a ligature would otherwise paint the whole glyph: the browser shapes
+   the ligature across the mark-span boundary (background and underline aren't
+   shaping-relevant, so the run isn't broken there). `font-variant-ligatures:
+   none` is a shaping-relevant difference, so it forces the run to break at the
+   mark boundary — the ligature splits and each character is decorated on its
+   own. (Bold / italic / cite already break shaping on their own, since they
+   change the glyph. A ligature wholly inside one uniform decoration also
+   un-ligates, since CSS targets the whole span, not just its edges.) */
+.pmd-highlight,
+[data-shading],
+.pmd-underline,
+.pmd-emphasis {
+  font-variant-ligatures: none;
+}
+
 /* UndertagChar (inline form): same color/decoration rules as the
    block-level undertag — driven by --pmd-color-undertag and the
    typography flag classes. */

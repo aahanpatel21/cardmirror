@@ -200,6 +200,22 @@ in each release, see `CHANGELOG.md`.
   add/remove of a mark inside a lease is blocked while the same mark outside is
   allowed.
 
+- **Non-glyph-changing decorations split ligatures at formatting boundaries**
+  (`editor/style.css`). Highlight / shading (background) and underline / emphasis
+  (text-decoration) render as mark spans, and the browser shapes a ligature
+  *across* such span boundaries — background and text-decoration aren't
+  shaping-relevant, so the run isn't broken there — so applying one to part of a
+  ligature painted the whole joined glyph. Adding `font-variant-ligatures: none`
+  to `.pmd-highlight`, `[data-shading]`, `.pmd-underline`, `.pmd-emphasis` is a
+  shaping-relevant difference, so the run breaks at the mark boundary: the
+  ligature splits and each character is decorated on its own. Trade-off: a
+  ligature wholly inside one uniform decoration also un-ligates (CSS targets the
+  whole span, not just its edges), so highlighted / underlined text doesn't form
+  ligatures at all. Bold / italic / cite already break shaping (they change the
+  glyph). Text color and cite-when-not-bold have the same class of issue but were
+  left out of scope. CSS-only — verified visually in the dev build, not the test
+  suite (jsdom can't shape fonts).
+
 ## 0.1.0-beta.2 — 2026-06-25
 
 - **Rebindable single-press doc-cycle commands for three-pane mode**

@@ -83,6 +83,13 @@ see `DETAILED_CHANGELOG.md`.
   font size, named styles, etc.) to that passage, so the operation's content
   can't shift under it mid-run.
 
+- **Highlighting or underlining part of a ligature no longer decorates the whole
+  ligature.** With a ligature font, applying highlight, shading, underline, or
+  emphasis to only some characters of a ligature (like the "fi" in "find") used
+  to paint the entire joined glyph. The ligature now splits at the formatting
+  boundary, so only the marked characters are decorated. (As a result,
+  highlighted / underlined text no longer forms ligatures.)
+
 ## 0.1.0-beta.2 — 2026-06-25
 
 ### Added
