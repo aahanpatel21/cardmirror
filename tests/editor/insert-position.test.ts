@@ -1,16 +1,19 @@
 /**
- * `nearestTopLevelInsertPos` — snaps a block-level insert to the nearest
- * doc-level boundary so it never splits the card the cursor sits in.
+ * `nearestValidInsertPos` — snaps an insert to a valid drop target *for the kind
+ * of content being inserted* (mirroring drag-and-drop): inline text stays at the
+ * caret, card content drops inside the enclosing card, a whole card drops at a
+ * doc-level gap. Block inserts never split the card the caret is in.
  */
 
 import { describe, expect, it } from 'vitest';
 import { EditorState } from 'prosemirror-state';
 import { Fragment, type Node as PMNode } from 'prosemirror-model';
 import { schema, newHeadingId } from '../../src/schema/index.js';
-import { nearestTopLevelInsertPos } from '../../src/editor/insert-position.js';
+import { nearestValidInsertPos } from '../../src/editor/insert-position.js';
 
 const tag = (t: string) => schema.nodes['tag']!.create({ id: newHeadingId() }, schema.text(t));
 const body = (t: string) => schema.nodes['card_body']!.create(null, t ? schema.text(t) : []);
+const cite = (t: string) => schema.nodes['cite_paragraph']!.create(null, t ? schema.text(t) : []);
 const para = (t: string) => schema.nodes['paragraph']!.create(null, t ? schema.text(t) : []);
 const card = (...k: PMNode[]) => schema.nodes['card']!.create(null, Fragment.fromArray(k));
 const makeDoc = (...k: PMNode[]) => schema.nodes['doc']!.create(null, Fragment.fromArray(k));
@@ -24,95 +27,97 @@ const findText = (doc: PMNode, t: string, off: number): number => {
   if (p < 0) throw new Error(`not found: ${t}`);
   return p;
 };
+const cardsOf = (doc: PMNode): PMNode[] => {
+  const out: PMNode[] = [];
+  doc.forEach((c) => {
+    if (c.type.name === 'card') out.push(c);
+  });
+  return out;
+};
+const childTypes = (node: PMNode): string[] => {
+  const out: string[] = [];
+  node.forEach((c) => out.push(c.type.name));
+  return out;
+};
+const nullIdTags = (doc: PMNode): number => {
+  let n = 0;
+  doc.descendants((node) => {
+    if (node.type.name === 'tag' && node.attrs['id'] == null) n++;
+  });
+  return n;
+};
+// Insert `content` at the snapped position and return the resulting doc.
+const snapInsert = (doc: PMNode, caret: number, content: Fragment): PMNode => {
+  const at = nearestValidInsertPos(doc, caret, content);
+  const st = EditorState.create({ doc });
+  return st.apply(st.tr.insert(at, content)).doc;
+};
 
-describe('nearestTopLevelInsertPos', () => {
-  it('caret mid-card snaps to a card boundary, never inside the card', () => {
+describe('nearestValidInsertPos — content-aware snapping', () => {
+  const newCard = () => Fragment.from(card(tag('NEW'), body('new body')));
+  const newCite = () => Fragment.from(cite('Cite 24'));
+  const inlineText = () => Fragment.from(schema.text('XX'));
+
+  it('a whole card snaps OUT to a doc-level gap (clean sibling, no split)', () => {
     const doc = makeDoc(card(tag('T'), body('alpha body')));
-    const cardStart = 0;
-    const cardEnd = doc.firstChild!.nodeSize; // after the only card
-    const pos = findText(doc, 'alpha body', 5); // mid-body
-    const snapped = nearestTopLevelInsertPos(doc, pos);
-    expect([cardStart, cardEnd]).toContain(snapped);
-  });
-
-  it('caret near the top of a card snaps to BEFORE the card', () => {
-    const doc = makeDoc(card(tag('T'), body('alpha body')));
-    const pos = findText(doc, 'alpha body', 0); // start of body, high in the card
-    expect(nearestTopLevelInsertPos(doc, pos)).toBe(0); // before the card
-  });
-
-  it('caret near the bottom of a card snaps to AFTER the card', () => {
-    const doc = makeDoc(card(tag('T'), body('alpha body')));
-    const pos = findText(doc, 'alpha body', 'alpha body'.length); // end of body
-    expect(nearestTopLevelInsertPos(doc, pos)).toBe(doc.firstChild!.nodeSize);
-  });
-
-  it('picks the correct card when several are present', () => {
-    const doc = makeDoc(
-      card(tag('A'), body('aaa')),
-      card(tag('B'), body('bbb body')),
-      card(tag('C'), body('ccc')),
-    );
-    const secondStart = doc.child(0).nodeSize;
-    const secondEnd = secondStart + doc.child(1).nodeSize;
-    const pos = findText(doc, 'bbb body', 4); // inside the middle card
-    const snapped = nearestTopLevelInsertPos(doc, pos);
-    expect([secondStart, secondEnd]).toContain(snapped);
-  });
-
-  it('a loose paragraph snaps to its own boundary (no split)', () => {
-    const doc = makeDoc(para('loose text here'));
-    const pos = findText(doc, 'loose text here', 5);
-    const snapped = nearestTopLevelInsertPos(doc, pos);
-    expect([0, doc.firstChild!.nodeSize]).toContain(snapped);
-  });
-
-  it('a position already at a doc-level gap is returned unchanged', () => {
-    const doc = makeDoc(card(tag('A'), body('a')), card(tag('B'), body('b')));
-    const gap = doc.child(0).nodeSize; // between the two cards (doc depth)
-    expect(nearestTopLevelInsertPos(doc, gap)).toBe(gap);
-  });
-});
-
-// End-to-end: the guarantee the insert paths (dropzone click-insert,
-// quick-card / send-to-speech) rely on — a block-level insert at the SNAPPED
-// position lands as a clean sibling, never splitting the card or spawning a
-// phantom blank-tag card.
-describe('snapped insert keeps the card intact', () => {
-  const newCard = () =>
-    card(schema.nodes['tag']!.create({ id: newHeadingId() }, schema.text('NEW')), body('new body'));
-  const cardsOf = (doc: PMNode): PMNode[] => {
-    const out: PMNode[] = [];
-    doc.forEach((c) => {
-      if (c.type.name === 'card') out.push(c);
-    });
-    return out;
-  };
-  const nullIdTags = (doc: PMNode): number => {
-    let n = 0;
-    doc.descendants((node) => {
-      if (node.type.name === 'tag' && node.attrs['id'] == null) n++;
-    });
-    return n;
-  };
-
-  it('inserting a card at the snapped position yields two intact sibling cards', () => {
-    const doc = makeDoc(card(tag('T'), body('alpha body')));
-    const caret = findText(doc, 'alpha body', 5);
-    const snapped = nearestTopLevelInsertPos(doc, caret);
-    const st = EditorState.create({ doc });
-    const after = st.apply(st.tr.insert(snapped, newCard())).doc;
+    const caret = findText(doc, 'alpha body', 5); // mid-body
+    const at = nearestValidInsertPos(doc, caret, newCard());
+    expect([0, doc.firstChild!.nodeSize]).toContain(at); // before/after the card
+    const after = snapInsert(doc, caret, newCard());
     expect(cardsOf(after).length).toBe(2);
-    expect(cardsOf(after).every((c) => c.firstChild!.type.name === 'tag')).toBe(true);
     expect(nullIdTags(after)).toBe(0);
     expect(() => after.check()).not.toThrow();
   });
 
-  it('inserting at the RAW caret instead splits the card (the bug the snap avoids)', () => {
+  it('card content (a cite) snaps INSIDE the enclosing card, not out to doc level', () => {
+    const doc = makeDoc(card(tag('T'), body('alpha body')));
+    const caret = findText(doc, 'alpha body', 5);
+    const at = nearestValidInsertPos(doc, caret, newCite());
+    // strictly inside the single card, not at a doc boundary
+    expect(at).toBeGreaterThan(0);
+    expect(at).toBeLessThan(doc.firstChild!.nodeSize);
+    const after = snapInsert(doc, caret, newCite());
+    expect(cardsOf(after).length).toBe(1); // still ONE card
+    expect(childTypes(cardsOf(after)[0]!)).toContain('cite_paragraph');
+    expect(cardsOf(after)[0]!.firstChild!.type.name).toBe('tag');
+    expect(() => after.check()).not.toThrow();
+  });
+
+  it('inline text stays at the caret (inserted inline, card intact)', () => {
+    const doc = makeDoc(card(tag('T'), body('alpha body')));
+    const caret = findText(doc, 'alpha body', 5); // between "alpha" and " body"
+    expect(nearestValidInsertPos(doc, caret, inlineText())).toBe(caret);
+    const after = snapInsert(doc, caret, inlineText());
+    expect(cardsOf(after).length).toBe(1);
+    expect(after.textContent).toContain('alphaXX body');
+  });
+
+  it('card content near the top of a card snaps to the gap above the body (after the tag)', () => {
+    const doc = makeDoc(card(tag('T'), body('alpha body')));
+    const at = nearestValidInsertPos(doc, findText(doc, 'alpha body', 0), newCite());
+    const after = snapInsert(doc, findText(doc, 'alpha body', 0), newCite());
+    expect(childTypes(cardsOf(after)[0]!)).toEqual(['tag', 'cite_paragraph', 'card_body']);
+    expect(at).toBeGreaterThan(0);
+  });
+
+  it('outside any card, a whole card snaps to the loose paragraph’s boundary', () => {
+    const doc = makeDoc(para('loose text here'));
+    const caret = findText(doc, 'loose text here', 5);
+    const at = nearestValidInsertPos(doc, caret, Fragment.from(card(tag('N'), body('b'))));
+    expect([0, doc.firstChild!.nodeSize]).toContain(at);
+  });
+
+  it('a position already at a doc-level gap is unchanged for a card', () => {
+    const doc = makeDoc(card(tag('A'), body('a')), card(tag('B'), body('b')));
+    const gap = doc.child(0).nodeSize;
+    expect(nearestValidInsertPos(doc, gap, Fragment.from(card(tag('N'), body('n'))))).toBe(gap);
+  });
+
+  it('the RAW caret (no snap) splits the card — the bug this avoids', () => {
     const doc = makeDoc(card(tag('T'), body('alpha body')));
     const caret = findText(doc, 'alpha body', 5);
     const st = EditorState.create({ doc });
-    const after = st.apply(st.tr.insert(caret, newCard())).doc;
-    expect(nullIdTags(after)).toBeGreaterThan(0); // phantom blank-tag card
+    const after = st.apply(st.tr.insert(caret, card(tag('NEW'), body('n')))).doc;
+    expect(nullIdTags(after)).toBeGreaterThan(0);
   });
 });

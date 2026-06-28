@@ -51,24 +51,28 @@ in each release, see `CHANGELOG.md`.
   structurally impossible. Covered by new migration tests plus updated
   importer / schema / transform-for-export expectations.
 
-- **Block-level inserts snap to the nearest top-level boundary instead of the
-  raw caret** (`editor/insert-position.ts` (new), `editor/dropzone-ui.ts`,
+- **Inserts snap to the nearest valid drop target for the kind of content being
+  inserted** (`editor/insert-position.ts` (new), `editor/dropzone-ui.ts`,
   `editor/speech-doc-send.ts`, `editor/quick-card-search-ui.ts`,
   `editor/settings.ts`, `tests/editor/insert-position.test.ts` (new)). Inserting
-  a structural slice — a dropzone shelf card (click-to-insert), a quick card, a
+  a structural slice — a dropzone shelf item (click-to-insert), a quick card, a
   sent slice — at `selection.head` / `selection.from` forced ProseMirror to
   split the enclosing card to fit it, spawning a phantom blank-tag (`id: null`)
-  card for the orphaned tail. New `nearestTopLevelInsertPos(doc, pos)` returns
-  the doc-level boundary just before/after the enclosing top-level node
-  (whichever is nearer) — where a drag-and-drop would drop it. `dropzone-ui`'s
-  `insertItem` and `speech-doc-send`'s `insertSpeechSlice` now snap a non-blank
-  collapsed caret to that boundary (an empty placeholder line is still filled in
-  place; a range selection still inserts at its start). The `insertSpeechSlice`
-  mid-text `window.confirm` and the `quickCardSkipMidTextInsertConfirm` setting
-  it gated (interface / default / metadata / sanitize) were removed — snapping
-  makes the warning moot. Covered by helper unit tests plus an end-to-end test
-  that a snapped card insert yields two intact sibling cards, versus the
-  raw-caret insert that splits the card and spawns a null-id tag.
+  card for the orphaned tail. New `nearestValidInsertPos(doc, pos, content)`
+  mirrors drag-and-drop, where what counts as a drop target depends on what's
+  being dropped: it walks outward from the caret to the innermost ancestor that
+  legally accepts `content` (via `Node.canReplace`) and snaps to the nearer
+  surrounding gap there. So inline text stays at the caret, card content (a
+  cite / body / undertag / table) drops INSIDE the enclosing card, and a whole
+  card / heading drops at a doc-level gap — none of them split the card the caret
+  is in. `dropzone-ui`'s `insertItem` and `speech-doc-send`'s `insertSpeechSlice`
+  pass the slice's content to it for a non-blank collapsed caret (an empty
+  placeholder line is still filled in place; a range selection still inserts at
+  its start). The `insertSpeechSlice` mid-text `window.confirm` and the
+  `quickCardSkipMidTextInsertConfirm` setting it gated (interface / default /
+  metadata / sanitize) were removed — snapping makes the warning moot. Covered by
+  tests for each content kind (card → doc gap, cite → inside the card, inline →
+  at the caret) plus an end-to-end check versus the raw-caret split.
 
 ## 0.1.0-beta.2 — 2026-06-25
 

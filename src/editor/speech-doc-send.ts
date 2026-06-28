@@ -19,7 +19,7 @@ import { Slice, type Node as PMNode, type ResolvedPos } from 'prosemirror-model'
 import { closeHistory } from 'prosemirror-history';
 import { schema } from '../schema/index.js';
 import { rewriteHeadingIds } from './drag-controller.js';
-import { nearestTopLevelInsertPos } from './insert-position.js';
+import { nearestValidInsertPos } from './insert-position.js';
 import { getSpeechDocResolver } from './speech-doc-registry.js';
 import { getElectronHost } from './host/index.js';
 
@@ -178,12 +178,14 @@ export function insertSpeechSlice(
         liveFrom = $from.before($from.depth);
         liveTo = $from.after($from.depth);
       } else if (isEmpty) {
-        // Snap a block-level slice to the nearest top-level boundary so it
-        // lands as a clean sibling instead of splitting the cursor's card —
+        // Snap to the nearest valid drop target for THIS content — a whole card
+        // to a doc-level gap, card content inside the enclosing card — so it
+        // lands as a clean sibling instead of splitting the cursor's card,
         // exactly where a drag-and-drop would drop it.
-        liveFrom = liveTo = nearestTopLevelInsertPos(
+        liveFrom = liveTo = nearestValidInsertPos(
           liveState.doc,
           liveState.selection.from,
+          slice.content,
         );
       } else {
         // A range selection inserts at its start (existing behavior).
