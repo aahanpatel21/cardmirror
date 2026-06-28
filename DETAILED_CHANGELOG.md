@@ -7,6 +7,16 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Add/insert cross-verb aliases on the element-insertion commands**
+  (`editor/ribbon-commands.ts`). Added the missing verb as a per-command alias so
+  both phrasings match in command search: `insertTable` ← "add table",
+  `addRowBefore`/`addRowAfter`/`addColumnBefore`/`addColumnAfter` (labelled
+  "Insert Row/Column …") ← "add row/column …", `insertReceivedAtCursor`/`AtEnd` ←
+  "add received card …" (`insertImage` already had "add image"). Deliberately a
+  per-command alias, NOT a synonym group — `addQuickCard` / `addCommentToSelection`
+  / `addNoteToSelection` CREATE rather than place an element, so "insert" is not
+  an equivalent for them.
+
 - **Quick-card ribbon cluster gated behind `showQuickCardButtons` (default off)**
   (`editor/settings.ts`, `editor/index.ts`, `editor/style.css`). New boolean
   setting (interface + default `false` + sanitize + an Editing-category toggle),

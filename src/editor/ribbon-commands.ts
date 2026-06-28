@@ -4792,6 +4792,15 @@ export const RIBBON_COMMAND_ALIASES: Partial<Record<RibbonCommandId, readonly st
   removeHyperlinks: ['remove links', 'unlink'], // "delete …" via the delete/remove synonym group
   applyShading: ['shading', 'text highlight color'],
   insertImage: ['add image', 'insert picture', 'photo'],
+  // "Insert …" element commands also answer to "add …" (genuine equivalence —
+  // unlike Add Quick Card / Add Comment / Add Note, which CREATE, not insert).
+  insertTable: ['add table'],
+  addRowBefore: ['add row above'],
+  addRowAfter: ['add row below'],
+  addColumnBefore: ['add column left'],
+  addColumnAfter: ['add column right'],
+  insertReceivedAtCursor: ['add received card at cursor'],
+  insertReceivedAtEnd: ['add received card at end'],
   goHome: ['start screen', 'welcome screen', 'dashboard'],
   openShortcutsReference: ['hotkeys', 'key bindings', 'shortcuts'],
   zoomReset: ['actual size'],

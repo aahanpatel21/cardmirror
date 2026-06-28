@@ -24,6 +24,12 @@ see `DETAILED_CHANGELOG.md`.
   surfaces commands named with an equivalent word — e.g. "restore" finds the
   Repair commands, and "remove" finds the Delete Row / Column / Table commands.
 
+- **Command bar: "add" and "insert" find the same element commands.** Searching
+  "add table", "add row"/"add column", "add image", or "add received card" now
+  surfaces the corresponding Insert command (and vice versa). The create-type
+  commands — Add Quick Card, Add Comment, Add Note — are intentionally left out,
+  since they make something new rather than placing it.
+
 ### Changed
 
 - **Saving a quick card now captures whole cards and sections.** Add Quick Card
