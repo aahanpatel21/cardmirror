@@ -43,6 +43,13 @@ see `DETAILED_CHANGELOG.md`.
   structural in it sends nothing. Putting your cursor in a card or heading with no
   selection still sends that whole card/section, as before.
 
+- **Pasting body text together with a heading or card no longer breaks the card.**
+  Copying a paragraph along with a following heading (or a whole card) and pasting
+  it into the middle of a card used to split the card and leave a broken, stray
+  card behind. Now the body text merges into the card, the heading/card starts its
+  own section, and the rest of the card you pasted into follows under it — the
+  same way pasting a heading on its own already behaved.
+
 ## 0.1.0-beta.2 — 2026-06-25
 
 ### Added

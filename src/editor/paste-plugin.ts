@@ -45,6 +45,7 @@ import {
   Fragment,
   Slice,
   type Node as PMNode,
+  type NodeType,
   type ResolvedPos,
 } from 'prosemirror-model';
 import type { EditorView } from 'prosemirror-view';
@@ -398,15 +399,37 @@ export function buildPastePlugin(ctx: PastePluginCtx): Plugin<PluginState> {
         // a card body splits the destination so the pasted structure wins.
         // Try the slice PM gave us first; if its head was flattened to inline
         // while fitting the cursor's body slot, recover the true structure by
-        // re-parsing the clipboard HTML at the doc level.
+        // re-parsing the clipboard HTML at the doc level. The reparsed (flat,
+        // doc-level) slice is also what the body-then-structural path below
+        // wants, so compute it once, lazily.
+        let reparsed: Slice | null | undefined;
+        const getReparsed = (): Slice | null => {
+          if (reparsed === undefined) reparsed = reparseClipboardStructuralSlice(event);
+          return reparsed;
+        };
+
         let splitTr = tryPasteSplitContainer(view.state, slice);
         if (!splitTr) {
-          const reparsed = reparseClipboardStructuralSlice(event);
-          if (reparsed) splitTr = tryPasteSplitContainer(view.state, reparsed);
+          const r = getReparsed();
+          if (r) splitTr = tryPasteSplitContainer(view.state, r);
         }
         if (splitTr) {
           event.preventDefault();
           view.dispatch(splitTr.scrollIntoView());
+          return true;
+        }
+
+        // A paste that LEADS with body content then turns structural (a
+        // paragraph copied with a following heading / card) — neither path above
+        // catches it. Merge the body into the cursor's card, then split at the
+        // structural node. Prefer the reparsed flat slice; fall back to the raw
+        // slice when there's no clipboard HTML.
+        const r = getReparsed();
+        let mixedTr = r ? tryPasteBodyThenStructural(view.state, r) : null;
+        if (!mixedTr) mixedTr = tryPasteBodyThenStructural(view.state, slice);
+        if (mixedTr) {
+          event.preventDefault();
+          view.dispatch(mixedTr.scrollIntoView());
           return true;
         }
 
@@ -536,6 +559,63 @@ export function tryPasteSplitContainer(
     return null;
   }
 
+  const flat: PMNode[] = [];
+  slice.content.forEach((n) => flat.push(n));
+  return buildContainerSplit(state, flat, []);
+}
+
+/**
+ * Merge a leading run of pasted body content into the pre-cursor content of a
+ * container split. The FIRST body paragraph merges INLINE into the cursor's body
+ * (continuing the line); subsequent body paragraphs become their own `card_body`
+ * blocks (paragraph breaks preserved); a typed node (`cite_paragraph` /
+ * `undertag`) flushes the running body and lands as its own card child. Used by
+ * the A4 path (`tryPasteBodyThenStructural`); the plain split passes an empty
+ * prefix, which just yields the pre-cursor body (or nothing).
+ */
+function mergeBodyPrefix(
+  preContent: Fragment,
+  prefix: PMNode[],
+  bodyType: NodeType,
+): PMNode[] {
+  const out: PMNode[] = [];
+  let cur: Fragment | null = preContent.size > 0 ? preContent : null;
+  let leadOpen = true; // the lead body can still absorb the first body inline
+  for (const node of prefix) {
+    if (BODY_PASTE_TYPES.has(node.type.name)) {
+      if (leadOpen) {
+        cur = (cur ?? Fragment.empty).append(node.content);
+        leadOpen = false;
+      } else {
+        if (cur) out.push(bodyType.create(null, cur));
+        cur = null;
+        out.push(schema.nodes['card_body']!.create(null, node.content));
+      }
+    } else {
+      if (cur) out.push(bodyType.create(null, cur));
+      cur = null;
+      leadOpen = false;
+      out.push(fitForCard(node));
+    }
+  }
+  if (cur) out.push(bodyType.create(null, cur));
+  return out;
+}
+
+/**
+ * Split the cursor's `card` / `analytic_unit` at the cursor and insert
+ * `structuralFlat` (re-grouped into proper containers) after it, with any
+ * leading `bodyPrefix` merged into the pre-cursor content. The destination keeps
+ * its pre-cursor children + pre-cursor body (+ prefix); the pasted structure
+ * lands after; the post-cursor remainder is absorbed by the LAST pasted
+ * container, or lifted to the doc root when the paste ends in a doc-level
+ * heading. Returns null when the cursor isn't in a splittable body slot.
+ */
+function buildContainerSplit(
+  state: EditorState,
+  structuralFlat: PMNode[],
+  bodyPrefix: PMNode[],
+): Transaction | null {
   const $from = state.selection.$from;
   if ($from.depth !== 2) return null;
   const cursorBody = $from.parent;
@@ -550,9 +630,7 @@ export function tryPasteSplitContainer(
   if (cursorIndex < 1) return null;
 
   // Re-group the (possibly flat, open) pasted nodes into doc-level containers.
-  const flat: PMNode[] = [];
-  slice.content.forEach((n) => flat.push(n));
-  const pastedNodes = groupStructuralNodes(flat);
+  const pastedNodes = groupStructuralNodes(structuralFlat);
   if (pastedNodes.length === 0) return null;
 
   const parentOffset = $from.parentOffset;
@@ -567,11 +645,11 @@ export function tryPasteSplitContainer(
   });
 
   const bodyType = cursorBody.type;
-  const preBody = preContent.size > 0 ? bodyType.create(null, preContent) : null;
+  // Pre-cursor content (with any pasted body prefix merged in) + post-cursor tail.
+  const preChildren = mergeBodyPrefix(preContent, bodyPrefix, bodyType);
   const postBody = postContent.size > 0 ? bodyType.create(null, postContent) : null;
 
-  const originalChildren = [...beforeChildren];
-  if (preBody) originalChildren.push(preBody);
+  const originalChildren = [...beforeChildren, ...preChildren];
   const originalContainer = container.copy(Fragment.fromArray(originalChildren));
 
   // The destination's post-cursor remainder.
@@ -614,6 +692,47 @@ export function tryPasteSplitContainer(
     /* schema rejected the position — selection stays where PM left it */
   }
   return tr;
+}
+
+/**
+ * A pasted slice that LEADS with body content and THEN contains structural
+ * content (a heading / tag / analytic / whole card) — e.g. a paragraph copied
+ * together with a following heading. Neither `tryPasteCardContent` (bails on the
+ * structural node) nor `tryPasteSplitContainer` (bails on the non-structural
+ * lead) catches it, so it would otherwise fall to PM's default fitter and split
+ * the card. Merge the leading body into the cursor's card, then split the card
+ * at the first structural node — the same result as the structural-led split,
+ * with the body prefix folded into the pre-cursor content.
+ *
+ * Cursor only (a range paste of this shape is left to the default path).
+ * Exported for unit tests.
+ */
+export function tryPasteBodyThenStructural(
+  state: EditorState,
+  slice: Slice,
+): Transaction | null {
+  if (slice.content.childCount === 0) return null;
+  const sel = state.selection;
+  if (!(sel instanceof TextSelection) || sel.from !== sel.to) return null;
+
+  const flat: PMNode[] = [];
+  slice.content.forEach((n) => flat.push(n));
+
+  // Split at the first structural node; everything before it must be fittable.
+  let k = -1;
+  for (let i = 0; i < flat.length; i++) {
+    const name = flat[i]!.type.name;
+    if (STRUCTURAL_HEAD_NAMES.has(name) || STRUCTURAL_CONTAINERS.has(name)) {
+      k = i;
+      break;
+    }
+  }
+  if (k <= 0) return null; // no structural node, or it leads (handled elsewhere)
+  const prefix = flat.slice(0, k);
+  if (!prefix.every((n) => CARD_FITTABLE_PASTE.has(n.type.name))) return null;
+  const rest = flat.slice(k);
+
+  return buildContainerSplit(state, rest, prefix);
 }
 
 /**

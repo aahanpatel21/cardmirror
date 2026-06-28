@@ -105,6 +105,27 @@ in each release, see `CHANGELOG.md`.
   selection, leaving a bare cursor's enclosing-structure send untouched. Covered
   by 13 tests across cards, headings, the 75% intro carve-out, and loose paragraphs.
 
+- **Paste that leads with body content then turns structural no longer breaks the
+  card** (`editor/paste-plugin.ts`, `tests/editor/paste-body-then-structural.test.ts`
+  (new)). A clipboard slice shaped `[body…, heading/card…]` — a paragraph copied
+  with a following heading, common via OS copy/paste, which bypasses the (now
+  normalized) send pipelines — was caught by neither `tryPasteCardContent` (bails
+  on the structural node) nor `tryPasteSplitContainer` (bails on the
+  non-structural lead), so it fell to PM's default fitter and split the
+  destination card (phantom tag). `tryPasteSplitContainer`'s body was extracted
+  into a shared `buildContainerSplit(state, structuralFlat, bodyPrefix)`, and new
+  `tryPasteBodyThenStructural` splits the slice at the first structural node,
+  requires the prefix to be card-fittable, and runs the split with the body
+  prefix merged into the pre-cursor content (`mergeBodyPrefix`: the first body
+  paragraph merges inline, subsequent paragraphs become their own `card_body`
+  blocks, a cite/undertag lands as its own block). `handlePaste` tries it after
+  the structural-led split — on the reparsed flat, doc-level slice (falling back
+  to the raw slice). The result mirrors the structural-led split with the body
+  folded in: the leading body joins the cursor's card, the structural content
+  starts its own container, and the post-cursor tail rides under the last pasted
+  node. Covered by 7 tests (paragraph + heading / whole card / bare tag,
+  body-start, multi-paragraph prefix, cite-in-prefix, bail cases).
+
 ## 0.1.0-beta.2 — 2026-06-25
 
 - **Rebindable single-press doc-cycle commands for three-pane mode**
