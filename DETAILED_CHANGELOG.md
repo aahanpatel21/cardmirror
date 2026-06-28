@@ -172,6 +172,20 @@ in each release, see `CHANGELOG.md`.
   line. (Load-time `stampMissingHeadingIds` would have repaired it on the next
   reload, but the card was nav-invisible until then.)
 
+- **Home-screen 1–9 shortcuts stand down under a modal or a focused input**
+  (`editor/home-screen.ts`, `editor/overlay-stack.ts`,
+  `tests/editor/home-screen-shortcuts.test.ts`,
+  `tests/editor/overlay-stack.test.ts`). The home screen's document-level keydown
+  handler fired its number (and Escape) shortcuts unconditionally, so with a
+  dialog or the command bar layered over it the shortcut ran AND swallowed number
+  input meant for the modal. `onKeyDown` now bails when `isAnyOverlayOpen()` (new
+  export on the shared overlay stack — settings / quick-card / learn dialogs all
+  push to it) or when the keydown target is a text-entry element
+  (`isEditableTarget`, which covers the command bar's focused search field and any
+  dialog input). Covered by a jsdom test (fires when home is the active layer,
+  suppressed under an overlay or with a focused input, resumes once the overlay
+  closes) plus an `isAnyOverlayOpen` unit test.
+
 ## 0.1.0-beta.2 — 2026-06-25
 
 - **Rebindable single-press doc-cycle commands for three-pane mode**

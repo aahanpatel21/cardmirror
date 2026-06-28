@@ -71,6 +71,12 @@ see `DETAILED_CHANGELOG.md`.
   to the navigation pane and the outline level filter until the next save. It now
   gets a real id like every other card.
 
+- **Home screen number shortcuts no longer fire over a dialog or the command
+  bar.** The 1–9 shortcuts on the home screen used to trigger even when a dialog
+  or the command bar was open on top of it — running the wrong action and eating
+  the number you were trying to type. They now stand down whenever a modal is up
+  or a text field is focused.
+
 ## 0.1.0-beta.2 — 2026-06-25
 
 ### Added

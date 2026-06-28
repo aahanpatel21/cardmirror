@@ -37,3 +37,10 @@ export function popOverlay(token: symbol): void {
 export function isTopOverlay(token: symbol): boolean {
   return stack.length > 0 && stack[stack.length - 1] === token;
 }
+
+/** Whether any overlay is currently open — i.e. a modal is layered over the
+ *  page. Used by background key handlers (e.g. the home screen's number
+ *  shortcuts) to stand down while a modal has the user's attention. */
+export function isAnyOverlayOpen(): boolean {
+  return stack.length > 0;
+}

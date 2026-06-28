@@ -4,7 +4,7 @@
  * dialog doesn't collapse the whole stack on one Escape.
  */
 import { describe, it, expect } from 'vitest';
-import { pushOverlay, popOverlay, isTopOverlay } from '../../src/editor/overlay-stack.js';
+import { pushOverlay, popOverlay, isTopOverlay, isAnyOverlayOpen } from '../../src/editor/overlay-stack.js';
 
 describe('overlay stack', () => {
   it('tracks the most recently opened overlay as the top', () => {
@@ -30,5 +30,16 @@ describe('overlay stack', () => {
     popOverlay(b);
     popOverlay(b); // double-pop is a no-op
     expect(isTopOverlay(b)).toBe(false);
+  });
+
+  it('isAnyOverlayOpen reflects whether any overlay is open', () => {
+    expect(isAnyOverlayOpen()).toBe(false);
+    const a = pushOverlay();
+    expect(isAnyOverlayOpen()).toBe(true);
+    const b = pushOverlay();
+    popOverlay(a);
+    expect(isAnyOverlayOpen()).toBe(true); // b still open
+    popOverlay(b);
+    expect(isAnyOverlayOpen()).toBe(false);
   });
 });
