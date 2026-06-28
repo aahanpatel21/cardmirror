@@ -76,7 +76,10 @@ in each release, see `CHANGELOG.md`.
   `quickCardSkipMidTextInsertConfirm` setting it gated (interface / default /
   metadata / sanitize) were removed — snapping makes the warning moot. Covered by
   tests for each content kind (card → doc gap, cite → inside the card, inline →
-  at the caret) plus an end-to-end check versus the raw-caret split.
+  at the caret) plus an end-to-end check versus the raw-caret split. The same
+  snap is applied to the pairing **receive** insert (`pairing/inbox-insert.ts`'s
+  `insertReceivedItem`), which had the identical raw-`selection.head` insert, so
+  a card received from a partner no longer splits the card the caret is in.
 
 - **Send commands normalize the selection to whole top-level nodes that lead with
   a structural unit** (`editor/send-normalize.ts` (new), `editor/speech-doc-send.ts`,

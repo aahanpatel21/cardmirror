@@ -25,9 +25,10 @@ see `DETAILED_CHANGELOG.md`.
   Existing files are repaired automatically when opened.
 
 - **Inserting a saved card no longer splits the card you're in.** Clicking a
-  card on the dropzone shelf, or inserting a quick card, used to drop it at the
-  exact cursor — splitting the surrounding card and leaving a broken, stray card
-  behind (with a "insert into the middle of text?" prompt to warn you). It now
+  card on the dropzone shelf, inserting a quick card, or inserting a card a
+  partner sent you used to drop it at the exact cursor — splitting the
+  surrounding card and leaving a broken, stray card behind (with a "insert into
+  the middle of text?" prompt to warn you). It now
   lands as a clean separate card just above or below the one you're in, the same
   as dragging it there would. The mid-text confirmation prompt — and its "Skip
   mid-text confirm" setting — are gone.
