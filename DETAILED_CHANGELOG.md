@@ -7,6 +7,30 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Smart quotes (typing-time) + Flip Quote Direction command**
+  (`editor/smart-quotes-plugin.ts` new, `editor/flip-quote-direction.ts` new,
+  `editor/index.ts`, `editor/settings.ts`, `editor/ribbon-commands.ts`,
+  `editor/ribbon-groups.ts`, `tests/editor/smart-quotes.test.ts`,
+  `tests/editor/flip-quote-direction.test.ts`). `smartQuotesPlugin()` uses a
+  `handleTextInput` prop (same shape as `type-over-boundary.ts`), gated on a new
+  `smartQuotes` boolean setting (default off). `curlFor(typed, prev)` picks the
+  direction from the preceding character via PM's built-in opening set —
+  whitespace, `{[(<`, straight quotes, opening curly quotes — PLUS the em-dash and
+  en-dash (Word's behavior PM lacks); the closing single quote doubles as the
+  apostrophe. Word-parity revert: the curl transaction stamps a meta recording
+  `{from, straight}`, the plugin state holds it for exactly one transaction, and a
+  `handleKeyDown` Backspace handler restores the straight character when the
+  cursor sits right after the just-curled char (defensively re-checking it's still
+  a curly quote). Registered in `buildEditorPlugins()` (one push). The
+  `flipQuoteDirection` ribbon command (unbound by default, Editing-utilities
+  group, returned directly from `getRibbonCommand` since it's a plain PM Command)
+  swaps every curly quote in a non-empty selection to its opposite direction via
+  `tr.replaceWith(pos, pos+1, schema.text(flipped, marks))` (same length, marks
+  preserved); a collapsed selection is a no-op. Produces curly characters that
+  the existing `normalizeForMatch`/`foldQuotes` fold for search. Aliases on the
+  command and the setting (`curly quotes`, `smart quotes`, `flip quotes`, `fix
+  apostrophe`, …).
+
 - **Find + Paragraph Integrity: dash and ellipsis normalization**
   (`editor/word-break.ts`, `editor/find-replace-plugin.ts`,
   `editor/repair-paragraph-plugin.ts`, `tests/editor/quote-fold.test.ts`,

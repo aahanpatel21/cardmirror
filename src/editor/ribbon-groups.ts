@@ -110,6 +110,7 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
       'copyCurrentHeading',
       'moveContainerUp',
       'moveContainerDown',
+      'flipQuoteDirection',
     ],
   },
   {

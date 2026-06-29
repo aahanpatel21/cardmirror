@@ -474,6 +474,9 @@ export interface Settings {
    *  Ignore. Off by default because debate evidence (author names,
    *  jargon) produces many false positives. */
   editorSpellcheck: boolean;
+  /** Word-style smart quotes: as you type a straight ' or ", curl it to the
+   *  right direction based on the preceding character. Off by default. */
+  smartQuotes: boolean;
   /** Microphone for voice control (MediaDeviceInfo.deviceId).
    *  Empty string = system default. Desktop only. */
   voiceInputDeviceId: string;
@@ -1058,6 +1061,7 @@ const DEFAULTS: Settings = {
   showCitePreview: true,
   flashcardDueDot: true,
   editorSpellcheck: false,
+  smartQuotes: false,
   voiceInputDeviceId: '',
   voiceAutoSleepSeconds: 60,
   voiceDashStyle: 'em',
@@ -1799,6 +1803,15 @@ export const SETTING_METADATA: SettingMeta[] = [
 
   // ─── Editing ────────────────────────────────────────────────────
   {
+    key: 'smartQuotes',
+    label: 'Smart quotes',
+    description:
+      'As you type a straight \' or ", curl it to the right direction based on context — opening after a space, dash, or start of line; closing (and apostrophe) otherwise. Press Backspace right after to revert to the straight character. Off by default.',
+    kind: 'toggle',
+    category: 'editing',
+    aliases: ['curly quotes', 'smart quotes', 'autocorrect quotes', 'typographic quotes'],
+  },
+  {
     key: 'paragraphIntegrity',
     label: 'F3 condense: preserve paragraph integrity',
     description:
@@ -2405,6 +2418,7 @@ function sanitize(s: Settings): Settings {
     showCitePreview: !!s.showCitePreview,
     flashcardDueDot: s.flashcardDueDot === false ? false : true,
     editorSpellcheck: !!s.editorSpellcheck,
+    smartQuotes: !!s.smartQuotes,
     voiceInputDeviceId: typeof s.voiceInputDeviceId === 'string' ? s.voiceInputDeviceId : '',
     voiceAutoSleepSeconds:
       typeof s.voiceAutoSleepSeconds === 'number' && s.voiceAutoSleepSeconds >= 0

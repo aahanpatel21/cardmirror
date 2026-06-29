@@ -38,6 +38,7 @@ import { Selection, TextSelection, type Command, type EditorState, type Transact
 import type { EditorView } from 'prosemirror-view';
 import { toggleMark } from 'prosemirror-commands';
 import { toggleReadingMarkerCommand } from './reading-marker.js';
+import { flipQuoteDirection } from './flip-quote-direction.js';
 import { schema } from '../schema/index.js';
 import { newHeadingId } from '../schema/ids.js';
 import {
@@ -4467,6 +4468,9 @@ export type RibbonCommandId =
   // Cycle the timer profile College → High School → Pomodoro (wraps),
   // applying its durations. No default binding.
   | 'cycleTimerPreset'
+  // Flip every curly quote in the selection to the opposite direction. No
+  // default binding.
+  | 'flipQuoteDirection'
   | 'toggleParagraphIntegrity'
   | 'selectSpeechDoc'
   | 'goHome'
@@ -4622,6 +4626,7 @@ export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
   'openSettings',
   'cycleTheme',
   'cycleTimerPreset',
+  'flipQuoteDirection',
   'toggleParagraphIntegrity',
   'selectSpeechDoc',
   'goHome',
@@ -4763,6 +4768,7 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   openSettings: 'Open Settings',
   cycleTheme: 'Cycle Theme (Light → Dark → System)',
   cycleTimerPreset: 'Cycle Timer Preset (College → High School → Pomodoro)',
+  flipQuoteDirection: 'Flip Quote Direction',
   toggleParagraphIntegrity: 'Toggle Paragraph Integrity',
   selectSpeechDoc: 'Select Speech Document',
   goHome: 'Go to Home Screen',
@@ -4836,6 +4842,7 @@ export const RIBBON_COMMAND_ALIASES: Partial<Record<RibbonCommandId, readonly st
   zoomReset: ['actual size'],
   cycleTheme: ['dark mode', 'light mode', 'toggle theme', 'switch theme', 'appearance'],
   cycleTimerPreset: ['switch timer preset', 'toggle timer preset', 'next timer preset', 'change timer preset', 'timer profile', 'timer preset'],
+  flipQuoteDirection: ['flip quotes', 'curly quotes', 'reverse quote direction', 'smart quote direction', 'fix apostrophe', 'quote direction'],
   deleteCurrentHeading: ['delete card', 'delete heading', 'delete current card'], // "remove …" via the delete/remove synonym group
   saveSendDoc: ['send doc', 'export send doc', 'send version'],
   startFlowHost: ['warm flow', 'prewarm flow', 'flow connection', 'connect to flow', 'speed up flow'],
@@ -5028,6 +5035,7 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   openSettings: '',
   cycleTheme: '',
   cycleTimerPreset: '',
+  flipQuoteDirection: '',
   toggleParagraphIntegrity: '',
   selectSpeechDoc: '',
   goHome: '',
@@ -5852,6 +5860,8 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
         ctx.cycleTimerPreset();
         return true;
       };
+    case 'flipQuoteDirection':
+      return flipQuoteDirection;
     case 'toggleParagraphIntegrity':
       return (_state, dispatch) => {
         if (!dispatch) return true;

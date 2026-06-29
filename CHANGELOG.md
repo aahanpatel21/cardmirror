@@ -9,6 +9,17 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Added
 
+- **Smart quotes (optional).** Turn on Settings → Editing → "Smart quotes" and a
+  straight `'` or `"` you type curls to the right direction by context — opening
+  after a space, dash, bracket, or start of line; closing (and the apostrophe)
+  otherwise — so `don't` and `(he said "hi")` come out right. Press Backspace
+  immediately after a curl to revert it to the straight character. Off by default.
+
+- **New "Flip Quote Direction" command.** Bindable (unbound by default); with a
+  selection it flips every curly quote to its opposite direction (left ↔ right),
+  preserving formatting — the manual fix for cases like `'tis` or `'90s` that
+  smart quotes (like Word) guess wrong.
+
 - **Edit the timer's prep clocks directly.** When an Aff/Neg prep clock is loaded
   and paused, click the big display to type a new time — handy if you started or
   stopped prep a beat late. The edit saves to that side's prep balance, so it

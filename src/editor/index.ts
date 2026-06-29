@@ -154,6 +154,7 @@ import { imageContextMenuPlugin } from './image-context-menu-plugin.js';
 import { linkContextMenuPlugin } from './link-context-menu-plugin.js';
 import { wordSelectionPlugin } from './word-selection-plugin.js';
 import { typeOverBoundaryPlugin } from './type-over-boundary.js';
+import { smartQuotesPlugin } from './smart-quotes-plugin.js';
 import { wordSelectionKeymap } from './word-selection-keymap.js';
 import { highlightFrequencyPlugin } from './highlight-frequency-plugin.js';
 import { editorDragSurface } from './drag-editor-surface.js';
@@ -3848,6 +3849,9 @@ export function buildEditorPlugins(): Plugin[] {
   ];
   // Editor spellcheck — viewport-scoped custom checker, gated internally
   // on the `editorSpellcheck` setting (does nothing when off).
+  // Smart quotes — curls typed quotes when the `smartQuotes` setting is on
+  // (inert otherwise; the plugin checks the setting per keystroke).
+  plugins.push(smartQuotesPlugin());
   plugins.push(viewportSpellcheckPlugin());
   // Voice control (SPEC-voice.md §12 item 3): plugin state (mode, pen,
   // utterance atomicity). Desktop-only at runtime; the plugin itself is
