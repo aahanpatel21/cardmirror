@@ -228,7 +228,7 @@ function buildNumberField(key: keyof Settings): HTMLElement {
   input.value = String(settings.get(key) ?? 0);
   input.addEventListener('change', () => {
     const n = Number(input.value);
-    if (Number.isFinite(n)) settings.set(key as 'zoomPct', n as never);
+    if (Number.isFinite(n)) settings.set(key as 'defaultZoomPct', n as never);
   });
   return input;
 }

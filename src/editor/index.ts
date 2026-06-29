@@ -737,6 +737,10 @@ export function enableMultiDocMode(opts: {
   onNewDoc?: () => Promise<void> | void;
   toggleReadMode?: () => void;
   toggleAutosave?: () => void;
+  /** Zoom the focused pane's body by a percentage delta (per-pane zoom). */
+  zoomFocusedBy?: (deltaPct: number) => void;
+  /** Reset the focused pane's body zoom to 100%. */
+  zoomFocusedReset?: () => void;
   newSpeechDocument?: () => void;
   markActiveAsSpeech?: () => void;
   sendToSpeechAtCursor?: () => void;
@@ -778,6 +782,8 @@ export function enableMultiDocMode(opts: {
   multiDocOnNewDoc = opts.onNewDoc ?? null;
   multiDocToggleReadMode = opts.toggleReadMode ?? null;
   multiDocToggleAutosave = opts.toggleAutosave ?? null;
+  multiDocZoomBy = opts.zoomFocusedBy ?? null;
+  multiDocZoomResetHook = opts.zoomFocusedReset ?? null;
   multiDocNewSpeechDocument = opts.newSpeechDocument ?? null;
   multiDocMarkActiveAsSpeech = opts.markActiveAsSpeech ?? null;
   multiDocSendToSpeechAtCursor = opts.sendToSpeechAtCursor ?? null;
@@ -827,6 +833,8 @@ export function setActiveView(v: EditorView | null): void {
   refreshReadModeBtn();
   refreshSpeechMarkBtn();
   refreshAutosaveBtn();
+  // Status-bar zoom % reflects the focused pane's per-pane zoom in multi-doc.
+  refreshZoomStatus();
   updateWindowTitle();
 }
 
@@ -1230,9 +1238,9 @@ const ribbonContext: RibbonContext = {
     if (!view) return;
     openImagePicker(view);
   },
-  zoomIn: () => setZoom(settings.get('zoomPct') + 10),
-  zoomOut: () => setZoom(settings.get('zoomPct') - 10),
-  zoomReset: () => setZoom(100),
+  zoomIn: () => zoomActiveBy(10),
+  zoomOut: () => zoomActiveBy(-10),
+  zoomReset: () => zoomActiveReset(),
   chromeScaleUp: () => setChromeScale(settings.get('chromeScalePct') + 10),
   chromeScaleDown: () => setChromeScale(settings.get('chromeScalePct') - 10),
   chromeScaleReset: () => setChromeScale(100),
@@ -1924,9 +1932,9 @@ export function threadIdAtCursor(state: EditorState): string | null {
 }
 
 // Zoom controls.
-zoomOutBtn.addEventListener('click', () => setZoom(settings.get('zoomPct') - 10));
-zoomInBtn.addEventListener('click', () => setZoom(settings.get('zoomPct') + 10));
-zoomResetBtn.addEventListener('click', () => setZoom(100));
+zoomOutBtn.addEventListener('click', () => zoomActiveBy(-10));
+zoomInBtn.addEventListener('click', () => zoomActiveBy(10));
+zoomResetBtn.addEventListener('click', () => zoomActiveReset());
 
 // Gesture zoom — trackpad pinch and Ctrl+mouse-wheel. Chromium delivers a
 // trackpad pinch as a `wheel` event with `ctrlKey` set (identical shape to
@@ -1953,7 +1961,7 @@ window.addEventListener(
       steps -= 1; // deltaY > 0 → zoom out
       gestureZoomAccum -= GESTURE_ZOOM_THRESHOLD;
     }
-    if (steps !== 0) setZoom(settings.get('zoomPct') + steps * 10);
+    if (steps !== 0) zoomActiveBy(steps * 10);
   },
   { capture: true, passive: false },
 );
@@ -2117,15 +2125,86 @@ function applyFormattingPanel(
   }
 }
 
+// Body-text zoom is PER-EDITOR and transient (not a setting): single-pane keeps
+// the window's live zoom here; multi-pane keeps it per pane on the DocRecord and
+// routes through the hooks below. Only `defaultZoomPct` (what an editor opens at)
+// persists + syncs. Chrome scale stays a synced global (see setChromeScale).
+let liveZoomPct = 100;
+let multiDocZoomBy: ((deltaPct: number) => void) | null = null;
+let multiDocZoomResetHook: (() => void) | null = null;
+/** Resolves the zoom the status bar should show — single-doc the window's live
+ *  zoom, multi-pane the focused pane's (installed via setZoomStateResolver). */
+let zoomStateForActive: () => number = () => liveZoomPct;
+
+export function clampZoom(pct: number): number {
+  return Math.max(50, Math.min(200, Math.round(pct / 10) * 10));
+}
+
+/** Single-pane: set the window's live body zoom (transient). */
 function setZoom(pct: number): void {
-  const clamped = Math.max(50, Math.min(200, Math.round(pct / 10) * 10));
-  settings.set('zoomPct', clamped);
+  liveZoomPct = clampZoom(pct);
+  applyZoom(liveZoomPct);
+}
+
+/** The window's live body zoom (single-pane). Exported for the mobile shell. */
+export function getLiveZoomPct(): number {
+  return liveZoomPct;
+}
+
+/** Set the window's live body zoom without the desktop step-10 rounding (the
+ *  mobile zoom slider/pinch use step 5). Clamped to 50–200. */
+export function setLiveZoomPct(pct: number): void {
+  liveZoomPct = Math.max(50, Math.min(200, Math.round(pct)));
+  applyZoom(liveZoomPct);
 }
 
 function applyZoom(pct: number): void {
   document.documentElement.style.setProperty('--editor-zoom', String(pct / 100));
+  updateZoomStatus(pct);
+}
+
+/** Status-bar % label + reset-button state only — shared by the single-pane
+ *  applyZoom and the multi-pane per-pane path. */
+function updateZoomStatus(pct: number): void {
   zoomPct.textContent = `${pct}%`;
   zoomResetBtn.disabled = pct === 100;
+}
+
+/** Apply body zoom to a SPECIFIC editor surface — multi-pane uses this per pane
+ *  so panes don't share the window-level `--editor-zoom` var. */
+export function applyZoomToTarget(editorEl: HTMLElement, pct: number): void {
+  editorEl.style.zoom = String(pct / 100);
+}
+
+/** Replace the resolver behind the status-bar zoom readout. The multi-pane shell
+ *  installs a focused-pane resolver at boot. */
+export function setZoomStateResolver(resolver: () => number): void {
+  zoomStateForActive = resolver;
+  updateZoomStatus(zoomStateForActive());
+}
+
+/** Re-read the active zoom into the status bar (the shell calls this on pane
+ *  focus change). */
+export function refreshZoomStatus(): void {
+  updateZoomStatus(zoomStateForActive());
+}
+
+/** Zoom the ACTIVE editor by a delta: single-pane the window, multi-pane the
+ *  focused pane. */
+function zoomActiveBy(deltaPct: number): void {
+  if (multiDocActive && multiDocZoomBy) {
+    multiDocZoomBy(deltaPct);
+    return;
+  }
+  setZoom(liveZoomPct + deltaPct);
+}
+
+function zoomActiveReset(): void {
+  if (multiDocActive && multiDocZoomResetHook) {
+    multiDocZoomResetHook();
+    return;
+  }
+  setZoom(100);
 }
 
 /** Chrome scale — the whole-page zoom analog of `setZoom`. Wired
@@ -2489,7 +2568,9 @@ settings.subscribe((s) => {
   }
   applyNavPaneVisible(s.navPaneVisible);
   applyFormatNavPaneByType(s.formatNavPaneByType);
-  applyZoom(s.zoomPct);
+  // Body zoom is NOT re-applied on settings change — it's per-editor and
+  // transient now, and `defaultZoomPct` only governs what NEW editors open at,
+  // never re-zooms an already-open one. Chrome scale stays a synced global.
   applyChromeScale(s.chromeScalePct);
   applyDisplaySizes(s.displaySizes);
   applyDisplayTypography(s.displayTypography);
@@ -2782,7 +2863,11 @@ if (timerToggleBtn) {
 }
 
 applyReadMode(settings.get('readMode'));
-applyZoom(settings.get('zoomPct'));
+// Open this window's editor at the configured default zoom (transient from here
+// — the user can zoom this window independently of others, and it resets to the
+// default on reload).
+liveZoomPct = clampZoom(settings.get('defaultZoomPct'));
+applyZoom(liveZoomPct);
 applyChromeScale(settings.get('chromeScalePct'));
 applyDisplaySizes(settings.get('displaySizes'));
 applyDisplayTypography(settings.get('displayTypography'));

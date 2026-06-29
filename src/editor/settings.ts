@@ -512,22 +512,26 @@ export interface Settings {
    *  the ones around hidden text). Some users prefer the cleanest look
    *  in read mode regardless of what's emphasized. */
   hideEmphasisBordersInReadMode: boolean;
-  /** Editor zoom level as a percentage (50–200, step 10). */
-  zoomPct: number;
+  /** The body-text zoom (50–200%, step 10) any editor OPENS at. The live
+   *  per-editor zoom is NOT a setting — it's transient per window / per pane and
+   *  resets to this default on reload, so different documents can sit at
+   *  different zooms. Only this default persists and syncs. */
+  defaultZoomPct: number;
   /** Chrome (page) zoom for the whole window, as a percentage
    *  (50–200, step 10). Wired to Chromium's `webFrame.setZoom-
    *  Factor` on Electron, which reflows the page exactly the
    *  way the browser's built-in Ctrl-+ chord does — chrome AND
    *  doc content both scale uniformly. Stacks multiplicatively
-   *  with `zoomPct`: if the doc looks too big at a higher
-   *  chromeScalePct, dial `zoomPct` down to compensate. No-op
+   *  with the body zoom: if the doc looks too big at a higher
+   *  chromeScalePct, dial the body zoom down to compensate. Unlike
+   *  body zoom, chrome scale stays linked across windows. No-op
    *  on the web edition (use the browser's own page-zoom). */
   chromeScalePct: number;
   /** Zoom the editor with a trackpad pinch or Ctrl+mouse-wheel. Off by
    *  default. Both gestures arrive as the same event (Chromium delivers a
    *  trackpad pinch as a `wheel` with `ctrlKey`), so this one toggle
-   *  governs both. Adjusts `zoomPct` (the document zoom), in 10% steps,
-   *  and suppresses Chromium's own native page-zoom on the gesture. */
+   *  governs both. Adjusts the live body zoom, in 10% steps, and
+   *  suppresses Chromium's own native page-zoom on the gesture. */
   gestureZoom: boolean;
   /**
    * Readers used for read-time estimates. The full list shows up in the
@@ -1082,7 +1086,7 @@ const DEFAULTS: Settings = {
   autosaveEnabled: false,
   readMode: false,
   hideEmphasisBordersInReadMode: false,
-  zoomPct: 100,
+  defaultZoomPct: 100,
   chromeScalePct: 100,
   gestureZoom: false,
   readers: [
@@ -1219,6 +1223,7 @@ export interface SettingMeta {
   kind:
     | 'toggle'
     | 'number'
+    | 'defaultZoomPct'
     | 'level'
     | 'readers'
     | 'displaySizes'
@@ -1566,6 +1571,15 @@ export const SETTING_METADATA: SettingMeta[] = [
     kind: 'toggle',
     category: 'general',
     aliases: ['gesture zoom', 'pinch zoom', 'ctrl scroll', 'wheel zoom', 'trackpad zoom'],
+  },
+  {
+    key: 'defaultZoomPct',
+    label: 'Default document zoom',
+    description:
+      'The body-text zoom level every document opens at (50–200%). Zooming an open document (the zoom buttons, Ctrl-= / Ctrl--, or pinch) only affects that window or pane and resets to this default on reload — so different documents can sit at different zooms. Chrome scale is separate and stays linked across windows.',
+    kind: 'defaultZoomPct',
+    category: 'accessibility',
+    aliases: ['zoom', 'default zoom', 'text size', 'document zoom'],
   },
   {
     key: 'jumpToDocTopOnReadModeToggle',
@@ -2463,7 +2477,9 @@ function sanitize(s: Settings): Settings {
     autosaveEnabled: !!s.autosaveEnabled,
     readMode: !!s.readMode,
     hideEmphasisBordersInReadMode: !!s.hideEmphasisBordersInReadMode,
-    zoomPct: clamp(Math.round(s.zoomPct / 10) * 10, 50, 200),
+    // The old persisted `zoomPct` is intentionally NOT carried over — body zoom
+    // no longer persists; documents open at this default (100% unless changed).
+    defaultZoomPct: clamp(Math.round(s.defaultZoomPct / 10) * 10, 50, 200),
     chromeScalePct: clamp(Math.round(s.chromeScalePct / 10) * 10, 50, 200),
     gestureZoom: !!s.gestureZoom,
     readers: sanitizeReaders(s.readers),

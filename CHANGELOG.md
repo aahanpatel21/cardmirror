@@ -87,6 +87,15 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Changed
 
+- **Document zoom is now per-editor, not global.** Body-text zoom (the zoom
+  buttons, Ctrl-= / Ctrl--, pinch / Ctrl-scroll) now applies only to the editor
+  you're in — zoom one document in while another stays zoomed out, including
+  independently per pane in the three-pane workspace. It no longer syncs across
+  windows or persists; instead, documents open at a configurable default
+  (Accessibility → "Default document zoom", 100% by default) and reset to it on
+  reload. Chrome scale (Mod-Alt-=) is unchanged and still scales the whole window
+  uniformly across windows.
+
 - **Find and Paragraph Integrity match across dashes and ellipses.** Searching
   (or typing a paragraph-start phrase) now treats every kind of dash — hyphen,
   en-dash, em-dash, minus sign, and the rest of Unicode's dash family — as

@@ -138,3 +138,23 @@ describe('document-text color migration', () => {
     expect(s.get('displayColors').analytic).toBe('#abcdef');
   });
 });
+
+describe('defaultZoomPct (the open-at body-zoom default)', () => {
+  it('clamps to 50–200% and rounds to the nearest 10', () => {
+    const over = new SettingsStore();
+    over.replaceAll({ defaultZoomPct: 500 } as never);
+    expect(over.get('defaultZoomPct')).toBe(200);
+
+    const under = new SettingsStore();
+    under.replaceAll({ defaultZoomPct: 17 } as never);
+    expect(under.get('defaultZoomPct')).toBe(50);
+
+    const rounded = new SettingsStore();
+    rounded.replaceAll({ defaultZoomPct: 135 } as never);
+    expect(rounded.get('defaultZoomPct')).toBe(140);
+  });
+
+  it('defaults to 100', () => {
+    expect(new SettingsStore().get('defaultZoomPct')).toBe(100);
+  });
+});

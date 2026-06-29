@@ -20,7 +20,7 @@
 
 import { TextSelection } from 'prosemirror-state';
 import { settings } from './settings.js';
-import { getActiveView, getNavPanel, runRibbon } from './index.js';
+import { getActiveView, getNavPanel, runRibbon, getLiveZoomPct, setLiveZoomPct } from './index.js';
 import { readModeAwareUndo, readModeAwareRedo } from './read-mode-plugin.js';
 import { mobileDensity } from './mobile-layout.js';
 import {
@@ -746,12 +746,12 @@ function buildDisplaySheet(): HTMLElement {
   slider.max = String(ZOOM_MAX);
   slider.step = '5';
   const syncZoom = (): void => {
-    slider.value = String(settings.get('zoomPct'));
+    slider.value = String(getLiveZoomPct());
     zoomLabel.textContent = `Text size — ${slider.value}%`;
   };
   syncZoom();
   slider.addEventListener('input', () => {
-    settings.set('zoomPct', Number(slider.value));
+    setLiveZoomPct(Number(slider.value));
     syncZoom();
   });
   const reset = document.createElement('button');
@@ -759,7 +759,7 @@ function buildDisplaySheet(): HTMLElement {
   reset.className = 'pmd-msheet-reset';
   reset.textContent = 'Reset';
   reset.addEventListener('click', () => {
-    settings.set('zoomPct', 100);
+    setLiveZoomPct(100);
     syncZoom();
   });
   zoomHead.appendChild(zoomLabel);
@@ -851,7 +851,7 @@ function installPinchZoom(): void {
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 2) {
       startDist = dist();
-      startPct = settings.get('zoomPct');
+      startPct = getLiveZoomPct();
     }
   });
   app.addEventListener(
@@ -881,7 +881,7 @@ function installPinchZoom(): void {
         Number(
           getComputedStyle(document.documentElement).getPropertyValue('--editor-zoom'),
         ) * 100 || startPct;
-      settings.set('zoomPct', Math.round(clampZoom(livePct) / 5) * 5);
+      setLiveZoomPct(Math.round(clampZoom(livePct) / 5) * 5);
       startDist = 0;
     }
     pointers.delete(e.pointerId);

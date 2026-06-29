@@ -7,6 +7,32 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Per-editor (unlinked) body-text zoom** (`editor/settings.ts`,
+  `editor/settings-ui.ts`, `editor/index.ts`, `editor/multi-pane-shell.ts`,
+  `editor/drag-editor-surface.ts`, `editor/mobile-shell.ts`,
+  `editor/mobile-settings-ui.ts`, `tests/editor/settings-backup.test.ts`). Body
+  zoom was a synced, persisted `zoomPct` setting applied through one
+  `--editor-zoom` var on `documentElement`, so it linked across windows
+  (storage-event sync) and panes (shared var). Replaced with: (1) a new
+  synced/persisted `defaultZoomPct` setting (Accessibility, 50–200%/step-10,
+  default 100, clamped editor) = the value editors OPEN at; (2) live body zoom
+  that's per-editor and transient — single-pane keeps a module `liveZoomPct`
+  (per window, applied via the per-window `--editor-zoom` var), multi-pane keeps
+  a `zoomPct` on each `DocRecord` applied INLINE to its `.pmd-pane-editor` so
+  panes don't share. The zoom commands/buttons/Ctrl-wheel run through a
+  `zoomActiveBy`/`zoomActiveReset` shim that routes to the focused pane in
+  multi-pane via new `enableMultiDocMode` hooks (`zoomFocusedBy`/
+  `zoomFocusedReset`), mirroring the per-pane `readMode` pattern; the status-bar
+  % uses a `setZoomStateResolver` and refreshes on `setActiveView` focus change.
+  The settings subscriber no longer re-applies zoom (the default governs only new
+  editors, never re-zooms an open one). `applyZoomToTarget` / `clampZoom` /
+  `getLiveZoomPct` / `setLiveZoomPct` are exported for the shell + mobile;
+  `drag-editor-surface` reads each editor element's effective `zoom` instead of
+  the setting. Chrome scale (`chromeScalePct`) is untouched — still a synced
+  global via `setZoomFactor`. The old persisted `zoomPct` is intentionally not
+  migrated (zoom no longer persists). Tests cover the `defaultZoomPct` clamp /
+  default.
+
 - **Paste and Destructively Condense command** (`editor/ribbon-commands.ts`,
   `editor/ribbon-groups.ts`, `editor/ribbon-availability.ts`,
   `tests/editor/paste-condensed.test.ts`). New desktop-only `pasteCondensed`

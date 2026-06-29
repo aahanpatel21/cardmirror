@@ -752,8 +752,12 @@ export class EditorDragSurface implements DragSurface {
   }
 
   private getEditorZoom(): number {
-    const pct = settings.get('zoomPct');
-    return pct > 0 ? pct / 100 : 1;
+    // Read the editor element's EFFECTIVE zoom (single-pane gets it from the
+    // window `--editor-zoom` var; each multi-pane editor sets `zoom` inline), so
+    // drag math is correct now that body zoom is per-editor rather than a global.
+    if (!this.host) return 1;
+    const z = parseFloat(getComputedStyle(this.host).getPropertyValue('zoom'));
+    return Number.isFinite(z) && z > 0 ? z : 1;
   }
 
   private removeHighlight(): void {

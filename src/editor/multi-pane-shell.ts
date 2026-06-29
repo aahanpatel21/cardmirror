@@ -69,6 +69,10 @@ import {
   getActiveView,
   applyReadModeToTarget,
   setReadModeStateResolver,
+  applyZoomToTarget,
+  setZoomStateResolver,
+  refreshZoomStatus,
+  clampZoom,
   setAutosaveStateResolver,
   setActiveNavPanelResolver,
   attachClickBelowToEnd,
@@ -274,6 +278,10 @@ interface DocRecord {
    *  property of an individual open doc — the ribbon toggle flips
    *  this for the focused pane only, leaving other panes untouched. */
   readMode: boolean;
+  /** Per-pane body-text zoom (50–200%). Same per-doc story as `readMode`: the
+   *  zoom controls affect the FOCUSED pane only; other panes stay at theirs.
+   *  Opens at `defaultZoomPct`, transient (resets on reload). */
+  zoomPct: number;
   /** Per-doc autosave state. Same per-doc story as `readMode`: the
    *  ribbon toggle flips this for the focused pane only. When true
    *  AND the record is saved-as-.cmir, edits debounce into a
@@ -1120,6 +1128,11 @@ class MultiPaneShell {
     // read-mode button show?" — in multi-doc that's the focused
     // pane's per-doc state, not the global setting.
     setReadModeStateResolver(() => this.focusedSlot?.visible?.readMode ?? false);
+    // Same story for the status-bar zoom readout — it reflects the focused
+    // pane's per-pane zoom (the shell refreshes it on focus change).
+    setZoomStateResolver(
+      () => this.focusedSlot?.visible?.zoomPct ?? settings.get('defaultZoomPct'),
+    );
     // Same story for the autosave button — per-pane in multi-doc.
     setAutosaveStateResolver(() => this.focusedSlot?.visible?.autosaveEnabled ?? false);
     // Find-bar nav highlights land on the focused pane's own nav
@@ -1534,6 +1547,25 @@ class MultiPaneShell {
     // setActiveView is the path that drives `refreshReadModeBtn`,
     // so we route through it to keep the ribbon button in sync.
     setActiveView(rec.view);
+  }
+
+  /** Zoom the focused pane's body by a delta (per-pane). The zoom commands /
+   *  buttons / pinch route here in multi-pane via the `zoomFocusedBy` hook. */
+  zoomFocusedBy(deltaPct: number): void {
+    const rec = this.focusedSlot?.visible;
+    if (!rec) return;
+    rec.zoomPct = clampZoom(rec.zoomPct + deltaPct);
+    applyZoomToTarget(rec.editorEl, rec.zoomPct);
+    refreshZoomStatus();
+  }
+
+  /** Reset the focused pane's body zoom to 100%. */
+  zoomFocusedReset(): void {
+    const rec = this.focusedSlot?.visible;
+    if (!rec) return;
+    rec.zoomPct = 100;
+    applyZoomToTarget(rec.editorEl, rec.zoomPct);
+    refreshZoomStatus();
   }
 
   /** Flip the autosave state of the focused pane's visible doc.
@@ -2271,6 +2303,9 @@ function buildDocRecord(
 ): DocRecord {
   const editorEl = document.createElement('div');
   editorEl.className = 'pmd-pane-editor';
+  // Open each pane's body at the configured default zoom, applied inline so it's
+  // independent of the window var and the other panes.
+  applyZoomToTarget(editorEl, settings.get('defaultZoomPct'));
   const navEl = document.createElement('div');
   navEl.className = 'pmd-pane-nav-host';
 
@@ -2427,6 +2462,7 @@ function buildDocRecord(
     // New docs always start with read mode OFF. The user toggles
     // it per-pane via the ribbon command after opening.
     readMode: false,
+    zoomPct: settings.get('defaultZoomPct'),
     // Autosave is per-pane in multi-doc — same intent as read mode.
     // Off by default, but a file the user previously turned autosave
     // ON for restores that choice across close + reopen (keyed by path).
@@ -2497,6 +2533,8 @@ export function mountMultiPaneShell(): void {
     onNewDoc: () => shell!.createNewDoc(),
     toggleReadMode: () => shell!.toggleFocusedReadMode(),
     toggleAutosave: () => shell!.toggleFocusedAutosave(),
+    zoomFocusedBy: (delta) => shell!.zoomFocusedBy(delta),
+    zoomFocusedReset: () => shell!.zoomFocusedReset(),
     notifyFocusedSaved: () => shell!.markFocusedSaved(),
     newSpeechDocument: () => { void shell!.createNewSpeechDocument(); },
     markActiveAsSpeech: () => shell!.markFocusedAsSpeech(),
