@@ -70,17 +70,6 @@ see `DETAILED_CHANGELOG.md`.
   body text — so a selection spanning both bridges in its body paragraphs and
   leaves its structural lines alone.
 
-- **The command bar and settings search find more by synonym.** "fix", "repair",
-  and "restore" now find each other (e.g. "restore" surfaces the Repair commands),
-  as do "delete" and "remove" ("remove" finds the Delete Row / Column / Table
-  commands). "add" and "insert" find the same element commands — "add table",
-  "add row" / "add column", "add image", or "add received card" surface the
-  corresponding Insert command, and vice versa (the create-type commands — Add
-  Quick Card, Add Comment, Add Note — are intentionally left out, since they make
-  something new rather than placing it). And "timer profile" and "timer preset"
-  are interchangeable, each finding the Cycle Timer Preset command and the Timer
-  profile setting.
-
 - **Open a file by dragging it into the window.** Drag a `.docx`, `.cmir`, or
   `.cmir-journal` from your file manager onto any CardMirror window — the editor,
   the navigation pane, or the home screen — to open it, the same as File → Open
@@ -97,6 +86,29 @@ see `DETAILED_CHANGELOG.md`.
   Settings (listed under Editing utilities).
 
 ### Changed
+
+- **The command bar and settings search find more by synonym.** "fix", "repair",
+  and "restore" now find each other (e.g. "restore" surfaces the Repair commands),
+  as do "delete" and "remove" ("remove" finds the Delete Row / Column / Table
+  commands). "add" and "insert" find the same element commands — "add table",
+  "add row" / "add column", "add image", or "add received card" surface the
+  corresponding Insert command, and vice versa (the create-type commands — Add
+  Quick Card, Add Comment, Add Note — are intentionally left out, since they make
+  something new rather than placing it). And "timer profile" and "timer preset"
+  are interchangeable, each finding the Cycle Timer Preset command and the Timer
+  profile setting.
+
+- **Repair Paragraph Integrity: Ctrl-Enter can mark an already-broken paragraph
+  for indent.** When the phrase already starts its paragraph, plain Enter still
+  does nothing (no break is needed), but Ctrl-Enter now marks that paragraph for
+  indent-on-exit — so a card's first body paragraph, which can't be split, can
+  still be marked to indent.
+
+- **AI operations now also lock styling and marks in the passage they're working
+  on.** While an AI operation runs on a passage, the editor already refused typed
+  edits there; it now also refuses style and mark changes (highlight, underline,
+  font size, named styles, etc.) to that passage, so the operation's content
+  can't shift under it mid-run.
 
 - **Document zoom is now per-editor, not global.** Body-text zoom (the zoom
   buttons, Ctrl-= / Ctrl--, pinch / Ctrl-scroll) now applies only to the editor
@@ -190,12 +202,6 @@ see `DETAILED_CHANGELOG.md`.
   workflow regardless of focus, while still deferring to anything layered on top
   that should close first (a modal dialog, or the command bar).
 
-- **Repair Paragraph Integrity: Ctrl-Enter can mark an already-broken paragraph
-  for indent.** When the phrase already starts its paragraph, plain Enter still
-  does nothing (no break is needed), but Ctrl-Enter now marks that paragraph for
-  indent-on-exit — so a card's first body paragraph, which can't be split, can
-  still be marked to indent.
-
 - **Repair Paragraph Integrity: undo works inside the workflow.** Ctrl/Cmd-Z now
   undoes the most recent action without leaving the workflow — re-merging the
   last paragraph break and/or removing its deferred indent mark. Previously it
@@ -282,12 +288,6 @@ see `DETAILED_CHANGELOG.md`.
   or the command bar was open on top of it — running the wrong action and eating
   the number you were trying to type. They now stand down whenever a modal is up
   or a text field is focused.
-
-- **AI operations now also lock styling and marks in the passage they're working
-  on.** While an AI operation runs on a passage, the editor already refused typed
-  edits there; it now also refuses style and mark changes (highlight, underline,
-  font size, named styles, etc.) to that passage, so the operation's content
-  can't shift under it mid-run.
 
 - **Highlighting or underlining part of a ligature no longer decorates the whole
   ligature.** With a ligature font, applying highlight, shading, underline, or
