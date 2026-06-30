@@ -86,7 +86,7 @@ Two options for installation, depending upon distribution:
 - **Arch and Arch-based distributions** — use the AUR:
   ```sh
   yay -S cardmirror-bin
-  # yay can be replaced with other AUR managers such as paru
+  # or with paru: paru -S cardmirror-bin
   ```
   Or grab `cardmirror-x.x.x.pacman` from the release directly and:
   ```sh
@@ -196,9 +196,9 @@ open one already pointing at the CardMirror folder.
   Here* (Nautilus / Dolphin / Thunar all offer it), or open in terminal and
   `cd` to the filepath.
 
-To make sure you're in the right directory, type `ls` (macOS / Linux) 
-or `dir` (Windows) and press Enter. You should see `package.json`, 
-`README.md`, `src`, `apps`. If you don't, your terminal is likely one 
+To make sure you're in the right directory, type `ls` (macOS / Linux)
+or `dir` (Windows) and press Enter. You should see `package.json`,
+`README.md`, `src`, `apps`. If you don't, your terminal is likely one
 folder too high up — verify your current folder with the `pwd` command
 (macOS / Linux / Windows PowerShell) or by typing `echo %cd%` (Windows, non-PowerShell).
 
