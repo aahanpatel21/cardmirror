@@ -775,3 +775,30 @@ function button(label: string, onClick: () => void): HTMLButtonElement {
 export function openClean(): void {
   new CleanModal();
 }
+
+/** Web single-file Clean: pick one `.docx`, clean its styles to the Verbatim
+ *  standard, and Save-As the result (prefixed `cleaned_`). The web edition can't
+ *  do the desktop folder-recursive flow, so it works one file at a time. Save-As
+ *  writes a real file on Chromium (File System Access) and downloads elsewhere. */
+export async function runCleanSingleFileWeb(): Promise<void> {
+  const host = getHost();
+  const input = await host.openFile().catch((err: unknown) => {
+    alert(`Couldn't open the file: ${err instanceof Error ? err.message : err}`);
+    return null;
+  });
+  if (!input) return;
+  if (!/\.docx$/i.test(input.name)) {
+    alert('Clean works on .docx files — please choose a .docx file.');
+    return;
+  }
+  let cleaned: Uint8Array;
+  try {
+    cleaned = await cleanDocumentBytes(input.bytes);
+  } catch (err) {
+    alert(`Clean failed: ${err instanceof Error ? err.message : err}`);
+    return;
+  }
+  await host.saveAs(`cleaned_${input.name}`, cleaned, {
+    filters: [{ name: 'Word document', extensions: ['docx'] }],
+  });
+}

@@ -94,9 +94,9 @@ import { voicePlugin } from './voice/plugin.js';
 import { VoiceController } from './voice/controller.js';
 import { openCardEditor } from './learn-create-ui.js';
 import { openLearnManage } from './learn-manage-ui.js';
-import { openBulkConvert } from './bulk-convert-ui.js';
-import { openBulkCompress } from './bulk-compress-ui.js';
-import { openClean } from './clean-ui.js';
+import { openBulkConvert, runConvertSingleFileWeb } from './bulk-convert-ui.js';
+import { openBulkCompress, runCompressSingleFileWeb } from './bulk-compress-ui.js';
+import { openClean, runCleanSingleFileWeb } from './clean-ui.js';
 import { homeScreen, type HomeScreenCallbacks } from './home-screen.js';
 import { recordRecent, removeRecent, type RecentFile } from './recents-store.js';
 import { isAutosaveOnForPath, setAutosaveForPath } from './autosave-prefs-store.js';
@@ -4833,11 +4833,21 @@ const homeCallbacks: HomeScreenCallbacks = {
   manageQuickCards: () => {
     void quickCardsManageUI.open();
   },
-  // Clean (style cleaner) needs recursive folder I/O — desktop only.
-  clean: getHost().kind === 'electron' ? () => openClean() : undefined,
-  // Bulk convert needs recursive folder I/O — desktop only.
-  bulkConvert: getHost().kind === 'electron' ? () => openBulkConvert() : undefined,
-  bulkCompress: getHost().kind === 'electron' ? () => openBulkCompress() : undefined,
+  // Clean: Electron gets the folder-recursive modal; web cleans one file at a time.
+  clean:
+    getHost().kind === 'electron'
+      ? () => openClean()
+      : () => void runCleanSingleFileWeb(),
+  // Bulk convert: folder modal on Electron; single-file Convert on web.
+  bulkConvert:
+    getHost().kind === 'electron'
+      ? () => openBulkConvert()
+      : () => void runConvertSingleFileWeb(),
+  // Bulk compress: folder modal on Electron; single-file Compress on web.
+  bulkCompress:
+    getHost().kind === 'electron'
+      ? () => openBulkCompress()
+      : () => void runCompressSingleFileWeb(),
 };
 
 /** Mount a fresh blank starter doc in this window, resetting the

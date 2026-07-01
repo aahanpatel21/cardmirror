@@ -25,6 +25,7 @@ import {
   type RecentFile,
 } from './recents-store.js';
 import { learnStore, localToday } from './learn-store-host.js';
+import { getElectronHost } from './host/index.js';
 import { openLearnSession } from './learn-session-ui.js';
 import { openLearnManage } from './learn-manage-ui.js';
 import type { Scope } from './learn-store.js';
@@ -174,40 +175,49 @@ class HomeScreen {
     qcSection.className = 'pmd-home-qc-section';
     const qcGrid = document.createElement('div');
     qcGrid.className = 'pmd-home-qc-actions';
-    // Clean — .docx style cleaner (Electron only).
+    // Electron does folder-recursive batches; the web edition does one file at a
+    // time, so the copy differs. Both surfaces share the same card.
+    const desktop = getElectronHost() !== null;
+    // Clean — .docx style cleaner.
     if (callbacks.clean) {
       qcGrid.appendChild(
         labeledGroup(
           'Clean',
           this.actionCard(
             'Clean styles',
-            'Clean a .docx file or folder’s styles to the Verbatim standard.',
+            desktop
+              ? 'Clean a .docx file or folder’s styles to the Verbatim standard.'
+              : 'Clean a .docx file’s styles to the Verbatim standard.',
             () => this.callbacks?.clean?.(),
           ),
         ),
       );
     }
-    // Bulk convert — its own labeled group (Electron only).
+    // Bulk convert — its own labeled group.
     if (callbacks.bulkConvert) {
       qcGrid.appendChild(
         labeledGroup(
           'Convert',
           this.actionCard(
-            'Bulk convert',
-            'Batch-convert a file or folder between .docx and .cmir.',
+            desktop ? 'Bulk convert' : 'Convert',
+            desktop
+              ? 'Batch-convert a file or folder between .docx and .cmir.'
+              : 'Convert a file between .docx and .cmir.',
             () => this.callbacks?.bulkConvert?.(),
           ),
         ),
       );
     }
-    // Bulk compress — temporary migration tool (Electron only).
+    // Bulk compress — temporary migration tool.
     if (callbacks.bulkCompress) {
       qcGrid.appendChild(
         labeledGroup(
           'Compress',
           this.actionCard(
-            'Bulk compress',
-            'Shrink every .cmir in a folder (~10× smaller), in place.',
+            desktop ? 'Bulk compress' : 'Compress',
+            desktop
+              ? 'Shrink every .cmir in a folder (~10× smaller), in place.'
+              : 'Shrink a .cmir file (~10× smaller).',
             () => this.callbacks?.bulkCompress?.(),
           ),
         ),
