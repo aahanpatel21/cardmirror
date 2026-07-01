@@ -751,6 +751,11 @@ let multiDocJournalAll: (() => Promise<ModeSwitchDoc[]>) | null = null;
  *  dirty ones), keeping only the focused doc for the single-doc window. Returns
  *  false if the user cancelled a save prompt (the switch aborts). */
 let multiDocReduceToFocused: (() => Promise<boolean>) | null = null;
+/** Three-pane nav toggle: the global Show/Hide Navigation Pane control routes
+ *  here so it acts on ALL per-slot outlines together (toggle = restore-all when
+ *  any is hidden, else hide-all), and the pull-tab restores them all. */
+let multiDocToggleAllNav: (() => void) | null = null;
+let multiDocShowAllNav: (() => void) | null = null;
 /** Web same-file guard: the file handles this window currently has open, so a
  *  peer window's cross-window duplicate-open query can compare against them
  *  (single-doc reports its one handle; multi-pane reports every pane's). */
@@ -827,6 +832,8 @@ export function enableMultiDocMode(opts: {
   journalAll?: () => Promise<ModeSwitchDoc[]>;
   reduceToFocusedForModeSwitch?: () => Promise<boolean>;
   getOpenHandles?: () => unknown[];
+  toggleAllNav?: () => void;
+  showAllNav?: () => void;
 }): void {
   multiDocActive = true;
   multiDocOnFileOpen = opts.onFileOpen;
@@ -854,6 +861,8 @@ export function enableMultiDocMode(opts: {
   multiDocJournalAll = opts.journalAll ?? null;
   multiDocReduceToFocused = opts.reduceToFocusedForModeSwitch ?? null;
   multiDocGetOpenHandles = opts.getOpenHandles ?? null;
+  multiDocToggleAllNav = opts.toggleAllNav ?? null;
+  multiDocShowAllNav = opts.showAllNav ?? null;
   // Hide the single-doc editor surface. The multi-pane shell
   // mounts its own DOM into #app alongside it. The comments
   // column is NOT hidden — the shell adopts it as a sibling of
@@ -1327,7 +1336,8 @@ const ribbonContext: RibbonContext = {
     ensureFindReplaceBar().open({ mode: 'find', sortMode: 'uncategorized' });
   },
   toggleNavPane: () => {
-    settings.set('navPaneVisible', !settings.get('navPaneVisible'));
+    if (multiDocActive && multiDocToggleAllNav) multiDocToggleAllNav();
+    else settings.set('navPaneVisible', !settings.get('navPaneVisible'));
   },
   // ─── No-default-binding hooks ────────────────────────────────
   // Each routes through the same button's existing click handler
@@ -1775,14 +1785,16 @@ function applyNavPaneVisible(visible: boolean): void {
 if (navPaneToggleBtn) {
   navPaneToggleBtn.addEventListener('mousedown', (e) => e.preventDefault());
   navPaneToggleBtn.addEventListener('click', () => {
-    settings.set('navPaneVisible', !settings.get('navPaneVisible'));
+    if (multiDocActive && multiDocToggleAllNav) multiDocToggleAllNav();
+    else settings.set('navPaneVisible', !settings.get('navPaneVisible'));
   });
 }
 if (navPanePullTab) {
   // Pull-tab is only ever shown when the nav pane is hidden;
   // clicking it always re-shows.
   navPanePullTab.addEventListener('click', () => {
-    settings.set('navPaneVisible', true);
+    if (multiDocActive && multiDocShowAllNav) multiDocShowAllNav();
+    else settings.set('navPaneVisible', true);
   });
 }
 applyNavPaneVisible(settings.get('navPaneVisible'));

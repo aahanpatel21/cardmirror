@@ -1178,6 +1178,13 @@ class MultiPaneShell {
       this.rowEl.appendChild(this.slots[id].paneEl);
       this.navRailEl.appendChild(this.slots[id].navSectionEl);
     }
+    // Carry a persisted "nav hidden" preference into three-pane: start every
+    // section closed so the rail — and the global toggle — reflect it. The
+    // global toggle / per-slot toggles reopen them (reconcileNavRail syncs
+    // `navPaneVisible` back to the aggregate).
+    if (!settings.get('navPaneVisible')) {
+      for (const id of SLOT_IDS) this.slots[id].navHidden = true;
+    }
 
     this.unsubscribeSettings = settings.subscribe((s) => {
       if (s.multiDocLayoutMode !== this.layoutMode) {
@@ -1442,7 +1449,42 @@ class MultiPaneShell {
     const railEmpty = visible.length === 0;
     this.navRailEl.hidden = railEmpty;
     document.body.classList.toggle('pmd-multi-nav-empty', railEmpty);
+    // Keep the GLOBAL nav toggle in step with the per-section state: it reads
+    // "on" iff at least one section is shown, and its `pmd-nav-hidden` body
+    // class drives the rail-hide + the left-edge pull-tab. This is what makes
+    // the global toggle and the per-slot toggles cooperate — all sections
+    // hidden == globally off — instead of overriding each other. Only sync
+    // while a doc is actually open, so an empty workspace doesn't flash the
+    // pull-tab. `navPaneVisible`'s subscriber (index.ts) applies the class.
+    const anyDocOpen = SLOT_IDS.some((id) => this.slots[id].stack.length > 0);
+    if (anyDocOpen && settings.get('navPaneVisible') === railEmpty) {
+      settings.set('navPaneVisible', !railEmpty);
+    }
     this.scheduleSyncAllCardIntrinsicWidths();
+  }
+
+  /** True if any OPEN document's outline section is currently closed. */
+  private anyNavHidden(): boolean {
+    return SLOT_IDS.some(
+      (id) => this.slots[id].stack.length > 0 && this.slots[id].navHidden,
+    );
+  }
+
+  /** Show or hide EVERY open document's outline section at once — the global
+   *  nav toggle's action in three-pane. */
+  setAllNavHidden(hidden: boolean): void {
+    for (const id of SLOT_IDS) {
+      if (this.slots[id].stack.length > 0) this.slots[id].navHidden = hidden;
+    }
+    this.reconcileNavRail();
+  }
+
+  /** Global nav toggle in three-pane: if any section is currently closed, show
+   *  them all; otherwise (all shown) hide them all. So the toggle always
+   *  restores the whole rail from a partial state and only hides when
+   *  everything is already visible. */
+  toggleAllNav(): void {
+    this.setAllNavHidden(!this.anyNavHidden());
   }
 
   /** Show / hide a single slot's outline section. The doc stays open;
@@ -2796,5 +2838,7 @@ export function mountMultiPaneShell(): void {
     journalAll: () => shell!.journalAll(),
     reduceToFocusedForModeSwitch: () => shell!.reduceToFocusedForModeSwitch(),
     getOpenHandles: () => shell!.getAllHandles(),
+    toggleAllNav: () => shell!.toggleAllNav(),
+    showAllNav: () => shell!.setAllNavHidden(false),
   });
 }

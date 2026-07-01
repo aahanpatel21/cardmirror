@@ -49,7 +49,11 @@ see `DETAILED_CHANGELOG.md`.
   outlines are untouched; the title-bar button brings it back. Drag the divider
   between two sections to resize them, and double-click the divider to even them
   out again. Previously the × closed the whole rail and the sections always
-  split the rail evenly.
+  split the rail evenly. The global **Show / Hide Navigation Pane** toggle now
+  works together with these per-document controls: it reads "off" once every
+  outline is hidden, and pressing it — or the restore pull-tab — brings them all
+  back; press it again to hide them all. *Per-document outlines contributed by
+  [@coralynnkc](https://github.com/coralynnkc).*
 
 ## 0.1.0-beta.4 — 2026-06-29
 

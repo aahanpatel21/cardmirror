@@ -190,7 +190,18 @@ in each release, see `CHANGELOG.md`.
   double-click resets to an even split, and any composition change (open / close
   / hide / show) re-evens the split so a reopened section doesn't inherit a stale
   weight. Each pane's title chip gains an outline-toggle button (the reopen
-  affordance and a one-click hide), pressed when the outline is shown.
+  affordance and a one-click hide), pressed when the outline is shown. The
+  global nav-pane toggle (`toggleNavPane`, the rail's toggle button, and the
+  restore pull-tab) now cooperates with these per-slot flags instead of
+  overriding them: in multi-doc mode it routes to `toggleAllNav()` (any slot
+  outline hidden → show all; none hidden → hide all) and the pull-tab routes to
+  `setAllNavHidden(false)`, while `reconcileNavRail()` writes `navPaneVisible`
+  back so the toggle's pressed state always matches whether any outline is
+  actually showing — previously the global toggle was a separate override, so
+  hiding all three outlines individually left it stuck reading "on" and pressing
+  it did nothing. *Per-document outlines contributed by
+  [@coralynnkc](https://github.com/coralynnkc); global-toggle integration built
+  on top.*
 
 ## 0.1.0-beta.4 — 2026-06-29
 
