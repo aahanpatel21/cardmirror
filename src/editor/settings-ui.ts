@@ -33,6 +33,7 @@ import {
   type PairingGroup,
   condenseWarningCloseFor,
 } from './settings.js';
+import { CATEGORY_TABS, visibleCategoryTabs, type SettingsTarget } from './settings-categories.js';
 import { generateGroupId, normalizePairingCode } from './pairing/pairing-ids.js';
 import { regenerateOwnCode } from './pairing/pairing-wiring.js';
 import { isFontAvailable } from './font-detect.js';
@@ -186,48 +187,13 @@ function scrollTabIntoView(tab: HTMLElement, container: HTMLElement): void {
   }
 }
 
-/** Tab labels shown in the settings dialog, in display order. */
-export const CATEGORY_TABS: {
-  id: SettingsCategory;
-  label: string;
-  /** Desktop-only category — all its settings are `electronOnly`, so on web it
-   *  would render as an empty tab. Dropped off Electron (see
-   *  `visibleCategoryTabs`). */
-  electronOnly?: boolean;
-}[] = [
-  { id: 'general', label: 'General' },
-  { id: 'appearance', label: 'Appearance' },
-  { id: 'editing', label: 'Editing' },
-  { id: 'shortcuts', label: 'Keyboard' },
-  { id: 'comments-ai', label: 'Comments & AI' },
-  // Card Sharing (pairing) is desktop-only — the relay send/receive run in the
-  // Electron main process — so its settings are all electronOnly. Hide the whole
-  // tab on web rather than show it empty.
-  { id: 'pairing', label: 'Card Sharing', electronOnly: true },
-  // Accessibility intentionally lives at the far right — its
-  // override-anything panel is a "last-resort" customization
-  // surface, separated from the everyday tabs.
-  { id: 'accessibility', label: 'Accessibility' },
-];
-
-/** The category tabs visible on the current host — `electronOnly` categories are
- *  dropped off Electron so they don't surface as empty tabs (or empty command-
- *  palette results). */
-export function visibleCategoryTabs(): { id: SettingsCategory; label: string }[] {
-  const hostKind = getHost().kind;
-  return CATEGORY_TABS.filter((t) => !t.electronOnly || hostKind === 'electron');
-}
+// CATEGORY_TABS / visibleCategoryTabs / SettingsTarget live in
+// settings-categories.ts so the command palette (main chunk) can use
+// them without pulling this lazily-loaded module in with them.
 
 /** A deep-link into the settings dialog: open a tab and optionally
  *  scroll to / flash a specific setting, or a named non-setting section
  *  (e.g. "About this install") via its `data-anchor`. */
-export interface SettingsTarget {
-  category?: SettingsCategory;
-  settingKey?: keyof Settings;
-  /** `data-anchor` value of a non-setting section to scroll to + flash. */
-  anchor?: string;
-}
-
 class SettingsModal {
   private overlay: HTMLDivElement;
   private dialog: HTMLDivElement;

@@ -54,7 +54,7 @@ function formatFromFilename(name: string): DocFormat | null {
 import { NavigationPanel, installNavResizeHandle } from './nav-panel.js';
 import { EditorDragSurface } from './drag-editor-surface.js';
 import { dragController, rewriteHeadingIds } from './drag-controller.js';
-import { isBenchmarkActive } from './benchmark.js';
+import { isBenchmarkActive } from './benchmark-state.js';
 import { countReadAloudWords, formatReadTime, formatNumber } from './word-count.js';
 import { openWordCount } from './word-count-ui.js';
 import { isAutosaveOnForPath, setAutosaveForPath } from './autosave-prefs-store.js';

@@ -35,7 +35,7 @@ import { undo, redo } from 'prosemirror-history';
 import { icon } from './icons';
 import { schema } from '../schema/index.js';
 import { settings, SETTING_METADATA, type SettingsCategory } from './settings.js';
-import { openSettings, CATEGORY_TABS, visibleCategoryTabs, type SettingsTarget } from './settings-ui.js';
+import { CATEGORY_TABS, visibleCategoryTabs, type SettingsTarget } from './settings-categories.js';
 import { appVersion } from './install-info.js';
 import { getHost, getElectronHost, isWindowsHost } from './host/index.js';
 import { showToast } from './toast.js';
@@ -1410,11 +1410,12 @@ class QuickCardSearchUI {
       return;
     }
     // Settings: close the palette, then open the dialog to the tab and
-    // scroll to the setting. atEnd is irrelevant.
+    // scroll to the setting. atEnd is irrelevant. settings-ui is
+    // lazy-loaded (see index.ts) — first open fetches its chunk.
     if (result.source === 'settings') {
       const target = result.settingsTarget;
       this.close();
-      openSettings(target);
+      void import('./settings-ui.js').then((m) => m.openSettings(target));
       return;
     }
     // File: close the palette, then open the document. atEnd irrelevant.

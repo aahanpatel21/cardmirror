@@ -26,8 +26,7 @@ import {
   subscribeTimer,
 } from './timer-state.js';
 import { cycleTimerProfile, TIMER_PROFILE_LABELS } from './timer-profile.js';
-import { openSettings, closeSettings } from './settings-ui.js';
-import { isBenchmarkActive, setBenchmarkActive } from './benchmark.js';
+import { isBenchmarkActive, setBenchmarkActive } from './benchmark-state.js';
 import { openReference } from './reference-ui.js';
 import {
   getSpeechDocResolver,
@@ -1524,7 +1523,17 @@ function confirmNewDocOverwrite(): Promise<'save' | 'discard' | 'cancel'> {
     document.body.appendChild(overlay);
   });
 }
-settingsBtn.addEventListener('click', () => openSettings());
+/** The Settings subtree (settings-ui + keybindings editor + benchmark
+ *  harness) is the largest UI module in the app and most sessions never
+ *  open it — load it on first use, mirroring recovery-ui / mobile-shell.
+ *  Cached so repeat opens don't re-resolve. */
+let settingsUiModule: Promise<typeof import('./settings-ui.js')> | null = null;
+function loadSettingsUi(): Promise<typeof import('./settings-ui.js')> {
+  return (settingsUiModule ??= import('./settings-ui.js'));
+}
+settingsBtn.addEventListener('click', () => {
+  void loadSettingsUi().then((m) => m.openSettings());
+});
 /**
  * Tiny adapter to invoke a `RibbonCommandId` against the active view
  * with the live context. Used by every menu item and ribbon button so
@@ -6838,8 +6847,9 @@ async function handleModeSwitch(newValue: boolean): Promise<void> {
       // keep the focused doc, which the reload reopens in the single-doc window.
       // Close Settings first so each doc's save/discard prompt appears over the
       // workspace (with its pane focused), not over the Settings pane the toggle
-      // was flipped in.
-      closeSettings();
+      // was flipped in. Settings is lazy-loaded: if the module was never
+      // fetched, the dialog can't be open — don't fetch it just to close it.
+      if (settingsUiModule) (await settingsUiModule).closeSettings();
       const reduced = await multiDocReduceToFocused();
       if (!reduced) {
         // User cancelled a save prompt — abort the switch; stay in three-pane.

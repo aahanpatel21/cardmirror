@@ -51,6 +51,25 @@ acceptance).
   doc), so the very largest docs keep a small synchronous blip per pause —
   the dominant ~70% (compression) is what moved off-thread.
 
+- **Startup: Settings subtree lazy-loaded** (`src/editor/index.ts`,
+  `quick-card-search-ui.ts`, `settings-ui.ts`, new `settings-categories.ts`
+  + `benchmark-state.ts`). The entry point statically imported
+  `openSettings`/`closeSettings`, chaining the app's largest UI module
+  (settings-ui, 4,100+ lines) plus keybindings-editor, benchmark-ui,
+  benchmark.ts, and benchmark-sample's embedded card text into the main
+  chunk — parsed on every launch though most sessions never open Settings
+  (audit P-10). Two extractions unblocked the split: `settings-categories.ts`
+  (CATEGORY_TABS / visibleCategoryTabs / SettingsTarget) so the palette's
+  `s`-prefix search stops pinning settings-ui, and `benchmark-state.ts`
+  (the is/setBenchmarkActive flag) so dispatchTransaction's hot-path check
+  stops pinning the benchmark harness. The three openSettings call sites go
+  through a cached dynamic import (recovery-ui pattern); the one
+  closeSettings site is guarded on the module having been loaded (never
+  fetch the chunk just to close a dialog that can't be open). Main chunk
+  1,366 → 1,263 KB (−103 KB; gzip −26 KB); settings-ui is its own 110 KB
+  chunk fetched on first open (instant on desktop, PWA-precached on web).
+  Byte-verified the benchmark sample string left the main chunk.
+
 - **THIRD-PARTY-NOTICES.md: cover everything that actually ships**
   (`THIRD-PARTY-NOTICES.md`). The file previously listed only ProseMirror
   and the Untitled UI icons, while claiming to satisfy the project's

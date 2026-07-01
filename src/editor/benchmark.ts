@@ -40,14 +40,11 @@ const STEP_PAUSE_MS = 650;
 /** True while the benchmark is mutating the document. The editor's
  *  dispatchTransaction checks this to SKIP autosave/dirty/nav-rebuild side
  *  effects, so the temporary benchmark edits never touch disk or pollute the
- *  nav — and a single `view.updateState(snapshot)` fully reverts them. */
-let benchmarkActive = false;
-export function isBenchmarkActive(): boolean {
-  return benchmarkActive;
-}
-export function setBenchmarkActive(active: boolean): void {
-  benchmarkActive = active;
-}
+ *  nav — and a single `view.updateState(snapshot)` fully reverts them.
+ *  The flag itself lives in benchmark-state.ts so those hot-path checks
+ *  don't statically pull this module (and its embedded sample card) into
+ *  the main chunk. */
+export { isBenchmarkActive, setBenchmarkActive } from './benchmark-state.js';
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
