@@ -5,7 +5,7 @@ changes in each release, written for users of the editor. For
 in-depth rationale and implementation context behind each entry,
 see `DETAILED_CHANGELOG.md`.
 
-## Unreleased
+## 0.1.0-beta.5 — 2026-07-01
 
 ### Added
 
@@ -35,10 +35,9 @@ see `DETAILED_CHANGELOG.md`.
     `.cmir`), and **Compress** — one file at a time.
   - **⌘/Ctrl-R no longer reloads** the app by accident.
 
-  **What still needs a desktop edition:** the background **file-library search**,
+  **What still requires a desktop edition:** the background **file-library search**,
   **folder-wide** clean / convert / compress, **Send to Verbatim Flow**, **voice
-  control**, **card sharing**, and the native menu bar. The dropzone remains a
-  scratch shelf that empties when you fully close the app (Quick Cards persist).
+  control**, **card sharing**, and the native menu bar.
   Firefox and Safari don't support the File System Access API, so there Save
   falls back to a download and the file tools download their output.
 
