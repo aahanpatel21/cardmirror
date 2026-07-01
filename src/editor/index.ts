@@ -58,6 +58,8 @@ import {
   modeSwitchDirtyMap,
   type ModeSwitchDoc,
 } from './mode-switch.js';
+// TEMPORARY: self-close feasibility probe for web multi-window (remove later).
+import { installSelfCloseProbe } from './dev-selfclose-probe.js';
 import { resolveMobileLayout } from './mobile-layout.js';
 import { mobilePlugin, setMobileShellActive } from './mobile-plugin.js';
 import { installCardCutterGate, cardCutterActive } from './card-cutter-gate.js';
@@ -6467,6 +6469,10 @@ void loadLearnStore();
 
 // Drag-and-drop file opening works in both single-doc and multi-pane modes.
 installDragToOpen();
+
+// TEMPORARY: probe whether a spawned window can window.close() itself (remove
+// once the web mode-switch design is settled). Gated behind ?probe=selfclose.
+installSelfCloseProbe();
 
 if (BOOT_MULTI_DOC_WORKSPACE) {
   void import('./multi-pane-shell.js').then(async (m) => {
