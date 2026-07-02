@@ -47,6 +47,8 @@ const MAP = {
   close: { svg: 'x-close', glyph: '×' },
   plus: { svg: 'plus', glyph: '+' },
   reset: { svg: 'refresh-ccw-01', glyph: '↺' },
+  undo: { svg: 'reverse-left', glyph: '↶' },
+  redo: { svg: 'reverse-right', glyph: '↷' },
   'arrow-up': { svg: 'arrow-up', glyph: '↑' },
   'arrow-down': { svg: 'arrow-down', glyph: '↓' },
   'chevron-up': { svg: 'chevron-up', glyph: '▴' },

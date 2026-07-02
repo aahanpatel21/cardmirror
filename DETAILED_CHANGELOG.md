@@ -51,6 +51,63 @@ in each release, see `CHANGELOG.md`.
   dropping a row's own divider when it sits against a section boundary
   so lines never stack.
 
+- **"New paragraph on Enter" settings** (`enter-style.ts` NEW,
+  `settings.ts`, `settings-ui.ts`, `index.ts`, `MANUAL.md`). Six
+  `enterAfter{Pocket,Hat,Block,Tag,Analytic,Undertag}` settings
+  (shared `EnterAfterStyle` union: normal | pocket | hat | block |
+  tag | analytic | undertag; all default 'normal' = zero behavior
+  change), rendered as ONE settings row — a single shared description
+  with six labeled dropdowns on the display-sizes 2-column grid (per
+  maintainer: six near-identical descriptions were noise) — in a new
+  Editing → "New paragraph on Enter" section. The load-bearing design decision: a non-normal
+  choice is DEFINED as "Enter, then that style's command" — the
+  handler (`enterWithConfiguredStyle`, bound first in the Enter chain)
+  delegates the split to the existing pipeline (tag-keymap overrides,
+  then baseKeymap's Enter) and then dispatches the exported
+  setHeading/setTag/setAnalytic/setUndertag on the fresh block, so all
+  structural edge semantics (card splits, doc-level escapes,
+  analytic_unit wrapping) inherit those commands' tested behavior
+  instead of duplicating it. Notable inherited consequence, asserted
+  in tests: Enter at end of a tag inserts the new body line directly
+  under the tag, so Tag → Tag yields a new card that takes over the
+  rest of the original card's children, and Tag → Pocket is the
+  mid-body split (tag-only card, empty pocket, loose body). 'normal'
+  returns false so the untouched pipeline (including user macro /
+  ribbon Enter bindings) proceeds exactly as before. The split +
+  conversion are two transactions but prosemirror-history groups them
+  — one Ctrl-Z reverts both (asserted). 8 tests in
+  tests/editor/enter-style.test.ts.
+
+- **Card sharing: reorderable recipients & groups** (`settings-ui.ts`,
+  `MANUAL.md`). The send pill renders groups then recipients in raw
+  `pairingGroups` / `pairingPartners` array order, but the editors were
+  append-only. Each row now carries the Find-category-order up/down
+  arrow pair (shared `makePairingReorderButtons`, same button class,
+  disabled at the ends) that swaps entries in the settings array itself
+  — no new setting, no pill changes (it already rebuilds on settings
+  changes), order persists like any settings edit. Groups and
+  recipients reorder within their own sections, matching the pill's
+  two-section layout. Maintainer decision: the Send to Starred shortcut
+  keeps its strict no-op when nothing is starred — sending a card is
+  too impactful for a silent fallback to "top of list" — so ordering
+  affects the pill only; the star remains the sole shortcut target.
+
+- **Optional undo/redo ribbon stack** (`index.html`, `index.ts`,
+  `settings.ts`, `style.css`, `icons.ts`, `scripts/gen-icons.mjs`,
+  `icons.css` regenerated, `MANUAL.md`). New `showUndoRedoButtons`
+  toggle (Appearance → Theme & chrome, off by default) reveals a
+  2-row `.ribbon-button-stack` as `.ribbon-left`'s first child —
+  right of the timer panel when that's on the left, left of the file
+  buttons. Visibility follows the quick-cards pattern
+  (`html.pmd-undoredo-hidden` class in `applyPillVisibility`).
+  Buttons run prosemirror-history undo/redo on the focused pane's
+  view, swallowing mousedown so the editor keeps selection and focus.
+  Two new icons (`undo`/`redo` → Untitled UI `reverse-left/right`,
+  classic glyphs ↶/↷): the gitignored icon-source clone was restored
+  from github.com/untitleduico/icons, verified byte-identical regen
+  against the committed icons.css before adding the MAP entries, then
+  regenerated (+6 lines, additive).
+
 - **Timer position setting** (`settings.ts`, `settings-ui.ts`,
   `index.ts`, `style.css`, `MANUAL.md`). New `timerPosition`
   ('left' | 'right', default left) at the top of Appearance's Timer

@@ -830,6 +830,10 @@ class SettingsModal {
       row.appendChild(text);
       row.appendChild(buildTimerPositionEditor());
       return row;
+    } else if (meta.kind === 'enterAfterStyle') {
+      row.appendChild(text);
+      row.appendChild(buildEnterAfterStyleEditor());
+      return row;
     } else if (meta.kind === 'colorOverrides') {
       row.appendChild(text);
       row.appendChild(buildColorOverridesEditor());
@@ -2068,6 +2072,28 @@ function makeStarButton(starred: boolean, disabled: boolean, onToggle: () => voi
   return btn;
 }
 
+/** Up / down reorder pair for a pairing row — the Find-category-order
+ *  arrow pattern (same button class, disabled at the ends). Reorders
+ *  the settings array itself: array order is what the send pill
+ *  renders, so the pill follows automatically. */
+function makePairingReorderButtons(
+  idx: number,
+  count: number,
+  onSwap: (a: number, b: number) => void,
+): HTMLButtonElement[] {
+  const make = (dir: 'up' | 'down'): HTMLButtonElement => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pmd-find-category-order-btn';
+    setIcon(btn, dir === 'up' ? 'arrow-up' : 'arrow-down');
+    btn.title = dir === 'up' ? 'Move up' : 'Move down';
+    btn.disabled = dir === 'up' ? idx === 0 : idx === count - 1;
+    btn.addEventListener('click', () => onSwap(idx, dir === 'up' ? idx - 1 : idx + 1));
+    return btn;
+  };
+  return [make('up'), make('down')];
+}
+
 function buildPairingPartnersEditor(): HTMLElement {
   const wrap = document.createElement('div');
   wrap.className = 'pmd-pairing-editor';
@@ -2128,6 +2154,16 @@ function buildPairingPartnersEditor(): HTMLElement {
         );
       });
       row.appendChild(codeInput);
+
+      for (const b of makePairingReorderButtons(idx, partners.length, (a, b2) => {
+        const cur = settings.get('pairingPartners').slice();
+        const tmp = cur[a]!;
+        cur[a] = cur[b2]!;
+        cur[b2] = tmp;
+        commit(cur);
+      })) {
+        row.appendChild(b);
+      }
 
       row.appendChild(
         makeStarButton(isStarredTarget('partner', partner.code), !partner.code, () =>
@@ -2210,6 +2246,16 @@ function buildPairingGroupsEditor(): HTMLElement {
         );
       });
       header.appendChild(labelInput);
+
+      for (const b of makePairingReorderButtons(idx, groups.length, (a, b2) => {
+        const cur = settings.get('pairingGroups').slice();
+        const tmp = cur[a]!;
+        cur[a] = cur[b2]!;
+        cur[b2] = tmp;
+        commit(cur);
+      })) {
+        header.appendChild(b);
+      }
 
       header.appendChild(
         makeStarButton(isStarredTarget('group', group.id), false, () =>
@@ -2909,6 +2955,68 @@ function buildTimerProfileDurationsEditor(): HTMLElement {
     if (active === lastProfile) return;
     lastProfile = active;
     buildFields();
+  });
+  registerRowCleanup(wrap, () => unsub());
+  return wrap;
+}
+
+/** All six "Enter after a …" choices in one row: a labeled dropdown
+ *  per structural style, sharing the single row description. Reuses
+ *  the display-sizes 2-column grid and the body-font select styling
+ *  (already shared with the translation language selects). */
+type EnterAfterStyleKey =
+  | 'enterAfterPocket'
+  | 'enterAfterHat'
+  | 'enterAfterBlock'
+  | 'enterAfterTag'
+  | 'enterAfterAnalytic'
+  | 'enterAfterUndertag';
+function buildEnterAfterStyleEditor(): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'pmd-display-sizes-editor pmd-enter-style-editor';
+  const fields: { key: EnterAfterStyleKey; label: string }[] = [
+    { key: 'enterAfterPocket', label: 'After a Pocket' },
+    { key: 'enterAfterHat', label: 'After a Hat' },
+    { key: 'enterAfterBlock', label: 'After a Block' },
+    { key: 'enterAfterTag', label: 'After a Tag' },
+    { key: 'enterAfterAnalytic', label: 'After an Analytic' },
+    { key: 'enterAfterUndertag', label: 'After an Undertag' },
+  ];
+  const options: { value: Settings[EnterAfterStyleKey]; label: string }[] = [
+    { value: 'normal', label: 'Normal paragraph' },
+    { value: 'pocket', label: 'Pocket' },
+    { value: 'hat', label: 'Hat' },
+    { value: 'block', label: 'Block' },
+    { value: 'tag', label: 'Tag' },
+    { value: 'analytic', label: 'Analytic' },
+    { value: 'undertag', label: 'Undertag' },
+  ];
+  const selects: [EnterAfterStyleKey, HTMLSelectElement][] = [];
+  for (const f of fields) {
+    const row = document.createElement('div');
+    row.className = 'pmd-display-size-row';
+    const label = document.createElement('label');
+    label.className = 'pmd-display-size-label';
+    label.textContent = f.label;
+    row.appendChild(label);
+    const select = document.createElement('select');
+    select.className = 'pmd-body-font-select';
+    for (const o of options) {
+      const opt = document.createElement('option');
+      opt.value = o.value;
+      opt.textContent = o.label;
+      select.appendChild(opt);
+    }
+    select.value = settings.get(f.key);
+    select.addEventListener('change', () => {
+      settings.set(f.key, select.value as Settings[EnterAfterStyleKey]);
+    });
+    row.appendChild(select);
+    selects.push([f.key, select]);
+    wrap.appendChild(row);
+  }
+  const unsub = settings.subscribe(() => {
+    for (const [key, select] of selects) select.value = settings.get(key);
   });
   registerRowCleanup(wrap, () => unsub());
   return wrap;

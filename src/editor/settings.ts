@@ -226,6 +226,17 @@ export interface KeyboardMacro {
 }
 
 /** Schema for all editor settings. Add new fields here with sensible defaults. */
+/** "New paragraph on Enter" choices — 'normal' means the default Enter
+ *  behavior for that context; the rest name a structural style. */
+export type EnterAfterStyle =
+  | 'normal'
+  | 'pocket'
+  | 'hat'
+  | 'block'
+  | 'tag'
+  | 'analytic'
+  | 'undertag';
+
 export interface Settings {
   /** Width of the navigation pane in pixels. */
   navWidth: number;
@@ -346,6 +357,11 @@ export interface Settings {
    *  embedded web edition). Single-doc only; multi-pane shows
    *  per-pane chips regardless of this setting. */
   showDocNameChip: boolean;
+  /** Whether the ribbon shows a vertically stacked Undo / Redo button
+   *  pair at the far left (right of the timer panel when that's on
+   *  the left, left of the file buttons). Off by default — undo/redo
+   *  always work by keyboard; this is a mouse-first affordance. */
+  showUndoRedoButtons: boolean;
   /** Whether to check for updates on app launch (desktop only).
    *  Off by default in this initial release to keep boot
    *  conservative — opt in via Settings → General → "About this
@@ -539,6 +555,20 @@ export interface Settings {
    *  spaces). Backspace right after reverts to the literal `---`. Off by
    *  default. */
   customDashEnabled: boolean;
+  /** "New paragraph on Enter": what pressing Enter at the END of each
+   *  structural textblock creates. 'normal' keeps the default
+   *  behavior (a plain paragraph — or, for tag/analytic, the
+   *  tag-keymap's body-line-inside-the-card). Any other choice
+   *  behaves exactly like pressing Enter and then that style's
+   *  command (F4/F5/F6/F7/Mod-F7/Mod-F8) on the fresh block — card
+   *  splits, doc-level escapes, and wrapping all inherit those
+   *  commands' semantics. See enter-style.ts. */
+  enterAfterPocket: EnterAfterStyle;
+  enterAfterHat: EnterAfterStyle;
+  enterAfterBlock: EnterAfterStyle;
+  enterAfterTag: EnterAfterStyle;
+  enterAfterAnalytic: EnterAfterStyle;
+  enterAfterUndertag: EnterAfterStyle;
   customDashStyle: 'en' | 'en-spaced' | 'em' | 'em-spaced';
   /** Microphone for voice control (MediaDeviceInfo.deviceId).
    *  Empty string = system default. Desktop only. */
@@ -1109,6 +1139,7 @@ const DEFAULTS: Settings = {
   themeAppliesToDocument: false,
   iconSet: 'modern',
   showDocNameChip: false,
+  showUndoRedoButtons: false,
   checkForUpdatesOnLaunch: false,
   commentsColumnWidth: 320,
   reduceMotion: 'auto',
@@ -1150,6 +1181,12 @@ const DEFAULTS: Settings = {
   editorSpellcheck: false,
   smartQuotes: false,
   customDashEnabled: false,
+  enterAfterPocket: 'normal',
+  enterAfterHat: 'normal',
+  enterAfterBlock: 'normal',
+  enterAfterTag: 'normal',
+  enterAfterAnalytic: 'normal',
+  enterAfterUndertag: 'normal',
   customDashStyle: 'em',
   voiceInputDeviceId: '',
   voiceAutoSleepSeconds: 60,
@@ -1345,6 +1382,7 @@ export interface SettingMeta {
     | 'timerProfileDurations'
     | 'timerPrepLabel'
     | 'timerPosition'
+    | 'enterAfterStyle'
     | 'password'
     | 'voiceInputDevice'
     | 'voiceDashStyle'
@@ -1899,6 +1937,16 @@ export const SETTING_METADATA: SettingMeta[] = [
     section: 'Theme & chrome',
   },
   {
+    key: 'showUndoRedoButtons',
+    label: 'Show undo / redo buttons',
+    description:
+      'Off by default. When on, a stacked Undo / Redo button pair appears at the far left of the ribbon, before the file buttons (after the timer panel when that is shown on the left). Undo and redo always work by keyboard either way.',
+    kind: 'toggle',
+    category: 'appearance',
+    section: 'Theme & chrome',
+    aliases: ['undo button', 'redo button', 'undo redo'],
+  },
+  {
     key: 'ribbonTooltipMode',
     label: 'Ribbon tooltips',
     description:
@@ -2078,6 +2126,16 @@ export const SETTING_METADATA: SettingMeta[] = [
     category: 'editing',
     section: 'Typing',
     aliases: ['dash', 'em dash', 'en dash', 'triple dash', 'autocorrect dash'],
+  },
+  {
+    key: 'enterAfterPocket',
+    label: 'Enter at the end of a structural style creates',
+    description:
+      "What pressing Enter at the end of each structural style creates. 'Normal paragraph' keeps the default behavior; any other choice acts exactly like pressing Enter and then that style's key on the new line — so Tag → Tag starts a fresh card on every Enter. One undo reverts the whole step.",
+    kind: 'enterAfterStyle',
+    category: 'editing',
+    section: 'New paragraph on Enter',
+    aliases: ['enter behavior', 'return key', 'new paragraph', 'enter after pocket', 'enter after hat', 'enter after block', 'enter after tag', 'enter after analytic', 'enter after undertag'],
   },
   {
     key: 'paragraphIntegrity',
@@ -2649,6 +2707,7 @@ function sanitize(s: Settings): Settings {
     // original emoji/text glyphs (survives upgrades from before this existed).
     iconSet: s.iconSet === 'classic' ? 'classic' : 'modern',
     showDocNameChip: !!s.showDocNameChip,
+    showUndoRedoButtons: !!s.showUndoRedoButtons,
     checkForUpdatesOnLaunch: !!s.checkForUpdatesOnLaunch,
     commentsColumnWidth:
       typeof s.commentsColumnWidth === 'number' && Number.isFinite(s.commentsColumnWidth)
@@ -2717,6 +2776,12 @@ function sanitize(s: Settings): Settings {
     editorSpellcheck: !!s.editorSpellcheck,
     smartQuotes: !!s.smartQuotes,
     customDashEnabled: !!s.customDashEnabled,
+    enterAfterPocket: sanitizeEnterAfter(s.enterAfterPocket),
+    enterAfterHat: sanitizeEnterAfter(s.enterAfterHat),
+    enterAfterBlock: sanitizeEnterAfter(s.enterAfterBlock),
+    enterAfterTag: sanitizeEnterAfter(s.enterAfterTag),
+    enterAfterAnalytic: sanitizeEnterAfter(s.enterAfterAnalytic),
+    enterAfterUndertag: sanitizeEnterAfter(s.enterAfterUndertag),
     customDashStyle: CUSTOM_DASH_STYLES.includes(s.customDashStyle as Settings['customDashStyle'])
       ? (s.customDashStyle as Settings['customDashStyle'])
       : 'em',
@@ -3574,6 +3639,13 @@ function sanitizePairingGroups(rawGroups: unknown, rawPartners: unknown): Pairin
 
 /** Coerce the starred send target: keep it only if it still points at a live
  *  recipient (by code) or group (by id); otherwise clear it. */
+const ENTER_AFTER_VALUES: readonly EnterAfterStyle[] = [
+  'normal', 'pocket', 'hat', 'block', 'tag', 'analytic', 'undertag',
+];
+function sanitizeEnterAfter(v: unknown): EnterAfterStyle {
+  return ENTER_AFTER_VALUES.includes(v as EnterAfterStyle) ? (v as EnterAfterStyle) : 'normal';
+}
+
 function sanitizePairingStarred(
   raw: unknown,
   rawPartners: unknown,

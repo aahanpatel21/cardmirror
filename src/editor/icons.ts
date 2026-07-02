@@ -31,6 +31,8 @@ export type IconName =
   | 'close'
   | 'plus'
   | 'reset'
+  | 'undo'
+  | 'redo'
   | 'arrow-up'
   | 'arrow-down'
   | 'chevron-up'

@@ -24,6 +24,18 @@ see `DETAILED_CHANGELOG.md`.
   palette engineered to stay distinguishable under red-green and blue-yellow
   color-vision deficiencies. Works in light and dark themes, and any colors
   you've set by hand still win.
+- **Choose what Enter creates after each structural style.** Six new
+  Editing settings — one each for Pocket, Hat, Block, Tag, Analytic, and
+  Undertag — control what pressing Enter at the end of that style creates:
+  a normal paragraph (the default, today's behavior) or any structural
+  style. Picking a style acts exactly like pressing Enter and then that
+  style's key, so Tag → Tag starts a fresh card on every Enter.
+- **Card sharing recipients can be reordered.** Recipient and group rows in
+  Settings → Card Sharing now have up / down arrows, and the Send pill lists
+  them in that order — put the targets you use most on top.
+- **Optional undo / redo buttons.** A new Appearance setting, **Show undo /
+  redo buttons**, adds a stacked Undo / Redo pair at the far left of the
+  ribbon. Off by default — the keyboard shortcuts work either way.
 - **The timer can sit on either end of the ribbon.** A new Appearance
   setting, **Timer position in the ribbon**, moves the timer panel to the
   far right if you'd rather keep the file buttons anchored on the left.

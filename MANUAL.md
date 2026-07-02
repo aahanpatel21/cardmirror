@@ -920,7 +920,10 @@ network. Two pills sit to the right of the dropzone — **Send** and **Receive**
 a **code**, shown there — share it with anyone you want to be able to send you
 cards. To send to someone, add them under **Recipients**: paste the code they
 gave you and give them a name. You can also bundle several recipients into a
-**group** (say, a partnership) to send to all of them at once.
+**group** (say, a partnership) to send to all of them at once. The **↑ / ↓**
+arrows on each recipient and group row reorder the lists — the Send pill shows
+groups and recipients in exactly this order, so put the ones you use most on
+top.
 
 **Send a card.** Drag a card — from the document or the dropzone — onto the
 **Send** pill. It expands to show your recipients and groups; drop on one to
@@ -1548,6 +1551,9 @@ How things look. None of these change the file — only your view (see
 - **Show doc name in ribbon** — show the active filename as a pill in the
   ribbon's center, handy when the title bar is hidden. Off by default;
   hidden in multi-pane (each pane shows its own chip).
+- **Show undo / redo buttons** — a stacked Undo / Redo button pair at the
+  far left of the ribbon, before the file buttons. Off by default —
+  undo/redo always work by keyboard either way.
 - **Ribbon tooltips** — what a hovered ribbon button shows: both, label
   only, shortcut only, or none.
 
@@ -1605,6 +1611,17 @@ Typing helpers and the behavior of the cutting and condense commands
   type; Backspace right after reverts. Off by default.
 - **Custom dash** — turn a typed `---` into an en or em dash (spaced or
   unspaced) on the third hyphen; Backspace right after reverts. Off by default.
+
+**New paragraph on Enter**
+
+- **Enter at the end of a structural style creates** — six dropdowns,
+  one per structural style, choosing what pressing Enter at the *end*
+  of that style creates. "Normal paragraph" (the default for all six)
+  keeps today's behavior. Any other choice acts exactly like pressing
+  Enter and then that style's key on the new line — including card
+  splits — so Tag → Tag starts a fresh card on every Enter, and
+  Analytic → Analytic chains analytics. One Ctrl-Z undoes the whole
+  step.
 
 **Condense**
 

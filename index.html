@@ -20,6 +20,14 @@
            right to accommodate it. -->
       <section id="timer-panel" class="ribbon-section pmd-timer-panel" hidden></section>
       <div class="ribbon-section ribbon-left">
+        <!-- Undo / redo stack — hidden unless the showUndoRedoButtons
+             setting is on (html.pmd-undoredo-hidden, mirroring the
+             quick-cards cluster). Sits left of the file buttons;
+             right of the timer panel when that's shown on the left. -->
+        <div id="undo-redo-stack" class="ribbon-button-stack">
+          <button id="undo-btn" type="button" title="Undo" aria-label="Undo"><span class="pmd-icon pmd-icon-undo" aria-hidden="true"></span></button>
+          <button id="redo-btn" type="button" title="Redo" aria-label="Redo"><span class="pmd-icon pmd-icon-redo" aria-hidden="true"></span></button>
+        </div>
         <div class="ribbon-button-stack">
           <button id="open-btn" type="button" title="Open a document" aria-label="Open"><span class="pmd-icon pmd-icon-open" aria-hidden="true"></span></button>
           <button id="new-btn" type="button" title="New document" aria-label="New document"><span class="pmd-icon pmd-icon-new" aria-hidden="true"></span></button>

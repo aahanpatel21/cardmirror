@@ -10,7 +10,7 @@
 import { EditorState, Plugin, Selection, TextSelection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { keymap } from 'prosemirror-keymap';
-import { history } from 'prosemirror-history';
+import { history, redo, undo } from 'prosemirror-history';
 import { baseKeymap } from 'prosemirror-commands';
 import { Node as PMNode, type Mark, DOMSerializer } from 'prosemirror-model';
 import { schema, newHeadingId } from '../schema/index.js';
@@ -174,6 +174,7 @@ import {
   enterAtTagEnd,
   enterInHeading,
 } from './tag-keymap.js';
+import { enterWithConfiguredStyle } from './enter-style.js';
 import { keepCursorInLeadingBlockOnBlockedMerge } from './boundary-cursor-keymap.js';
 import { indentParagraph, outdentParagraph } from './indent-keymap.js';
 import {
@@ -2653,6 +2654,10 @@ function applyPillVisibility(): void {
     'pmd-quickcards-hidden',
     !settings.get('showQuickCardButtons'),
   );
+  document.documentElement.classList.toggle(
+    'pmd-undoredo-hidden',
+    !settings.get('showUndoRedoButtons'),
+  );
   // The bottom scroll runway is gated on the WHOLE tray, not just the dropzone:
   // the send/receive pills (shown when pairing is enabled) occupy the same
   // bottom-left band, so the last line must clear them too. Applies in both
@@ -2898,6 +2903,24 @@ applyPillVisibility(); // default-off dropzone pill + quick-card cluster, at boo
 // stays hidden in the DOM until the user toggles ⏱ in the
 // ribbon.
 mountTimerUI();
+// Undo / redo ribbon stack (showUndoRedoButtons setting; visibility
+// via html.pmd-undoredo-hidden in applyPillVisibility). Operates on
+// the focused pane's view; mousedown is swallowed so the click keeps
+// the editor's selection and focus.
+for (const [btnId, cmd] of [
+  ['undo-btn', undo],
+  ['redo-btn', redo],
+] as const) {
+  const btn = document.getElementById(btnId);
+  if (!btn) continue;
+  btn.addEventListener('mousedown', (e) => e.preventDefault());
+  btn.addEventListener('click', () => {
+    if (!view) return;
+    cmd(view.state, view.dispatch.bind(view));
+    view.focus();
+  });
+}
+
 const timerToggleBtn = document.getElementById('timer-toggle-btn') as HTMLButtonElement | null;
 if (timerToggleBtn) {
   function refreshTimerToggle(): void {
@@ -3979,6 +4002,10 @@ export function buildEditorPlugins(): Plugin[] {
         deleteAtContainerEnd(state, dispatch, view) ||
         keepCursorInLeadingBlockOnBlockedMerge(state, dispatch, view),
       Enter: (state, dispatch, view) =>
+        // "New paragraph on Enter" settings run first: returns false
+        // (untouched pipeline) unless the cursor is at the end of a
+        // structural block whose enterAfter* setting picks a style.
+        enterWithConfiguredStyle(state, dispatch, view) ||
         enterAtTagEnd(state, dispatch, view) ||
         enterMidTag(state, dispatch, view) ||
         enterInHeading(state, dispatch, view),
