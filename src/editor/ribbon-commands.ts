@@ -57,6 +57,15 @@ import { classifyChar, isWordChar } from './word-break.js';
 import { moveContainerUp, moveContainerDown } from './move-container.js';
 import { settings } from './settings.js';
 import {
+  getTimerState,
+  loadSpeechPreset,
+  pauseTimer,
+  resetTimer,
+  selectMode,
+  setTimerVisible,
+  startTimer,
+} from './timer-state.js';
+import {
   selectSimilar,
   getOperatingRanges,
   META_OPERATING_ON_SHADOW,
@@ -4607,7 +4616,23 @@ export type RibbonCommandId =
   // prompt otherwise. Menu accelerator (Ctrl+W) stays
   // hardcoded as a discoverability cue; this registry entry is
   // the user-rebindable layer.
-  | 'closeDocOrWindow';
+  | 'closeDocOrWindow'
+  // Timer transport. All gated on the timer panel being visible
+  // (they return false when it's hidden so the key falls through);
+  // none has a default binding — wire up via Settings → Keyboard.
+  // Timer state is BroadcastChannel-synced, so a key press in one
+  // window drives the clocks in every window, like the buttons.
+  // Show/hide is the one timer command NOT gated on visibility —
+  // its whole point is bringing the panel up. Mirrors the ribbon
+  // timer button (aria-pressed toggle in index.ts).
+  | 'timerToggleVisible'
+  | 'timerStartPause'
+  | 'timerPreset1'
+  | 'timerPreset2'
+  | 'timerPreset3'
+  | 'timerStartAffPrep'
+  | 'timerStartNegPrep'
+  | 'timerReset';
 
 export const STRUCTURAL_RIBBON_COMMAND_IDS: StructuralRibbonCommandId[] = [
   'setPocket',
@@ -4756,6 +4781,14 @@ export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
   'cycleDocNext',
   'cycleDocPrev',
   'closeDocOrWindow',
+  'timerToggleVisible',
+  'timerStartPause',
+  'timerPreset1',
+  'timerPreset2',
+  'timerPreset3',
+  'timerStartAffPrep',
+  'timerStartNegPrep',
+  'timerReset',
 ];
 
 export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
@@ -4900,6 +4933,14 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   cycleDocNext: 'Next Document in Slot',
   cycleDocPrev: 'Previous Document in Slot',
   closeDocOrWindow: 'Close Doc or Window',
+  timerToggleVisible: 'Timer: Show / Hide Panel',
+  timerStartPause: 'Timer: Start / Pause',
+  timerPreset1: 'Timer: Start Speech Preset 1',
+  timerPreset2: 'Timer: Start Speech Preset 2',
+  timerPreset3: 'Timer: Start Speech Preset 3',
+  timerStartAffPrep: 'Timer: Start Aff Prep',
+  timerStartNegPrep: 'Timer: Start Neg Prep',
+  timerReset: 'Timer: Reset',
 };
 
 /**
@@ -4954,6 +4995,14 @@ export const RIBBON_COMMAND_ALIASES: Partial<Record<RibbonCommandId, readonly st
   zoomReset: ['actual size'],
   cycleTheme: ['dark mode', 'light mode', 'toggle theme', 'switch theme', 'appearance'],
   cycleTimerPreset: ['switch timer preset', 'toggle timer preset', 'next timer preset', 'change timer preset', 'timer profile', 'timer preset'],
+  timerToggleVisible: ['show timer', 'hide timer', 'toggle timer', 'timer panel'],
+  timerStartPause: ['start timer', 'pause timer', 'speech timer', 'play timer'],
+  timerPreset1: ['timer 9', 'first speech preset'],
+  timerPreset2: ['timer 6', 'second speech preset'],
+  timerPreset3: ['timer 3', 'third speech preset'],
+  timerStartAffPrep: ['aff prep', 'affirmative prep', 'prep timer'],
+  timerStartNegPrep: ['neg prep', 'negative prep', 'prep timer'],
+  timerReset: ['reset timer', 'reset prep'],
   flipQuoteDirection: ['flip quotes', 'curly quotes', 'reverse quote direction', 'smart quote direction', 'fix apostrophe', 'quote direction'],
   deleteCurrentHeading: ['delete card', 'delete heading', 'delete current card'], // "remove …" via the delete/remove synonym group
   saveSendDoc: ['send doc', 'export send doc', 'send version'],
@@ -5172,6 +5221,14 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   cycleDocNext: '',
   cycleDocPrev: '',
   closeDocOrWindow: 'Mod-w',
+  timerToggleVisible: '',
+  timerStartPause: '',
+  timerPreset1: '',
+  timerPreset2: '',
+  timerPreset3: '',
+  timerStartAffPrep: '',
+  timerStartNegPrep: '',
+  timerReset: '',
 };
 
 /**
@@ -5460,6 +5517,29 @@ const DEFAULT_RIBBON_CONTEXT: RibbonContext = {
   openCardToolsMenu: () => {},
   openTableMenu: () => {},
 };
+
+/** Wrap a timer action as an editor command, gated on the timer
+ *  panel being visible — hidden timer → return false so the key
+ *  falls through to other handlers. Timer state changes broadcast
+ *  to every window, matching the panel's buttons. */
+function timerCommand(run: () => void): Command {
+  return (_state, dispatch) => {
+    if (!getTimerState().visible) return false;
+    if (!dispatch) return true;
+    run();
+    return true;
+  };
+}
+
+/** Load the active profile's Nth speech preset and start it counting
+ *  — the one-keystroke version of "click the 9/6/3 button, then
+ *  Start". A missing/zero preset leaves the clock untouched. */
+function startSpeechPreset(idx: number): void {
+  const minutes = settings.get('timerSpeechPresets')[idx] ?? 0;
+  if (minutes <= 0) return;
+  loadSpeechPreset(minutes);
+  startTimer();
+}
 
 function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
   switch (id) {
@@ -5985,6 +6065,35 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
         ctx.cycleTimerPreset();
         return true;
       };
+    case 'timerToggleVisible':
+      return (_state, dispatch) => {
+        if (!dispatch) return true;
+        setTimerVisible(!getTimerState().visible);
+        return true;
+      };
+    case 'timerStartPause':
+      return timerCommand(() => {
+        if (getTimerState().running) pauseTimer();
+        else startTimer();
+      });
+    case 'timerPreset1':
+      return timerCommand(() => startSpeechPreset(0));
+    case 'timerPreset2':
+      return timerCommand(() => startSpeechPreset(1));
+    case 'timerPreset3':
+      return timerCommand(() => startSpeechPreset(2));
+    case 'timerStartAffPrep':
+      return timerCommand(() => {
+        selectMode('affPrep');
+        startTimer();
+      });
+    case 'timerStartNegPrep':
+      return timerCommand(() => {
+        selectMode('negPrep');
+        startTimer();
+      });
+    case 'timerReset':
+      return timerCommand(() => resetTimer());
     case 'flipQuoteDirection':
       return flipQuoteDirection;
     case 'toggleParagraphIntegrity':

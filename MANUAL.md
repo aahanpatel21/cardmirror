@@ -860,8 +860,18 @@ preset** buttons, and the **Aff** and **Neg** prep clocks.
 - **Switching profiles.** The **Cycle Timer Preset** command (unbound by default
   — assign a key under Settings → Keybindings) cycles the profile College → High
   School → Pomodoro, applies that profile's durations, and pops the timer into
-  view. You can also set the profile, edit each profile's speech durations and
-  per-side prep total, and choose the compact layout under Settings → Appearance.
+  view. You can also set the profile and edit each profile's speech durations and
+  per-side prep total under Settings → General; the compact layout lives under
+  Settings → Appearance.
+
+- **Keyboard transport.** Eight more unbound commands drive the timer from the
+  keyboard (assign keys under Settings → Keyboard): **Timer: Show / Hide
+  Panel**, **Timer: Start / Pause**, **Timer: Start Speech Preset 1–3** (loads
+  that preset *and* starts it counting), **Timer: Start Aff Prep** / **Start
+  Neg Prep** (switches to that side's clock and starts it), and **Timer:
+  Reset**. Apart from Show / Hide, they only fire while the timer panel is
+  visible, and — like the buttons — a press in one window drives the clocks in
+  every window.
 
 ### Send-to-speech and the dropzone
 

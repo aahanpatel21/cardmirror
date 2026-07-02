@@ -157,8 +157,21 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
       'wordCountSelection',
       'openSettings',
       'cycleTheme',
-      'cycleTimerPreset',
       'openShortcutsReference',
+    ],
+  },
+  {
+    title: 'Timer',
+    commands: [
+      'timerToggleVisible',
+      'timerStartPause',
+      'timerPreset1',
+      'timerPreset2',
+      'timerPreset3',
+      'timerStartAffPrep',
+      'timerStartNegPrep',
+      'timerReset',
+      'cycleTimerPreset',
     ],
   },
   {

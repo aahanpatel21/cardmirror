@@ -24,6 +24,11 @@ see `DETAILED_CHANGELOG.md`.
   palette engineered to stay distinguishable under red-green and blue-yellow
   color-vision deficiencies. Works in light and dark themes, and any colors
   you've set by hand still win.
+- **The timer is keyboard-drivable.** Eight new bindable commands — show/hide
+  the panel, Start / Pause, start each of the three speech presets, start Aff
+  or Neg prep, and Reset — all unbound by default (assign keys under Settings →
+  Keyboard). Apart from show/hide, they're active only while the timer panel is
+  showing.
 - **"No color" is now a real pen.** Picking **No highlight** or **No
   background color** in the ribbon dropdowns now keeps "none" as your
   active color (the indicator bar turns white) — the main button,

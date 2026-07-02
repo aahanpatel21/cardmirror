@@ -51,6 +51,28 @@ in each release, see `CHANGELOG.md`.
   dropping a row's own divider when it sits against a section boundary
   so lines never stack.
 
+- **Timer transport as bindable commands** (`ribbon-commands.ts`,
+  `ribbon-groups.ts`, `MANUAL.md`). Eight new RibbonCommandIds —
+  `timerToggleVisible`, `timerStartPause`, `timerPreset1/2/3`,
+  `timerStartAffPrep`, `timerStartNegPrep`, `timerReset` — all
+  defaulting to no binding (the existing `''` convention), grouped
+  under a new "Timer" section in the Keyboard tab (`cycleTimerPreset`
+  moved there from View). Each wraps the corresponding
+  `timer-state.ts` action behind a shared `timerCommand()` gate: when
+  the timer panel is hidden the command returns false so the key falls
+  through to other handlers. `timerToggleVisible` is the one exception
+  — not gated (its point is bringing the panel up); there was
+  previously no registry command for panel visibility at all (the
+  ribbon button calls `setTimerVisible` directly). Presets are the one-keystroke version of "click the 9/6/3
+  button, then Start" (`loadSpeechPreset` + `startTimer`; a
+  missing/zero preset is a no-op), and the prep commands select the
+  side's clock and start it. Timer state is BroadcastChannel-synced,
+  so keys drive every window like the buttons do. No timer-ui changes;
+  timer-state imports nothing, so the new ribbon-commands dependency
+  adds no cycle. Also fixed a stale MANUAL path (timer profile /
+  durations are under Settings → General since the settings
+  reorganization, not Appearance).
+
 - **"No color" is a paintable pen for highlight & shading**
   (`settings.ts`, `ribbon-commands.ts`, `color-panel.ts`, `MANUAL.md`).
   Font color's "Automatic" already worked this way (null persists in
