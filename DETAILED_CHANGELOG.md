@@ -7,6 +7,16 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Multi-pane chip: focused-chip hover glyphs are theme-invariant**
+  (`src/editor/style.css`). Hovering the focused chip's outline/expand
+  buttons flipped the glyph to `--pmd-c-text-strong` — black in light mode
+  (visible) but WHITE in dark mode, identical to the resting on-accent
+  glyph, so the hover was invisible there. The chip's accent fill is
+  effectively theme-invariant, so its hover glyph now is too: new
+  `--pmd-c-on-accent-hover` (#000) in the theme-invariant token group,
+  applied via a focused-chip variant. (User call: match light-mode
+  behavior in dark mode rather than invent a third treatment.)
+
 - **Multi-pane chip: pressed nav/expand buttons use a box, not an accent
   glyph** (`src/editor/style.css`). `aria-pressed` on the unfocused chip's
   outline + expand buttons colored the glyph `--pmd-c-accent` (from the

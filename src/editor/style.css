@@ -752,6 +752,7 @@ button {
        identically in both themes today; theme variants can be added
        in the dark block later without touching call sites. */
   --pmd-c-doc-paper: #fff;
+  --pmd-c-on-accent-hover: #000;       /* hover glyph on accent fills; invariant because the fills are */
   --pmd-c-band-fg-light: #000;         /* text on light OOXML bands */
   --pmd-c-band-fg-dark: #fff;          /* text on dark OOXML bands */
   --pmd-c-repair-accent: #2e7d32;      /* AI repair-highlight green */
@@ -9078,6 +9079,15 @@ body.pmd-multi-nav-empty.pmd-multi-doc #status-bar {
  * pressed-state treatment above. */
 .pmd-pane-focused .pmd-pane-chip-stack:hover {
   background: var(--pmd-c-on-accent-overlay);
+}
+/* Hover on the FOCUSED chip's outline/expand buttons: the generic
+ * hover flips to --pmd-c-text-strong, which is WHITE in dark mode —
+ * identical to the resting on-accent glyph, so nothing visibly changed.
+ * The chip's accent fill is theme-invariant, so its hover glyph is too:
+ * the light-mode black, pinned via --pmd-c-on-accent-hover. */
+.pmd-pane-focused .pmd-pane-chip-nav:hover,
+.pmd-pane-focused .pmd-pane-chip-expand:hover {
+  color: var(--pmd-c-on-accent-hover);
 }
 
 /* Title chip — fixed height so the strip stays the same regardless
