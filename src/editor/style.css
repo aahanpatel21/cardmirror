@@ -4142,6 +4142,15 @@ body.pmd-nav-resize-active {
    color as in the editor surface so changing it propagates everywhere. */
 .pmd-nav-type-analytic .pmd-nav-label       { color: var(--pmd-color-analytic); }
 .pmd-nav-type-analytic:hover .pmd-nav-label { color: var(--pmd-color-analytic); }
+/* Accessibility: "Italicize analytic entries in the nav pane"
+   (navAnalyticItalics setting → html class, see
+   applyNavAnalyticItalics). A shape cue that survives the two places
+   the color cue vanishes: dark mode (uniform white nav text) and the
+   flat nav (`pmd-nav-flat`). Covers the single-doc panel and the
+   multi-pane rail — both render .pmd-nav-type-analytic. */
+html.pmd-nav-analytic-italic .pmd-nav-type-analytic .pmd-nav-label {
+  font-style: italic;
+}
 
 /* `formatNavPaneByType: false` flattens the nav pane to a uniform
    list — same weight, size, and color across every level — so only

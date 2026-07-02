@@ -1692,6 +1692,11 @@ remove one, **↺** to restore its default. A few window-level shortcuts
   without relying on their tint colors: comments dotted, flashcards
   solid, AI threads dashed, private notes double. Off shows just the
   tinted backgrounds. Works independently of the palette above.
+- **Italicize analytic entries in the nav pane** — show the navigation
+  pane's Analytic entries in italics so they stand out from tags by
+  shape, not color alone. Also useful in dark mode and with "Format nav
+  pane entries by type" off, where the analytic color cue doesn't
+  appear at all.
 - **Override highlight color in display** — render highlights in your
   chosen colors regardless of what's stored on the mark (display-only).
 - **Highlight override colors** — up to three ordered colors; the

@@ -51,6 +51,26 @@ in each release, see `CHANGELOG.md`.
   dropping a row's own divider when it sits against a section boundary
   so lines never stack.
 
+- **Accessibility: nav-pane analytic italics toggle** (`settings.ts`,
+  `index.ts`, `style.css`, `MANUAL.md`). Color-audit item (LOW-MEDIUM):
+  analytic entries in the nav pane are marked by text color alone
+  (`--pmd-color-analytic` on the label) — and the investigation showed
+  the cue is worse than hue-confusable: it's entirely absent in dark
+  mode (the nav forces uniform white text) and in the flat nav
+  (`formatNavPaneByType` off overrides it to inherit). New
+  `navAnalyticItalics` toggle (Accessibility, off by default, gated per
+  maintainer direction rather than always-on) sets an
+  `html.pmd-nav-analytic-italic` class — the `pmd-nav-flat` pattern —
+  and one CSS rule italicizes `.pmd-nav-type-analytic .pmd-nav-label`.
+  font-style survives both the dark-mode color override and the flat
+  nav's flattening, and covers the single-doc panel and multi-pane rail
+  (both render the same entry classes). Declined the audit's
+  alternative (leading glyph) — italics mirror the editor surface's
+  own analytic typography convention. The prep-timer 'color' label
+  mode item from the same audit list was closed won't-fix: the
+  text/both label modes exist precisely as the non-color channel, and
+  'color' is an explicit user opt-out.
+
 - **Accessibility: autosave inert state is now hollow, not just amber**
   (`style.css`, `MANUAL.md`). Color-audit item (MEDIUM, data-loss
   consequence): the autosave toggle's two on-states — effective (blue

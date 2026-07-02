@@ -386,6 +386,13 @@ export interface Settings {
    *  `data-annotation-shapes` attribute on the document root;
    *  style.css consumes it. */
   annotationShapes: boolean;
+  /** Accessibility: render the nav pane's Analytic entries in italics
+   *  so they differ from sibling entries by shape, not color alone.
+   *  The color cue is also entirely absent in dark mode (nav text is
+   *  forced uniform) and with formatNavPaneByType off — italics
+   *  survive both. Resolved into an `html.pmd-nav-analytic-italic`
+   *  class (same pattern as pmd-nav-flat); style.css consumes it. */
+  navAnalyticItalics: boolean;
   /** Accessibility: when true, the text cursor doesn't blink — the
    *  native blinking caret is hidden and a steady custom caret is drawn
    *  in its place. */
@@ -1098,6 +1105,7 @@ const DEFAULTS: Settings = {
   reduceMotion: 'auto',
   colorVisionFriendly: false,
   annotationShapes: false,
+  navAnalyticItalics: false,
   disableCursorBlink: false,
   accessibilityTreeEnabled: false,
   flowHostOnLaunch: false,
@@ -1710,6 +1718,15 @@ export const SETTING_METADATA: SettingMeta[] = [
     kind: 'toggle',
     category: 'accessibility',
     aliases: ['underline shapes', 'annotation shapes', 'dashed', 'colorblind', 'cvd'],
+  },
+  {
+    key: 'navAnalyticItalics',
+    label: 'Italicize analytic entries in the nav pane',
+    description:
+      "Show the navigation pane's Analytic entries in italics so they stand out from tags and other entries by shape, not color alone. Also useful in dark mode and with 'Format nav pane entries by type' off, where the analytic color cue doesn't appear at all.",
+    kind: 'toggle',
+    category: 'accessibility',
+    aliases: ['analytic italics', 'nav pane', 'navigation', 'colorblind', 'cvd'],
   },
   {
     key: 'reduceMotion',
@@ -2631,6 +2648,7 @@ function sanitize(s: Settings): Settings {
     showCursorColorNames: !!s.showCursorColorNames,
     colorVisionFriendly: !!s.colorVisionFriendly,
     annotationShapes: !!s.annotationShapes,
+    navAnalyticItalics: !!s.navAnalyticItalics,
     overrideShadingSlots: sanitizeColorSlots(
       s.overrideShadingSlots,
       (s as { overrideShadingColorValue?: unknown }).overrideShadingColorValue,

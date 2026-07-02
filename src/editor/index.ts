@@ -2456,6 +2456,14 @@ function applyAnnotationShapes(on: boolean): void {
   else document.documentElement.removeAttribute('data-annotation-shapes');
 }
 
+/** Nav-pane analytic italics: an html class (same pattern as
+ *  `pmd-nav-flat`) that italicizes analytic nav entries so they don't
+ *  rely on the color cue — which dark mode and the flat nav both
+ *  remove entirely. */
+function applyNavAnalyticItalics(on: boolean): void {
+  document.documentElement.classList.toggle('pmd-nav-analytic-italic', on);
+}
+
 /** Steady text cursor: a body class that hides the native blinking
  *  caret; the italic-caret plugin then draws a steady caret in its
  *  place (CSS consumes the class). */
@@ -2659,6 +2667,7 @@ settings.subscribe((s) => {
   applyReduceMotion(s.reduceMotion);
   applyColorVision(s.colorVisionFriendly);
   applyAnnotationShapes(s.annotationShapes);
+  applyNavAnalyticItalics(s.navAnalyticItalics);
   applyCursorBlink(s.disableCursorBlink);
   if (s.readMode !== lastReadMode || s.hideEmphasisBordersInReadMode !== lastReadModeBorders) {
     lastReadMode = s.readMode;
@@ -2874,6 +2883,7 @@ applyIconSet(settings.get('iconSet'));
 applyReduceMotion(settings.get('reduceMotion'));
 applyColorVision(settings.get('colorVisionFriendly'));
 applyAnnotationShapes(settings.get('annotationShapes'));
+applyNavAnalyticItalics(settings.get('navAnalyticItalics'));
 applyPillVisibility(); // default-off dropzone pill + quick-card cluster, at boot
 // Build the timer panel + button bindings. Visibility is gated
 // on `timerVisible` (transient per-window setting); the panel

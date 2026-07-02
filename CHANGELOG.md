@@ -24,6 +24,11 @@ see `DETAILED_CHANGELOG.md`.
   palette engineered to stay distinguishable under red-green and blue-yellow
   color-vision deficiencies. Works in light and dark themes, and any colors
   you've set by hand still win.
+- **Analytics can be italicized in the nav pane.** A new Accessibility
+  toggle, **Italicize analytic entries in the nav pane**, marks Analytic
+  entries by shape instead of color alone — handy under color-vision
+  deficiencies, and in dark mode or the flat nav list, where the color cue
+  doesn't appear at all.
 - **The autosave button shows its real state by shape.** When autosave is
   on but not actually firing (a `.docx` file, or a doc that's never been
   saved), the ribbon button is now a hollow chip with a dashed outline
