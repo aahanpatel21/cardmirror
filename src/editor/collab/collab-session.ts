@@ -310,11 +310,15 @@ export class CollabSession {
           // edits depending on them would park in the causal-deps
           // queue. Catch-up re-fetching our own blobs is a no-op.
           this.emitStatus();
-          // A successful send proves the relay is reachable; skip the
-          // stream's remaining backoff so push delivery resumes now.
-          if (this.stream && this.stream.running && !this.stream.connected) {
-            this.stream.restart();
-          }
+          // A successful send proves the relay is reachable; skip any
+          // pending backoff wait. (A nudge, never a restart: aborting
+          // an in-flight handshake from the send loop starves the
+          // stream while the user types — see RoomStream.nudge.)
+          // A successful send proves the relay is reachable; skip any
+          // pending backoff wait. (A nudge, never a restart: aborting
+          // an in-flight handshake from the send loop starves the
+          // stream while the user types — see RoomStream.nudge.)
+          this.stream?.nudge();
           if (this.role === 'host' && this.postedCount % this.snapshotEvery === 0) {
             void this.uploadSnapshot();
           }
@@ -430,7 +434,10 @@ export class CollabSession {
         }
         if (page.lastSeq > this.lastSeq) this.lastSeq = page.lastSeq;
       }
-      this.connected = true;
+      // "Connected" is the STREAM's state (live push flowing) — a
+      // successful catch-up over plain HTTP must not paint the chip
+      // synced while push delivery is still down.
+      this.connected = this.stream ? this.stream.connected : true;
       this.emitStatus();
     } catch (err) {
       if (err instanceof RoomsError && err.status === 410) {

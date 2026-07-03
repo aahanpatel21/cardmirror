@@ -23,9 +23,14 @@ export interface RoomsMock {
   token: string;
   pause(): void;
   resume(): void;
+  /** Delay before the stream's hello frame (simulates handshake latency
+   *  so restart-thrash bugs are reproducible). 0 disables. */
+  setHelloDelay(ms: number): void;
   close(): Promise<void>;
   streamCount(roomId: string): number;
   updateCount(roomId: string): number;
+  /** Total stream CONNECT attempts (incl. ones that never helloed). */
+  streamAttempts(): number;
 }
 
 const MAX_STREAMS_PER_ROOM = 10;
@@ -36,6 +41,8 @@ export function startRoomsMock(): Promise<RoomsMock> {
   const rooms = new Map<string, Room>();
   let seqCounter = 0;
   let paused = false;
+  let helloDelayMs = 0;
+  let streamAttempts = 0;
 
   const json = (res: http.ServerResponse, status: number, body?: unknown) => {
     res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -153,6 +160,7 @@ export function startRoomsMock(): Promise<RoomsMock> {
     }
 
     if (req.method === 'GET' && sub === 'stream') {
+      streamAttempts++;
       const room = roomOr(res, roomId);
       if (!room) return;
       if (room.streams.size >= MAX_STREAMS_PER_ROOM) {
@@ -162,8 +170,13 @@ export function startRoomsMock(): Promise<RoomsMock> {
         ? room.updates[room.updates.length - 1]!.seq
         : (room.snapshot?.coversThroughSeq ?? 0);
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
-      res.write(`event: hello\ndata: {"lastSeq":${lastSeq}}\n\n`);
-      room.streams.add(res);
+      const sendHello = () => {
+        if (res.writableEnded || res.destroyed) return;
+        res.write(`event: hello\ndata: {"lastSeq":${lastSeq}}\n\n`);
+        room.streams.add(res);
+      };
+      if (helloDelayMs > 0) setTimeout(sendHello, helloDelayMs);
+      else sendHello();
       req.on('close', () => room.streams.delete(res));
       return;
     }
@@ -183,6 +196,9 @@ export function startRoomsMock(): Promise<RoomsMock> {
         resume: () => {
           paused = false;
         },
+        setHelloDelay: (ms) => {
+          helloDelayMs = ms;
+        },
         close: () =>
           new Promise<void>((r) => {
             for (const room of rooms.values()) for (const s of room.streams) s.destroy();
@@ -190,6 +206,7 @@ export function startRoomsMock(): Promise<RoomsMock> {
             server.closeAllConnections?.();
           }),
         streamCount: (id) => rooms.get(id)?.streams.size ?? 0,
+        streamAttempts: () => streamAttempts,
         updateCount: (id) => rooms.get(id)?.updates.length ?? 0,
       });
     });

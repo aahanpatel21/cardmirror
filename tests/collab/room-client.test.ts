@@ -120,6 +120,47 @@ describe('RoomStream', () => {
     stream.stop();
   });
 
+  it('nudge never aborts an in-flight handshake; restart does', async () => {
+    // The send loop calls nudge() on every success — during a slow
+    // handshake that must be a no-op, or steady typing aborts every
+    // connection before its hello (the field-observed starvation).
+    mock.setHelloDelay(150);
+    try {
+      const roomId = await client.createRoom();
+      let hellos = 0;
+      const stream = new RoomStream({
+        baseUrl: () => mock.url,
+        token: () => mock.token,
+        roomId,
+        minBackoffMs: 20,
+        maxBackoffMs: 50,
+        callbacks: {
+          onHello: () => hellos++,
+          onUpdate: () => {},
+          onPresence: () => {},
+          onEnded: () => {},
+          onFull: () => {},
+        },
+      });
+      const before = mock.streamAttempts();
+      stream.start();
+      await sleep(40); // mid-handshake (hello still 110ms away)
+      stream.nudge();
+      stream.nudge();
+      stream.nudge();
+      await sleep(200);
+      expect(hellos).toBe(1);
+      expect(mock.streamAttempts() - before).toBe(1); // no extra connects
+      stream.restart(); // the hard variant DOES abort + reconnect
+      await sleep(250);
+      expect(hellos).toBe(2);
+      expect(mock.streamAttempts() - before).toBe(2);
+      stream.stop();
+    } finally {
+      mock.setHelloDelay(0);
+    }
+  });
+
   it('reports room-full as terminal', async () => {
     const roomId = await client.createRoom();
     const holders: RoomStream[] = [];

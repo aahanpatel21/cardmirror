@@ -81,4 +81,56 @@ describe('reconnect ordering', () => {
     hostView.destroy();
     joinView.destroy();
   }, 20_000);
+
+  it('reconnects while the user types continuously (nudge must not abort handshakes)', async () => {
+    // The original heuristic restarted the stream on every send success
+    // while it wasn't connected — with a non-instant hello, steady
+    // typing aborted every handshake before its hello and push delivery
+    // never resumed. flushMs(40) < helloDelay(150) reproduces that.
+    mock.setHelloDelay(150);
+    try {
+      const FAST = { flushMs: 40, minBackoffMs: 30, maxBackoffMs: 80, catchUpMs: 60_000 };
+      const { session: host, shareCode } = await CollabSession.host({
+        pmDoc: simpleDoc('steady typing document'),
+        client,
+        ...FAST,
+      });
+      const hostView = mkView(host.plugins());
+      await settle();
+      host.start();
+      const joiner = await CollabSession.join({ ...decodeShareCode(shareCode)!, client, ...FAST });
+      const joinView = mkView(joiner.plugins());
+      await settle();
+      joiner.start();
+      await sleep(400); // initial hellos (150ms delay) land
+
+      // Outage, then revival with the host typing NON-STOP through the
+      // entire recovery window.
+      mock.pause();
+      host.restart();
+      joiner.restart();
+      await sleep(60);
+      mock.resume();
+      for (let i = 0; i < 30; i++) {
+        typeAfter(hostView, 'steady', ` w${i}`);
+        await sleep(60);
+        if (i === 20) {
+          // The defining assertion: push delivery must be flowing WHILE
+          // the host is still typing. The thrash bug only recovered
+          // after typing stopped, so early words never arrive mid-burst.
+          expect(docText(joinView.state.doc)).toContain('w5');
+        }
+      }
+      await sleep(600); // let the last flush + push land
+
+      expect(docText(joinView.state.doc)).toContain('w29');
+      expect(joinView.state.doc.eq(hostView.state.doc)).toBe(true);
+      await joiner.stop();
+      await host.stop();
+      hostView.destroy();
+      joinView.destroy();
+    } finally {
+      mock.setHelloDelay(0);
+    }
+  }, 20_000);
 });

@@ -179,6 +179,7 @@ export class RoomStream {
   private backoffMs: number;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private helloed = false;
+  private everHelloed = false;
 
   constructor(private readonly opts: RoomStreamOptions) {
     this.backoffMs = opts.minBackoffMs ?? 1000;
@@ -211,11 +212,27 @@ export class RoomStream {
     this.controller = null;
   }
 
-  /** Abort and reconnect promptly — wake-from-sleep, network change. */
+  /** Abort and reconnect promptly — wake-from-sleep, network change,
+   *  where the current socket may be silently dead. NOT for "the relay
+   *  is reachable, hurry up": that is `nudge()` — aborting an in-flight
+   *  attempt from a send-success loop kills every handshake before its
+   *  hello, and the stream never connects while the user types. */
   restart(): void {
     if (this.stopped) return;
     this.backoffMs = this.opts.minBackoffMs ?? 1000;
     this.controller?.abort();
+  }
+
+  /** Gentle hurry-up: if a backoff wait is pending, connect now; if an
+   *  attempt is already in flight (or connected), do nothing. */
+  nudge(): void {
+    if (this.stopped || this.helloed) return;
+    if (this.retryTimer !== null) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+      this.backoffMs = this.opts.minBackoffMs ?? 1000;
+      void this.connectLoop();
+    }
   }
 
   private scheduleRetry(): void {
@@ -239,6 +256,7 @@ export class RoomStream {
     if (eventName === 'hello') {
       this.backoffMs = this.opts.minBackoffMs ?? 1000;
       this.helloed = true;
+      this.everHelloed = true;
       let lastSeq = 0;
       try {
         const parsed = JSON.parse(dataText || '{}') as { lastSeq?: number };
@@ -282,8 +300,16 @@ export class RoomStream {
         return;
       }
       if (res.status === 409) {
-        this.stopped = true;
-        this.opts.callbacks.onFull();
+        // On a FIRST join, full means full — terminal. On a RECONNECT,
+        // the count may include our own not-yet-reaped ghost connection
+        // from the drop; the server clears those within a heartbeat
+        // cycle, so retry instead of ending an established session.
+        if (!this.everHelloed) {
+          this.stopped = true;
+          this.opts.callbacks.onFull();
+          return;
+        }
+        this.scheduleRetry();
         return;
       }
       if (!res.ok || !res.body) {
