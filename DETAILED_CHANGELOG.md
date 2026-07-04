@@ -7,6 +7,20 @@ in each release, see `CHANGELOG.md`.
 
 ## 0.1.0-beta.8 — 2026-07-03
 
+- **Collab field fixes (draft-installer round 1).** (a) *Joining now
+  swaps the doc IN the joining window.* The join flow reused
+  `newDocument()`, which on desktop SPAWNS a window — the session
+  binding installed into the original window's plugin source, but its
+  editor was never rebuilt, and the spawned window knew nothing about
+  the session: joiner saw an unrelated new window plus an inert
+  "Session: synced" chip (the stream WAS connected; nothing bound it to
+  an editor). New `replaceWithSessionDoc()` runs the web edition's
+  New-in-place path with the same overwrite prompt; cancelling unwinds
+  the join without touching the room (regression-tested). (b) *End/
+  leave confirm is an in-app overlay.* `window.confirm` on Windows/
+  Linux Electron never returns keyboard focus to the renderer — the
+  editor was untypeable until reload. Editor refocused after end/join.
+
 - **Open Developer Console ribbon command** (`openDevConsole`;
   desktop-only, hidden on web; no default binding — command-bar
   triggered, rebindable like any command; new "Diagnostics" group).

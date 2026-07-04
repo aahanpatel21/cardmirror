@@ -960,9 +960,13 @@ const collabDeps = {
   refreshPlugins: () => {
     if (view) view.updateState(view.state.reconfigure({ plugins: buildEditorPlugins() }));
   },
-  // Joining a session opens as a new unsaved doc; the Loro binding then
-  // replaces the empty content from the session's CRDT state.
-  newSessionDoc: () => ribbonContext.newDocument(),
+  // Joining a session opens a new unsaved doc IN THIS WINDOW — never
+  // via ribbonContext.newDocument(), which SPAWNS a window on desktop
+  // and would strand the session binding in a window that never gets
+  // it (field bug: joiner saw an unrelated new window plus an inert
+  // "synced" chip here). The Loro binding replaces the empty content
+  // from the session's CRDT state after the swap.
+  newSessionDoc: () => replaceWithSessionDoc(),
 };
 
 const ribbonContext: RibbonContext = {
@@ -1518,6 +1522,35 @@ async function onNewDocClicked(): Promise<void> {
   // Treat as non-pristine so subsequent Opens spawn.
   markNonPristineStarter();
   updateWindowTitle();
+}
+
+/** Join-session doc swap: the web edition's New-in-place path, minus
+ *  the spawn branch — the session binds to the CURRENT window's view.
+ *  Same overwrite protection as New: real edits prompt save/discard/
+ *  cancel; returns false when the user cancels (caller unwinds the
+ *  join without touching the room). */
+async function replaceWithSessionDoc(): Promise<boolean> {
+  if (multiDocActive) return false; // sessions are single-doc-window only
+  if (!isPristineStarter) {
+    const choice = await confirmNewDocOverwrite();
+    if (choice === 'cancel') return false;
+    if (choice === 'save') {
+      const saved = await runSaveAsFlow();
+      if (!saved) return false;
+    }
+  }
+  void clearCurrentJournal();
+  mountView(makeNewDocBody());
+  currentDocFilename = null;
+  setCurrentDocHandle(null);
+  currentDocFormat = null;
+  currentDocUid = newSessionDocUid();
+  currentDocId = null; // unsaved session copy → docId minted on first save
+  markCurrentDocClean();
+  syncSingleDocSpeechRegistration();
+  markNonPristineStarter();
+  updateWindowTitle();
+  return true;
 }
 
 /** Three-button overlay used by the single-doc "New document" flow.

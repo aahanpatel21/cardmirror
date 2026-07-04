@@ -7,6 +7,12 @@ see `DETAILED_CHANGELOG.md`.
 
 ## 0.1.0-beta.8 — 2026-07-03
 
+### Fixed (pre-release)
+
+- **Dialog boxes no longer freeze typing on Windows/Linux.** Confirmation
+  dialogs are now in-app overlays; the native ones could leave the
+  editor unable to type until a reload.
+
 ### Added
 
 - **Open Developer Console command.** The command bar can now open the

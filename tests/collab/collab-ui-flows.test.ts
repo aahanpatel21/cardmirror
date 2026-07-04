@@ -36,8 +36,19 @@ beforeAll(async () => {
   chip.id = 'collab-chip';
   chip.hidden = true;
   document.body.appendChild(chip);
-  window.confirm = vi.fn(() => true);
+  window.confirm = vi.fn(() => true); // legacy; end flow now uses the in-app overlay
 });
+
+/** Click a button in the active prompt overlay (endSessionFlow's
+ *  confirm is an in-app dialog now — window.confirm never returns
+ *  keyboard focus to the renderer on Windows/Linux Electron). */
+function clickPromptButton(label: string): void {
+  const btn = [...document.querySelectorAll('.pmd-route-overlay button')].find(
+    (b) => b.textContent === label,
+  ) as HTMLButtonElement | undefined;
+  if (!btn) throw new Error(`no prompt button labeled "${label}"`);
+  btn.click();
+}
 afterAll(async () => {
   await mock.close();
   localStorage.removeItem('pmd-collab');
@@ -71,7 +82,7 @@ describe('collab UI flows through the editor seams', () => {
       refreshPlugins: () => {
         hostView.updateState(hostView.state.reconfigure({ plugins: buildMiniPlugins() }));
       },
-      newSessionDoc: () => {},
+      newSessionDoc: () => true,
     };
 
     // The start flow copies the share code to the clipboard; capture it.
@@ -128,7 +139,11 @@ describe('collab UI flows through the editor seams', () => {
     hostView.dispatch(hostView.state.tr.setMeta(PMD_READ_MODE_TOGGLE, false));
 
     // Host ends the session: partner is notified, seams clear, chip hides.
-    await collabUi.endSessionFlow(deps);
+    // The confirm is an in-app overlay — click it like a user would.
+    const endP = collabUi.endSessionFlow(deps);
+    await settle();
+    clickPromptButton('End Session');
+    await endP;
     await sleep(120);
     expect(collabUi.activeSession()).toBeNull();
     expect(collabPluginSource()).toBeNull();
@@ -137,5 +152,43 @@ describe('collab UI flows through the editor seams', () => {
     await partner.stop();
     partnerView.destroy();
     hostView.destroy();
+  }, 20_000);
+
+  it('cancelling the session-doc swap unwinds the join without touching the room', async () => {
+    // A live room hosted outside the UI flows (module `active` state stays free).
+    const client = new RoomsClient({ baseUrl: () => mock.url, token: () => mock.token });
+    const { session: host, shareCode } = await CollabSession.host({
+      pmDoc: simpleDoc('host doc'),
+      client,
+    });
+
+    let v = mkIndexStyleView();
+    const deps = {
+      getView: () => v,
+      refreshPlugins: () => {
+        v.updateState(v.state.reconfigure({ plugins: buildMiniPlugins() }));
+      },
+      // User balks at overwriting their unsaved edits.
+      newSessionDoc: () => false,
+    };
+    await collabUi.joinSessionWithCode(deps, shareCode);
+    await settle();
+    expect(collabUi.activeSession()).toBeNull();
+    expect(collabPluginSource()).toBeNull();
+    expect(document.getElementById('collab-chip')!.hidden).toBe(true);
+
+    // The room is untouched — a second join attempt that goes through works.
+    const okDeps = { ...deps, newSessionDoc: () => true };
+    await collabUi.joinSessionWithCode(okDeps, shareCode);
+    await settle();
+    expect(collabUi.activeSession()).not.toBeNull();
+    await collabUi.activeSession()!.stop();
+    // manual teardown (we bypassed endSessionFlow's cleanup)
+    const endP = collabUi.endSessionFlow(deps);
+    await settle();
+    clickPromptButton('Leave Session');
+    await endP;
+    await host.end();
+    v.destroy();
   }, 20_000);
 });

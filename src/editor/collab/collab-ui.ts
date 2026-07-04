@@ -19,7 +19,7 @@ import type { EditorView } from 'prosemirror-view';
 import { LoroUndoPlugin, loroSyncPluginKey, loroUndoPluginKey, undo as loroUndo, redo as loroRedo } from 'loro-prosemirror';
 import { settings } from '../settings.js';
 import { showToast } from '../toast.js';
-import { promptForText } from '../text-prompt.js';
+import { promptForText, promptForChoice } from '../text-prompt.js';
 import { markSyncOrigin } from '../sync-origin.js';
 import { setCollabPluginSource, setCollabTransactionTagger } from './collab-hooks.js';
 import { getElectronHost } from '../host/index.js';
@@ -37,7 +37,12 @@ import { CollabSession } from './collab-session.js';
 export interface CollabUiDeps {
   getView(): EditorView | null;
   refreshPlugins(): void;
-  newSessionDoc(): void;
+  /** Swap THIS window's editor to a fresh unsaved doc for a joined
+   *  session — must never spawn a window (the binding installs into the
+   *  current view; a spawned window would never get it — field bug on
+   *  desktop, 2026-07-03). Resolves false if the user cancelled out of
+   *  overwriting unsaved edits. */
+  newSessionDoc(): boolean | Promise<boolean>;
 }
 
 interface ActiveState {
@@ -227,7 +232,7 @@ export async function joinSessionFlow(deps: CollabUiDeps): Promise<void> {
 /** Join with a code in hand — the prompt flow above and the Receive
  *  pill's invite Join both land here. */
 export async function joinSessionWithCode(deps: CollabUiDeps, code: string): Promise<void> {
-  if (!collabEnabled()) return;
+  if (!guardReady(deps)) return;
   if (active) {
     showToast('Already in a session — end or leave it first');
     return;
@@ -251,15 +256,25 @@ export async function joinSessionWithCode(deps: CollabUiDeps, code: string): Pro
     });
     active = { session, shareCode: code.trim() };
     installSeams(session, deps);
-    // Fresh unsaved doc; buildEditorPlugins now includes the binding,
-    // which replaces the empty content from the session state.
-    deps.newSessionDoc();
+    // Fresh unsaved doc IN THIS WINDOW; buildEditorPlugins now includes
+    // the binding, which replaces the empty content from the session
+    // state. A false return = the user balked at overwriting unsaved
+    // edits — unwind without touching the room.
+    if (!(await deps.newSessionDoc())) {
+      active = null;
+      clearSeams();
+      await session.stop();
+      updateChip(null);
+      showToast('Join cancelled');
+      return;
+    }
     // The join snapshot already carries the host's thread map — land it
     // in the fresh pane's plugin state.
     commentsSync!.pull();
     session.start();
     updateChip({ connected: true, queuedUpdates: 0 });
     showToast('Joined the session');
+    deps.getView()?.focus();
   } catch (err) {
     active = null;
     clearSeams();
@@ -334,12 +349,17 @@ export async function endSessionFlow(deps: CollabUiDeps): Promise<void> {
     return;
   }
   const isHost = active.session.role === 'host';
-  const ok = window.confirm(
-    isHost
-      ? 'End the session for everyone? Participants keep their current copy.'
-      : 'Leave the session? Your copy stays as it is now.',
-  );
-  if (!ok) return;
+  // In-app overlay, NOT window.confirm: Electron's native confirm on
+  // Windows/Linux never hands keyboard focus back to the renderer —
+  // the editor was untypeable until a reload (field bug, 2026-07-03).
+  const choice = await promptForChoice({
+    message: isHost ? 'End the session for everyone?' : 'Leave the session?',
+    detail: isHost
+      ? 'Participants keep their current copy.'
+      : 'Your copy stays as it is now.',
+    choices: [{ value: 'confirm', label: isHost ? 'End Session' : 'Leave Session' }],
+  });
+  if (choice !== 'confirm') return;
   const { session } = active;
   active = null;
   try {
@@ -350,6 +370,7 @@ export async function endSessionFlow(deps: CollabUiDeps): Promise<void> {
     updateChip(null);
     deps.refreshPlugins();
     showToast(isHost ? 'Session ended' : 'Left the session');
+    deps.getView()?.focus();
   }
 }
 
