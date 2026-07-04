@@ -238,3 +238,62 @@ describe('room-history integrity (compaction-loss self-heal)', () => {
     }
   }, 25_000);
 });
+
+describe('large documents (413 avoidance via chunked updates)', () => {
+  it('P15: oversized seeds and updates ship as cap-sized chunks and still converge', async () => {
+    const mock = await startRoomsMock();
+    const client = new RoomsClient({ baseUrl: () => mock.url, token: () => mock.token });
+    try {
+      // A tiny per-update limit forces BOTH paths: the seed exceeds it
+      // (chunk-seeded room) and so does a big paste later.
+      const { session: host, shareCode } = await CollabSession.host({
+        pmDoc: simpleDoc('the enormous master file body that will not fit in one update'),
+        client,
+        flushMs: 40,
+        minBackoffMs: 30,
+        maxBackoffMs: 60,
+        updateByteLimit: 400,
+      });
+      const hostView = mkView(host.plugins());
+      await settle();
+      host.start();
+
+      // Joiner consumes the snapshot-fast-path seed.
+      const joiner = await CollabSession.join({
+        ...decodeShareCode(shareCode)!,
+        client,
+        flushMs: 40,
+        minBackoffMs: 30,
+        maxBackoffMs: 60,
+        updateByteLimit: 400,
+      });
+      const joinerView = mkView(joiner.plugins());
+      await settle();
+      joiner.start();
+      await sleep(300);
+      expect(docText(joinerView.state.doc)).toContain('master file body');
+
+      // Oversized edit (a paste bigger than the update cap) drains via
+      // the snapshot fallback and reaches the partner.
+      typeAfter(hostView, 'enormous', ' ' + 'BIGPASTE'.repeat(120));
+      await sleep(600);
+      expect(docText(joinerView.state.doc)).toContain('BIGPASTE'.repeat(3));
+
+      // The room's stored state stays coherent for a fresh join.
+      const fresh = await CollabSession.join({ ...decodeShareCode(shareCode)!, client, flushMs: 40 });
+      const freshView = mkView(fresh.plugins());
+      await settle();
+      expect(docText(freshView.state.doc)).toContain('BIGPASTE');
+      expect(docText(freshView.state.doc)).toContain('master file body'); // seed content intact
+
+      await fresh.stop();
+      await joiner.stop();
+      await host.stop();
+      hostView.destroy();
+      joinerView.destroy();
+      freshView.destroy();
+    } finally {
+      await mock.close();
+    }
+  }, 25_000);
+});

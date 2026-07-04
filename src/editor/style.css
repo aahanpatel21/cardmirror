@@ -12263,6 +12263,27 @@ body.pmd-multi-doc .pmd-cardcutter-trim {
   margin-right: 2px;
 }
 
+/* Send pill click-to-invite mode: pointer affordance on the bar, a
+   small header above the rows, and hoverable rows (drag mode highlights
+   via the controller instead). */
+.pmd-send-bar-clickable {
+  cursor: pointer;
+}
+.pmd-send-invite-header {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--pmd-c-accent);
+  padding: 0.35rem 0.6rem 0.15rem;
+  user-select: none;
+}
+.pmd-send-invite-mode .pmd-send-target {
+  cursor: pointer;
+}
+.pmd-send-invite-mode .pmd-send-target:hover {
+  background: var(--pmd-c-hover);
+}
+
 /* Session-invite rows act, they don't insert: a compact Join button in
    the accent color where the drag affordance would be. */
 .pmd-receive-row-join {

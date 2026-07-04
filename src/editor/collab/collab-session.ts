@@ -99,6 +99,10 @@ export interface CollabSessionOptions {
   echoTimeoutMs?: number;
   /** Delay before the first room-history audit; injectable for tests. */
   auditDelayMs?: number;
+  /** Blobs above this many bytes ship via the snapshot endpoint (8x the
+   *  relay's per-update cap) instead of as updates; injectable for
+   *  tests. Default sits under the relay's 5MB update cap. */
+  updateByteLimit?: number;
 }
 
 export class CollabSession {
@@ -114,6 +118,11 @@ export class CollabSession {
   private readonly snapshotEvery: number;
   private readonly echoTimeoutMs: number;
   private readonly auditDelayMs: number;
+  private readonly updateByteLimitBase: number;
+  private updateByteLimitOverride: number | null = null;
+  private get updateByteLimit(): number {
+    return this.updateByteLimitOverride ?? this.updateByteLimitBase;
+  }
 
   private stream: RoomStream | null = null;
   private lastSeq = 0;
@@ -124,7 +133,15 @@ export class CollabSession {
    *  and resuming from export-time state would silently drop every
    *  queued-but-unposted update. */
   private ackedVersion: ReturnType<LoroDoc['version']>;
-  private outQueue: { blob: Uint8Array; version: ReturnType<LoroDoc['version']> }[] = [];
+  private outQueue: {
+    blob: Uint8Array;
+    /** Doc version when this diff was exported (acked on post). */
+    version: ReturnType<LoroDoc['version']>;
+    /** Version the diff starts FROM — chunked re-exports need it, and
+     *  intermediate chunks ack to it so a crash mid-sequence re-sends
+     *  the whole span instead of losing the tail. */
+    from: ReturnType<LoroDoc['version']>;
+  }[] = [];
   private sending = false;
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private catchUpTimer: ReturnType<typeof setInterval> | null = null;
@@ -164,6 +181,7 @@ export class CollabSession {
     this.snapshotEvery = opts.snapshotEvery ?? 50;
     this.echoTimeoutMs = opts.echoTimeoutMs ?? 8000;
     this.auditDelayMs = opts.auditDelayMs ?? 15_000;
+    this.updateByteLimitBase = opts.updateByteLimit ?? 4_500_000;
     this.lastSentVersion = this.loroDoc.version();
     this.ackedVersion = this.lastSentVersion;
     this.streamOpts = {
@@ -185,6 +203,7 @@ export class CollabSession {
     minBackoffMs?: number;
     maxBackoffMs?: number;
     snapshotEvery?: number;
+    updateByteLimit?: number;
   }): Promise<{ session: CollabSession; shareCode: string }> {
     const keyBytes = generateRoomKeyBytes();
     const key = await importRoomKey(keyBytes);
@@ -197,10 +216,24 @@ export class CollabSession {
 
     const session = new CollabSession({ ...opts, roomId, key, role: 'host', loroDoc });
     const seed = loroDoc.export({ mode: 'snapshot' });
-    const seq = await opts.client.postUpdate(roomId, await encryptBlob(key, seed));
+    let seq: number;
+    if (seed.length > session.updateByteLimit) {
+      // Large document: the seed exceeds the relay's per-update cap
+      // (413 in the field on big master files). Ship it as cap-sized
+      // update chunks — ordinary log entries that joins and live peers
+      // consume through the normal paths.
+      const emptyVersion = new LoroDoc().version();
+      const chunks = session.exportChunks(emptyVersion);
+      seq = 0;
+      for (const chunk of chunks) {
+        seq = await opts.client.postUpdate(roomId, await encryptBlob(key, chunk));
+      }
+    } else {
+      seq = await opts.client.postUpdate(roomId, await encryptBlob(key, seed));
+    }
     session.lastSeq = seq;
     session.lastSentVersion = loroDoc.version();
-    session.ackedVersion = session.lastSentVersion; // seed post succeeded
+    session.ackedVersion = session.lastSentVersion; // seed delivery succeeded
     return { session, shareCode: encodeShareCode(roomId, keyBytes) };
   }
 
@@ -215,6 +248,7 @@ export class CollabSession {
     catchUpMs?: number;
     minBackoffMs?: number;
     maxBackoffMs?: number;
+    updateByteLimit?: number;
   }): Promise<CollabSession> {
     const key = await importRoomKey(opts.keyBytes);
     const loroDoc = new LoroDoc();
@@ -441,8 +475,9 @@ export class CollabSession {
     // version vector actually advancing (compare() === 0 means equal).
     if (version.compare(this.lastSentVersion) === 0) return;
     const diff = this.loroDoc.export({ mode: 'update', from: this.lastSentVersion });
+    const from = this.lastSentVersion;
     this.lastSentVersion = version;
-    this.outQueue.push({ blob: diff, version });
+    this.outQueue.push({ blob: diff, version, from });
     this.emitStatus();
     void this.drainQueue();
   }
@@ -454,6 +489,13 @@ export class CollabSession {
       while (this.outQueue.length > 0) {
         const entry = this.outQueue[0]!;
         try {
+          if (entry.blob.length > this.updateByteLimit) {
+            // Oversized diff (huge paste, or the audit's full-history
+            // repost on a big doc): split it into cap-sized update
+            // chunks and keep draining.
+            this.chunkQueueHead();
+            continue;
+          }
           const seq = await this.client.postUpdate(
             this.roomId,
             await encryptBlob(this.key, entry.blob),
@@ -488,9 +530,14 @@ export class CollabSession {
             this.handleEnded();
             return;
           }
-          if (err instanceof RoomsError && err.status >= 400 && err.status < 500 && err.status !== 409) {
-            // Unpostable (413 etc.) — dropping would lose data; keep it
-            // queued and let the retry surface the stall in the status.
+          if (err instanceof RoomsError && err.status === 413 && entry.blob.length > 1024) {
+            // Server-side cap disagreement (backstop for the proactive
+            // size check above): force a re-chunk by treating the
+            // server's cap as authoritative for this entry.
+            this.updateByteLimitOverride = Math.floor(entry.blob.length / 2);
+            this.chunkQueueHead();
+            this.updateByteLimitOverride = null;
+            continue;
           }
           this.connected = false;
           this.emitStatus();
@@ -688,9 +735,11 @@ export class CollabSession {
         '[collab] the room lost ops this replica holds (compacted away?) — reposting full history',
       );
       this.loroDoc.commit();
-      const full = this.loroDoc.export({ mode: 'update' });
-      const seq = await this.client.postUpdate(this.roomId, await encryptBlob(this.key, full));
-      if (this.stream?.connected) this.awaitingEcho = { seq, at: Date.now() };
+      const emptyVersion = new LoroDoc().version();
+      for (const chunk of this.exportChunks(emptyVersion)) {
+        const seq = await this.client.postUpdate(this.roomId, await encryptBlob(this.key, chunk));
+        if (this.stream?.connected) this.awaitingEcho = { seq, at: Date.now() };
+      }
     } catch {
       /* advisory — the next scheduled audit retries */
     }
@@ -723,6 +772,63 @@ export class CollabSession {
     } catch {
       /* compaction is best-effort; the log just stays longer */
     }
+  }
+
+  /** Split the ops between two versions into update blobs that each
+   *  fit under the relay's per-update cap (the "chunked client-side"
+   *  the wire design promised). Chunks are ORDINARY updates: streams
+   *  push them live and importers park early arrivals in the causal-
+   *  dependency queue until the set completes — no snapshot detour, no
+   *  log truncation, no data-loss surface. */
+  private exportChunks(
+    from: ReturnType<LoroDoc['version']>,
+  ): Uint8Array[] {
+    this.loroDoc.commit();
+    const to = this.loroDoc.version();
+    const spans: { id: { peer: `${number}`; counter: number }; len: number }[] = [];
+    for (const [peer, end] of to.toJSON()) {
+      const start = from.get(peer) ?? 0;
+      if (end > start) spans.push({ id: { peer, counter: start }, len: end - start });
+    }
+    const out: Uint8Array[] = [];
+    const emit = (sp: typeof spans): void => {
+      if (sp.length === 0) return;
+      const blob = this.loroDoc.export({ mode: 'updates-in-range', spans: sp });
+      const totalLen = sp.reduce((n, x) => n + x.len, 0);
+      if (blob.length <= this.updateByteLimit || totalLen <= 1) {
+        out.push(blob); // single-op blobs ship as-is; the server cap is 8x our limit
+        return;
+      }
+      if (sp.length > 1) {
+        const mid = Math.ceil(sp.length / 2);
+        emit(sp.slice(0, mid));
+        emit(sp.slice(mid));
+      } else {
+        const span = sp[0]!;
+        const half = Math.floor(span.len / 2);
+        emit([{ id: span.id, len: half }]);
+        emit([{ id: { peer: span.id.peer, counter: span.id.counter + half }, len: span.len - half }]);
+      }
+    };
+    emit(spans);
+    return out;
+  }
+
+  /** Replace the oversized queue head with its chunked equivalents.
+   *  Intermediate chunks ack back to the span's FROM version, so a
+   *  crash mid-sequence re-exports the whole span on resume (imports
+   *  are idempotent); only the final chunk advances to the head's end
+   *  version. */
+  private chunkQueueHead(): void {
+    const entry = this.outQueue[0]!;
+    const chunks = this.exportChunks(entry.from);
+    const replacements = chunks.map((blob, i) => ({
+      blob,
+      version: i === chunks.length - 1 ? entry.version : entry.from,
+      from: entry.from,
+    }));
+    this.outQueue.splice(0, 1, ...replacements);
+    this.emitStatus();
   }
 
   private emitStatus(): void {

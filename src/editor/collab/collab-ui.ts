@@ -451,9 +451,24 @@ function sessionDocTitle(): string {
   return t === 'CardMirror' ? '' : t;
 }
 
-/** Send a session invite to the starred partner/group through the
- *  pairing mailbox (sealed box; version-floored so pre-invite clients
- *  get the update-required toast instead of a dead card row). */
+/** Shared invite-send tail: sealed pairing message, version-floored so
+ *  pre-invite clients get the update-required toast instead of a dead
+ *  card row. Assumes an active session. */
+async function sendInviteTo(target: { codes: string[]; label: string; via?: string }): Promise<void> {
+  const item = buildRoomInviteItem({
+    shareCode: active!.shareCode,
+    title: sessionDocTitle(),
+  });
+  const res = await pairingRelayClient.send(target.codes, item, {
+    via: target.via,
+    minReceiverVersion: ROOM_INVITE_MIN_VERSION,
+  });
+  if (res.fail === 0) showToast(`Invited ${target.label} ✓`);
+  else if (res.ok === 0) showToast(`Couldn't reach ${target.label}`);
+  else showToast(`Invited ${target.label} (${res.fail} failed)`);
+}
+
+/** Send a session invite to the starred partner/group. */
 export async function inviteStarredFlow(): Promise<void> {
   if (!collabEnabled()) return;
   if (!active) {
@@ -477,17 +492,30 @@ export async function inviteStarredFlow(): Promise<void> {
     showToast('The starred group has no recipients yet');
     return;
   }
-  const item = buildRoomInviteItem({
-    shareCode: active.shareCode,
-    title: sessionDocTitle(),
-  });
-  const res = await pairingRelayClient.send(target.codes, item, {
-    via: target.via,
-    minReceiverVersion: ROOM_INVITE_MIN_VERSION,
-  });
-  if (res.fail === 0) showToast(`Invited ${target.label} ✓`);
-  else if (res.ok === 0) showToast(`Couldn't reach ${target.label}`);
-  else showToast(`Invited ${target.label} (${res.fail} failed)`);
+  await sendInviteTo(target);
+}
+
+/** The Send pill's click-to-invite (§6 picker-first flow): with no
+ *  active session, START one on the current doc, then invite the
+ *  picked partner/group; with one active, just invite. */
+export async function inviteTargetFlow(
+  deps: CollabUiDeps,
+  target: { codes: string[]; label: string; via?: string },
+): Promise<void> {
+  if (!collabEnabled()) return;
+  if (!settings.get('pairingEnabled')) {
+    showToast('Card sharing is off — invites travel through it');
+    return;
+  }
+  if (target.codes.length === 0) {
+    showToast('That group has no recipients yet');
+    return;
+  }
+  if (!active) {
+    await startSessionFlow(deps);
+    if (!active) return; // start failed/cancelled — its toast explains
+  }
+  await sendInviteTo(target);
 }
 
 export async function endSessionFlow(deps: CollabUiDeps): Promise<void> {

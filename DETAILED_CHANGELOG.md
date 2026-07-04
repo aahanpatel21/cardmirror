@@ -7,6 +7,32 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Collab: click-to-invite Send pill, chunked large-doc sync, quieter
+  console** (`send-pill-ui.ts`, `collab-hooks.ts`, `collab-ui.ts`,
+  `collab-session.ts`, `patches/`, tests). (a) *The Send pill is now
+  clickable* (when the collab gate is open): click → the same
+  partner/group rows in invite mode with an "Invite to collaboration
+  session" header — picking one starts a session on the current doc if
+  none is active, then sends the invite (§6's picker-first flow, now
+  ~2 clicks total). Drag-to-send is unchanged. (b) *Large documents
+  can host sessions* — the field 413: the seed (full CRDT snapshot)
+  exceeded the relay's 5MB per-update cap on big master files. All
+  oversized payloads (seeds, huge pastes, the audit's full-history
+  repost) now ship as CAP-SIZED UPDATE CHUNKS via loro's
+  updates-in-range export — ordinary log entries that streams push
+  live and importers assemble through the causal-dependency queue. No
+  snapshot detour, no truncation, no new data-loss surface; a server
+  413 on a normal-sized blob re-chunks at half size as a backstop
+  (P15). Intermediate chunks ack back to the span start, so a crash
+  mid-sequence re-sends the whole span instead of losing the tail.
+  (c) *"Cannot find the loroNode" per keystroke silenced*: the
+  selection stash ran on the raw keystroke transaction, one step
+  before the doc-changed sync pushes the edit into loro — it now
+  captures only at agreement points (the doc-changed follow-up, or
+  doc-untouched transactions). The occasional "posted update never
+  echoed" console line is the self-echo watchdog working as designed
+  (transient network) — bursts of it would point at relay health.
+
 - **Collab field fixes (stress-test round 2): compaction data loss +
   minimal-diff imports + lease-ad polish**
   (`collab-session.ts`, `patches/loro-prosemirror+0.4.3.patch`,

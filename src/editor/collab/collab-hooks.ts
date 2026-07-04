@@ -61,3 +61,25 @@ export function setCollabInviteJoiner(fn: ((shareCode: string) => void) | null):
 export function collabInviteJoiner(): ((shareCode: string) => void) | null {
   return inviteJoiner;
 }
+
+/** A pairing recipient resolved by the Send pill (one partner, or a
+ *  group fanned out to its members). */
+export interface CollabInviteTarget {
+  codes: string[];
+  label: string;
+  via?: string;
+}
+
+/** Invite-send seam: the Send pill's click mode hands a picked
+ *  partner/group to the lazily-loaded collab module, which starts a
+ *  session on the current doc if none is active and sends the invite
+ *  (§6's picker-first flow). Null while the collab gate is closed. */
+let inviter: ((target: CollabInviteTarget) => void) | null = null;
+
+export function setCollabInviter(fn: ((target: CollabInviteTarget) => void) | null): void {
+  inviter = fn;
+}
+
+export function collabInviter(): ((target: CollabInviteTarget) => void) | null {
+  return inviter;
+}

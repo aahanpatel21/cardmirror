@@ -130,7 +130,7 @@ import {
   readModeAwareUndo,
   readModeAwareRedo,
 } from './read-mode-plugin.js';
-import { tagCollabTransaction, collabPluginSource, setCollabInviteJoiner } from './collab/collab-hooks.js';
+import { tagCollabTransaction, collabPluginSource, setCollabInviteJoiner, setCollabInviter } from './collab/collab-hooks.js';
 import { learnHighlightPlugin, flashcardRangeAt } from './learn-highlight-plugin.js';
 import { repairHighlightPlugin } from './repair-highlight-plugin.js';
 import { aiWorkingPlugin } from './ai/ai-working-plugin.js';
@@ -951,6 +951,9 @@ function loadCollabUi(): Promise<typeof import('./collab/collab-ui.js')> {
 // setter); the pill itself gates the Join button on collabEnabled().
 setCollabInviteJoiner((code) => {
   void loadCollabUi().then((m) => m.joinSessionWithCode(collabDeps, code));
+});
+setCollabInviter((target) => {
+  void loadCollabUi().then((m) => m.inviteTargetFlow(collabDeps, target));
 });
 const collabDeps = {
   getView: () => view,
