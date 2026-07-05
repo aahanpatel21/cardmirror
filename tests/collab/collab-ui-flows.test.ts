@@ -29,7 +29,12 @@ let mock: RoomsMock;
 
 beforeAll(async () => {
   mock = await startRoomsMock();
-  localStorage.setItem('pmd-collab', '1'); // open the gate
+  // Co-editing is desktop-only: the gate is hard-closed on a browser
+  // host, so present as an Electron host before getHost() is first
+  // resolved. The stub only needs to exist — kind is read off a field,
+  // and every host method this flow touches is optional-chained.
+  (window as unknown as { electronAPI?: unknown }).electronAPI = {};
+  localStorage.setItem('pmd-collab', '1'); // open the gate (desktop path)
   settings.set('pairingRelayUrl', mock.url);
   settings.set('pairingRelayToken', mock.token);
   const chip = document.createElement('div');
@@ -52,6 +57,7 @@ function clickPromptButton(label: string): void {
 afterAll(async () => {
   await mock.close();
   localStorage.removeItem('pmd-collab');
+  delete (window as unknown as { electronAPI?: unknown }).electronAPI;
 });
 
 /** index.ts's plugin assembly in miniature: read mode + whatever the

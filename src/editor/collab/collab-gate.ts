@@ -1,19 +1,37 @@
 /**
  * Collaboration-session feature gate. DORMANT BY DEFAULT.
  *
- * Enablement is deliberately unreachable for packaged release builds:
+ * Co-editing is a DESKTOP-ONLY feature. The web edition categorically
+ * has no server-dependent capabilities, so the gate is hard-closed on
+ * a browser host before any flag is consulted — neither the build-time
+ * `VITE_COLLAB` nor the runtime `localStorage['pmd-collab']` flip can
+ * open it in the browser. (A future Tauri desktop host reports a
+ * non-`browser` kind and is treated like Electron.)
+ *
+ * On a desktop host, enablement is still deliberately unreachable for
+ * packaged release builds:
  *   - dev/build: `VITE_COLLAB=1` in the environment at vite time, or
- *   - a manual `localStorage['pmd-collab'] = '1'` console flip for
- *     quick web testing.
+ *   - a manual `localStorage['pmd-collab'] = '1'` console flip.
  * Flipping the feature on for a release is a code change here (the
  * same posture as the pairing entitlement flag: an env var cannot
  * reach a packaged app).
  *
  * Zero heavy imports — this module is consulted from the main editor
- * path; everything Loro/collab loads lazily only after the gate opens.
+ * path; `host` is already on that path (types-only wrappers), and
+ * everything Loro/collab loads lazily only after the gate opens.
  */
 
+import { getHost } from '../host/index.js';
+
 export function collabEnabled(): boolean {
+  // Web edition: no server-dependent capabilities, period. This is the
+  // categorical guarantee — no build-time or runtime flag overrides it.
+  try {
+    if (getHost().kind === 'browser') return false;
+  } catch {
+    /* no host resolvable → treat as not-desktop, stay closed */
+    return false;
+  }
   try {
     if ((import.meta as { env?: Record<string, string> }).env?.['VITE_COLLAB'] === '1') return true;
   } catch {

@@ -235,6 +235,7 @@ function guardReady(deps: CollabUiDeps): EditorView | null {
 }
 
 export async function startSessionFlow(deps: CollabUiDeps): Promise<void> {
+  if (!collabEnabled()) return; // desktop-only; inert on the web edition
   const view = guardReady(deps);
   if (!view) return;
   if (active) {
@@ -379,6 +380,7 @@ export async function joinSessionWithCode(deps: CollabUiDeps, code: string): Pro
  *  the stored cursor. A tombstoned room degrades through the normal
  *  onEnded path ("this copy is now yours alone") and clears the record. */
 export async function resumeSessionFlow(deps: CollabUiDeps, roomId: string): Promise<void> {
+  if (!collabEnabled()) return; // desktop-only; inert on the web edition
   if (!guardReady(deps)) return;
   if (active) {
     showToast(
