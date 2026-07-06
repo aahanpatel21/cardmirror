@@ -11,6 +11,8 @@ import {
   SettingsStore,
   SETTING_METADATA,
   toggleableSettingMetas,
+  cleanToggleLabel,
+  toggleCommandName,
   type Settings,
 } from '../../src/editor/settings.js';
 
@@ -67,5 +69,36 @@ describe('toggleableSettingMetas', () => {
     expect(
       toggleableSettingMetas(mkEnv({ store })).map((m) => String(m.key)),
     ).toContain('createReferenceHeadingBold');
+  });
+});
+
+describe('toggle command labels', () => {
+  it('strips a redundant leading verb and re-capitalizes', () => {
+    expect(cleanToggleLabel('Enable AI features')).toBe('AI features');
+    expect(cleanToggleLabel('Enable card sharing')).toBe('Card sharing');
+    expect(cleanToggleLabel('Show undo / redo buttons')).toBe('Undo / redo buttons');
+    expect(cleanToggleLabel('Include the FOR REFERENCE heading')).toBe('FOR REFERENCE heading');
+    expect(cleanToggleLabel('Use Gray-50% body text')).toBe('Gray-50% body text');
+  });
+
+  it('leaves labels without a leading verb untouched', () => {
+    expect(cleanToggleLabel('Editor spellcheck')).toBe('Editor spellcheck');
+    expect(cleanToggleLabel('Steady text cursor (no blinking)')).toBe(
+      'Steady text cursor (no blinking)',
+    );
+    // "use" mid-label must not be stripped — only a leading verb is.
+    expect(cleanToggleLabel('F3 condense: use pilcrows')).toBe('F3 condense: use pilcrows');
+  });
+
+  it('prefixes Create Reference toggles and cleans the rest', () => {
+    const bySrcKey = (k: string) => SETTING_METADATA.find((m) => m.key === k)!;
+    expect(toggleCommandName(bySrcKey('createReferenceHeadingBold'))).toBe(
+      'Toggle Create Reference: Bold heading',
+    );
+    expect(toggleCommandName(bySrcKey('createReferenceIncludeHeading'))).toBe(
+      'Toggle Create Reference: FOR REFERENCE heading',
+    );
+    expect(toggleCommandName(bySrcKey('smartQuotes'))).toBe('Toggle Smart quotes');
+    expect(toggleCommandName(bySrcKey('aiFeaturesEnabled'))).toBe('Toggle AI features');
   });
 });

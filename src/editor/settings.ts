@@ -2906,6 +2906,31 @@ export function toggleableSettingMetas(env: ToggleEnv): SettingMeta[] {
   );
 }
 
+/** Sections whose setting labels are context-free outside the settings
+ *  dialog (e.g. "Bold heading"), so their toggle commands take a section
+ *  prefix for clarity in the command bar. Add a section here to prefix it. */
+export const TOGGLE_CONTEXT_SECTIONS = new Set<string>(['Create Reference']);
+
+/** A setting label with a redundant leading verb stripped, so a "Toggle
+ *  <this>" command name doesn't read as "Toggle Enable …"; the first letter
+ *  is re-capitalized. The command bar still matches the ORIGINAL label, so
+ *  "enable card sharing" continues to find "Toggle Card sharing". */
+export function cleanToggleLabel(label: string): string {
+  const stripped = label.replace(/^(?:enable|show|include|use)\s+(?:the\s+)?/i, '');
+  if (!stripped || stripped === label) return label;
+  return stripped.charAt(0).toUpperCase() + stripped.slice(1);
+}
+
+/** Display name for a setting's toggle command: "Toggle <clean label>",
+ *  prefixed with the section for context-free labels (see
+ *  TOGGLE_CONTEXT_SECTIONS). */
+export function toggleCommandName(m: SettingMeta): string {
+  const base = cleanToggleLabel(m.label);
+  const prefixed =
+    m.section && TOGGLE_CONTEXT_SECTIONS.has(m.section) ? `${m.section}: ${base}` : base;
+  return `Toggle ${prefixed}`;
+}
+
 /** Origin info handed to settings subscribers. `remote` is true when
  *  the change arrived from ANOTHER window via the cross-window storage
  *  event, rather than a `set()` in this window. Subscribers that drive

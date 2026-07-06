@@ -38,6 +38,8 @@ import {
   settings,
   SETTING_METADATA,
   toggleableSettingMetas,
+  toggleCommandName,
+  cleanToggleLabel,
   type Settings,
   type SettingsCategory,
 } from './settings.js';
@@ -423,11 +425,14 @@ function searchSettingToggleSource(query: string): PaletteResult[] {
     isWindows: isWindowsHost(),
     get: (k) => settings.get(k),
   });
-  // Haystack: "toggle <label> <aliases> on off enable disable". The leading
-  // "toggle" makes a bare `toggle` query list them all (discovery); the
-  // on/off/enable/disable words match however the user phrases the intent.
+  // Haystack: "toggle <label> <section> <aliases> on off enable disable". The
+  // leading "toggle" makes a bare `toggle` query list them all (discovery);
+  // the section lets a query like "create reference bold" match a prefixed
+  // command; the ORIGINAL (unstripped) label keeps "enable …" queries working;
+  // the on/off/enable/disable words match however the user phrases the intent.
   const haystack = (m: (typeof metas)[number]): string => {
     const parts = ['toggle', m.label.toLowerCase(), 'on off enable disable'];
+    if (m.section) parts.push(m.section.toLowerCase());
     if (m.aliases && m.aliases.length) parts.push(m.aliases.join(' '));
     return parts.join(' ');
   };
@@ -451,7 +456,7 @@ function searchSettingToggleSource(query: string): PaletteResult[] {
     const on = settings.get(m.key) === true;
     return {
       source: 'settingtoggle' as const,
-      name: `Toggle ${m.label}`,
+      name: toggleCommandName(m),
       // Current state so the user knows what selecting it will do.
       meta: `${categoryLabel(m.category)} · ${on ? 'On' : 'Off'}`,
       matchedName: true,
@@ -1498,8 +1503,8 @@ class QuickCardSearchUI {
       // change (e.g. the workspace switch's confirm-and-revert), so read it
       // back rather than trusting the intended flip.
       const applied = settings.get(key) === true;
-      const label = SETTING_METADATA.find((m) => m.key === key)?.label ?? String(key);
-      showToast(`${label}: ${applied ? 'On' : 'Off'}`);
+      const raw = SETTING_METADATA.find((m) => m.key === key)?.label ?? String(key);
+      showToast(`${cleanToggleLabel(raw)}: ${applied ? 'On' : 'Off'}`);
       return;
     }
     // Settings: close the palette, then open the dialog to the tab and
