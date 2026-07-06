@@ -135,6 +135,7 @@ class TransclusionView implements NodeView {
   private readonly getPos: () => number | undefined;
   private busy = false;
   private transient: 'unreachable' | 'web' | null = null;
+  private menuEl: HTMLElement | null = null;
 
   constructor(node: PMNode, view: EditorView, getPos: () => number | undefined) {
     this.node = node;
@@ -157,8 +158,28 @@ class TransclusionView implements NodeView {
   }
 
   private renderHeader(): void {
+    this.closeMenu();
     this.headerEl.replaceChildren();
-    this.headerEl.appendChild(railGlyph());
+
+    // The always-visible rail glyph is itself the primary click target — it
+    // opens a small Refresh / Unlink menu, so the actions are reachable without
+    // hovering (and on touch). The hover-reveal buttons remain as a mouse fast-path.
+    const glyphBtn = document.createElement('button');
+    glyphBtn.type = 'button';
+    glyphBtn.className = 'pmd-transclusion-glyph-btn';
+    glyphBtn.title = 'Live zone — refresh or unlink';
+    glyphBtn.setAttribute('aria-label', 'Live zone actions');
+    glyphBtn.appendChild(railGlyph());
+    glyphBtn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    glyphBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.toggleMenu();
+    });
+    this.headerEl.appendChild(glyphBtn);
 
     const crumb = document.createElement('span');
     crumb.className = 'pmd-transclusion-crumb';
@@ -212,6 +233,73 @@ class TransclusionView implements NodeView {
     btn.setAttribute('aria-label', label);
     btn.appendChild(icon(iconName));
     // Keep PM from treating the click as a selection gesture.
+    btn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onClick();
+    });
+    return btn;
+  }
+
+  private toggleMenu(): void {
+    if (this.menuEl) {
+      this.closeMenu();
+      return;
+    }
+    const menu = document.createElement('div');
+    menu.className = 'pmd-transclusion-menu';
+    menu.appendChild(
+      this.menuItem('reset', 'Refresh from source', () => {
+        this.closeMenu();
+        this.onRefresh();
+      }),
+    );
+    menu.appendChild(
+      this.menuItem('edit', 'Unlink (detach)', () => {
+        this.closeMenu();
+        this.onDetach();
+      }),
+    );
+    this.headerEl.appendChild(menu);
+    this.menuEl = menu;
+    // Defer the outside-click listener so this very click doesn't close it.
+    setTimeout(() => {
+      document.addEventListener('mousedown', this.onOutsidePointer, true);
+      document.addEventListener('keydown', this.onMenuKey, true);
+    }, 0);
+  }
+
+  private onOutsidePointer = (e: Event): void => {
+    if (this.menuEl && !this.menuEl.contains(e.target as Node)) this.closeMenu();
+  };
+
+  private onMenuKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      this.closeMenu();
+    }
+  };
+
+  private closeMenu(): void {
+    if (!this.menuEl) return;
+    this.menuEl.remove();
+    this.menuEl = null;
+    document.removeEventListener('mousedown', this.onOutsidePointer, true);
+    document.removeEventListener('keydown', this.onMenuKey, true);
+  }
+
+  private menuItem(iconName: IconName, label: string, onClick: () => void): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pmd-transclusion-menu-item';
+    btn.appendChild(icon(iconName));
+    const span = document.createElement('span');
+    span.textContent = label;
+    btn.appendChild(span);
     btn.addEventListener('mousedown', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -293,7 +381,7 @@ class TransclusionView implements NodeView {
   }
 
   destroy(): void {
-    /* listeners are on elements we drop with the DOM */
+    this.closeMenu();
   }
 }
 

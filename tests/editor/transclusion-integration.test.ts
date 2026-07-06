@@ -135,4 +135,29 @@ describe('live zone in a real EditorView', () => {
     expect(el.textContent).not.toContain('old evidence');
     view.destroy();
   });
+
+  it('clicking the rail glyph opens a Refresh/Unlink menu; Unlink detaches', () => {
+    const zone = createTransclusionNode(schema, {
+      source_ref: 'a.cmir',
+      source_heading_id: 'h1',
+      cached_content: [card('T', 'ev').toJSON()],
+    });
+    const view = makeView([zone]);
+    const glyphBtn = view.dom.querySelector('.pmd-transclusion-glyph-btn') as HTMLElement;
+    expect(glyphBtn).toBeTruthy();
+
+    // No menu until the glyph is clicked.
+    expect(view.dom.querySelector('.pmd-transclusion-menu')).toBeNull();
+    glyphBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const menu = view.dom.querySelector('.pmd-transclusion-menu');
+    expect(menu).toBeTruthy();
+    const items = menu!.querySelectorAll('.pmd-transclusion-menu-item');
+    expect(items.length).toBe(2); // Refresh + Unlink
+
+    // The second item (Unlink) detaches.
+    (items[1] as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(countTypes(view).zones).toBe(0);
+    expect(countTypes(view).cards).toBe(1);
+    view.destroy();
+  });
 });
