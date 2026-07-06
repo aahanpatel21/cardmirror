@@ -37,8 +37,10 @@ describe('buildLiveZoneAttrs — success', () => {
     expect(a.source_ref).toBe('Impacts/Warming.cmir');
     expect(a.source_ref_base).toBe('root');
     expect(a.source_heading_id).toBe('wid');
-    expect(a.cached_content!.length).toBe(2); // two cards, header excluded
-    expect(JSON.stringify(a.cached_content)).not.toContain('Warming'); // header line dropped
+    expect(typeof a.source_content_hash).toBe('string');
+    expect(a.source_content_hash).not.toBe('');
+    expect(out.content!.childCount).toBe(2); // two cards, header excluded
+    expect(JSON.stringify(out.content!.toJSON())).not.toContain('"Warming"'); // header line dropped
     expect(a.source_label).toBe('Warming › Warming'); // file (ext stripped) › heading
     expect(typeof a.last_refreshed).toBe('number');
     expect(out.headingLabel).toBe('Warming');

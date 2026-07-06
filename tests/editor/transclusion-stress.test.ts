@@ -1,9 +1,8 @@
-// @vitest-environment jsdom
+// @vitest-environment node
 /**
- * Stress / abuse coverage for live zones: real .cmir gzip round-trip, position
- * variants, schema enforcement, huge sections, unicode, id collisions, and
- * hostile cache shapes. If any of these throws or loses data, the feature is
- * not shippable.
+ * Stress / abuse coverage for live zones (editable child-content model): real
+ * .cmir gzip round-trip, position variants, schema enforcement, huge sections,
+ * unicode, id collisions, and extraction edges.
  */
 import { describe, expect, it } from 'vitest';
 import { Node as PMNode } from 'prosemirror-model';
@@ -11,17 +10,15 @@ import { schema, newHeadingId } from '../../src/schema/index.js';
 import { serializeNative, parseNative } from '../../src/native/index.js';
 import {
   extractSection,
+  prepareZoneContent,
   createTransclusionNode,
-  fragmentFromCache,
+  isZoneEdited,
   detachSlice,
-  hashFragmentJSON,
   isTransclusionNode,
-  TRANSCLUSION_NODE,
 } from '../../src/editor/transclusion.js';
-import { populateZoneBody } from '../../src/editor/transclusion-nodeview.js';
 
 function heading(type: string, text: string, id: string): PMNode {
-  return schema.nodes[type]!.create({ id }, text ? schema.text(text) : undefined);
+  return schema.nodes[type]!.create({ id }, schema.text(text));
 }
 function card(tag: string, body: string): PMNode {
   return schema.nodes['card']!.createChecked(null, [
@@ -31,6 +28,12 @@ function card(tag: string, body: string): PMNode {
 }
 function doc(children: PMNode[]): PMNode {
   return schema.nodes['doc']!.createChecked(null, children);
+}
+/** Build a zone from a source doc's section (id-rewritten children). */
+function zoneFrom(src: PMNode, headingId: string, attrs: Record<string, unknown> = {}): PMNode {
+  const section = extractSection(src, headingId)!;
+  const { content, hash } = prepareZoneContent(section.content, newHeadingId);
+  return createTransclusionNode(schema, { source_content_hash: hash, ...attrs }, content);
 }
 function findZone(d: PMNode): PMNode | null {
   let z: PMNode | null = null;
@@ -42,46 +45,34 @@ function findZone(d: PMNode): PMNode | null {
 }
 
 describe('real .cmir gzip round-trip', () => {
-  it('a doc with a live zone survives serializeNative → parseNative with cache intact', () => {
+  it('a doc with a live zone survives serializeNative → parseNative with children intact', () => {
     const src = doc([heading('block', 'B', 'bid'), card('T1', 'e1'), card('T2', 'e2')]);
-    const section = extractSection(src, 'bid')!;
-    const zone = createTransclusionNode(schema, {
+    const zone = zoneFrom(src, 'bid', {
       source_ref: 'Impacts/Src.cmir',
       source_ref_base: 'root',
       source_heading_id: 'bid',
-      content_hash: section.contentHash,
-      cached_content: section.cachedContent,
       last_refreshed: 1720000000000,
       source_label: 'Src › B',
     });
     const d = doc([heading('block', 'Mine', newHeadingId()), zone, schema.nodes['paragraph']!.create()]);
-
-    const bytes = serializeNative(d);
-    const round = parseNative(bytes).doc;
+    const round = parseNative(serializeNative(d)).doc;
     const z = findZone(round)!;
-    expect(z).toBeTruthy();
     expect(z.attrs['source_ref']).toBe('Impacts/Src.cmir');
     expect(z.attrs['source_ref_base']).toBe('root');
-    expect(z.attrs['source_heading_id']).toBe('bid');
-    expect(z.attrs['content_hash']).toBe(section.contentHash);
     expect(z.attrs['last_refreshed']).toBe(1720000000000);
-    const frag = fragmentFromCache(schema, z.attrs['cached_content']);
-    expect(frag.childCount).toBe(2);
-    expect(JSON.stringify(z.attrs['cached_content'])).toContain('e1');
+    expect(z.childCount).toBe(2);
+    expect(z.textContent).toContain('e1');
+    expect(isZoneEdited(z)).toBe(false); // hash survives the round-trip
   });
 
-  it('zones at the start, middle, and end of a doc all round-trip', () => {
-    const mk = () =>
-      createTransclusionNode(schema, {
-        source_heading_id: 'h',
-        cached_content: [card('T', 'body').toJSON()],
-      });
+  it('zones at start, middle, and end of a doc all round-trip', () => {
+    const src = doc([heading('block', 'B', 'h'), card('T', 'body')]);
     const d = doc([
-      mk(),
+      zoneFrom(src, 'h'),
       schema.nodes['paragraph']!.create(null, schema.text('mid')),
-      mk(),
-      heading('block', 'B', newHeadingId()),
-      mk(),
+      zoneFrom(src, 'h'),
+      heading('block', 'B2', newHeadingId()),
+      zoneFrom(src, 'h'),
     ]);
     const round = parseNative(serializeNative(d)).doc;
     let zones = 0;
@@ -94,8 +85,8 @@ describe('real .cmir gzip round-trip', () => {
 });
 
 describe('schema enforcement', () => {
-  it('forbids a live zone inside a card (zones live only at the doc root)', () => {
-    const zone = createTransclusionNode(schema, { cached_content: null });
+  it('forbids a live zone inside a card (zones live only at the doc / zone level)', () => {
+    const zone = createTransclusionNode(schema, {});
     expect(() =>
       schema.nodes['card']!.createChecked(null, [
         schema.nodes['tag']!.create({ id: newHeadingId() }, schema.text('T')),
@@ -103,88 +94,61 @@ describe('schema enforcement', () => {
       ]),
     ).toThrow();
   });
-});
 
-describe('huge sections', () => {
-  it('extracts, hashes, round-trips, and renders a 200-card section', () => {
-    const cards: PMNode[] = [];
-    for (let i = 0; i < 200; i++) cards.push(card(`Tag ${i}`, `evidence ${i}`));
-    const src = doc([heading('block', 'Big', 'big'), ...cards]);
-    const section = extractSection(src, 'big')!;
-    expect(section.cachedContent!.length).toBe(200);
-    expect(section.contentHash).not.toBe('empty');
-
-    const zone = createTransclusionNode(schema, {
-      source_heading_id: 'big',
-      cached_content: section.cachedContent,
-      content_hash: section.contentHash,
-    });
-    const round = parseNative(serializeNative(doc([zone]))).doc;
-    expect(fragmentFromCache(schema, findZone(round)!.attrs['cached_content']).childCount).toBe(200);
-
-    const target = document.createElement('div');
-    const empty = populateZoneBody(target, schema, zone);
-    expect(empty).toBe(false);
-    expect(target.querySelectorAll('.pmd-card').length).toBe(200);
+  it('allows a nested zone as a direct child of a zone', () => {
+    const inner = createTransclusionNode(schema, { source_ref: 'i.cmir', source_heading_id: 'ih' });
+    expect(() => createTransclusionNode(schema, {}, undefined)).not.toThrow();
+    const outer = schema.nodes['transclusion_ref']!.createChecked(null, [inner, card('T', 'e')]);
+    expect(outer.childCount).toBe(2);
+    expect(outer.child(0).type.name).toBe('transclusion_ref');
   });
 });
 
-describe('unicode + odd content', () => {
-  it('preserves emoji / accents in headings and labels through extract + round-trip', () => {
-    const src = doc([heading('block', 'Réchauffement 🌍 — «impact»', 'u'), card('Tág', 'évidence 日本語')]);
-    const section = extractSection(src, 'u')!;
-    expect(JSON.stringify(section.cachedContent)).toContain('日本語');
-    const zone = createTransclusionNode(schema, {
-      source_heading_id: 'u',
-      cached_content: section.cachedContent,
-      source_label: 'Fichier › Réchauffement 🌍',
-    });
+describe('huge sections', () => {
+  it('extracts, prepares, round-trips a 200-card section', () => {
+    const cards: PMNode[] = [];
+    for (let i = 0; i < 200; i++) cards.push(card(`Tag ${i}`, `evidence ${i}`));
+    const src = doc([heading('block', 'Big', 'big'), ...cards]);
+    const zone = zoneFrom(src, 'big');
+    expect(zone.childCount).toBe(200);
+    const round = parseNative(serializeNative(doc([zone]))).doc;
+    expect(findZone(round)!.childCount).toBe(200);
+  });
+});
+
+describe('unicode', () => {
+  it('preserves emoji / accents in children + label through extract + round-trip', () => {
+    const src = doc([heading('block', 'Réchauffement 🌍', 'u'), card('Tág', 'évidence 日本語')]);
+    const zone = zoneFrom(src, 'u', { source_label: 'Fichier › Réchauffement 🌍' });
     const round = parseNative(serializeNative(doc([zone]))).doc;
     const z = findZone(round)!;
     expect(z.attrs['source_label']).toBe('Fichier › Réchauffement 🌍');
-    expect(JSON.stringify(z.attrs['cached_content'])).toContain('évidence 日本語');
+    expect(z.textContent).toContain('évidence 日本語');
   });
 });
 
 describe('extraction edge cases', () => {
-  it('heading at end of doc with nothing under it → empty cache', () => {
+  it('heading at end of doc with nothing under it → empty content', () => {
     const d = doc([card('T', 'x'), heading('block', 'End', 'end')]);
-    const section = extractSection(d, 'end')!;
-    expect(section.cachedContent).toBeNull();
+    expect(extractSection(d, 'end')!.content.size).toBe(0);
   });
 
   it('duplicate heading ids: extraction is deterministic (first match)', () => {
-    // Pathological (ids should be unique) but must not crash or be random.
     const d = doc([
       heading('block', 'First', 'dup'),
       card('A', 'aaa'),
       heading('block', 'Second', 'dup'),
       card('B', 'bbb'),
     ]);
-    const a = extractSection(d, 'dup');
-    const b = extractSection(d, 'dup');
-    expect(a).not.toBeNull();
-    expect(a!.contentHash).toBe(b!.contentHash); // stable, not random
-    // First block's section is the cards up to the second block.
-    expect(JSON.stringify(a!.cachedContent)).toContain('aaa');
-    expect(JSON.stringify(a!.cachedContent)).not.toContain('bbb');
+    const a = extractSection(d, 'dup')!;
+    const b = extractSection(d, 'dup')!;
+    expect(JSON.stringify(a.content.toJSON())).toBe(JSON.stringify(b.content.toJSON()));
+    expect(JSON.stringify(a.content.toJSON())).toContain('aaa');
+    expect(JSON.stringify(a.content.toJSON())).not.toContain('bbb');
   });
-});
 
-describe('hostile cache shapes never throw', () => {
-  it('extract/hash/detach/render all tolerate junk', () => {
-    expect(() => hashFragmentJSON({ a: [1, 2, { b: null }] })).not.toThrow();
-    expect(hashFragmentJSON([])).not.toBe('empty'); // empty array is not the null sentinel
-    // detach a zone whose cache is garbage → empty slice, no throw.
-    const bad = schema.nodes[TRANSCLUSION_NODE]!.create({ cached_content: [{ type: 'nope' }] });
-    let slice;
-    expect(() => {
-      slice = detachSlice(schema, bad, newHeadingId);
-    }).not.toThrow();
-    expect(slice!.content.size).toBe(0);
-    // render garbage → empty placeholder.
-    const target = document.createElement('div');
-    expect(() => populateZoneBody(target, schema, bad)).not.toThrow();
-    expect(target.querySelector('[data-kind="empty"]')).toBeTruthy();
+  it('detach of an empty zone yields an empty slice', () => {
+    const zone = createTransclusionNode(schema, {});
+    expect(detachSlice(zone).content.size).toBe(0);
   });
 });

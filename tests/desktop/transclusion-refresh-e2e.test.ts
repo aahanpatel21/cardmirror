@@ -68,12 +68,12 @@ describe('refresh data path over real files', () => {
 
     const docPath = path.join(root, 'Speeches', '1AC.cmir'); // need not exist on disk
     const section = refresh(docPath, 'Impacts/Src.cmir', 'root', [root], 'wid');
-    expect(section && 'cachedContent' in section).toBe(true);
+    expect(section && 'content' in section).toBe(true);
     const s = section as ReturnType<typeof extractSection>;
-    expect(s!.cachedContent!.length).toBe(2);
-    expect(JSON.stringify(s!.cachedContent)).toContain('e1');
+    expect(s!.content.childCount).toBe(2);
+    expect(JSON.stringify(s!.content.toJSON())).toContain('e1');
     // header excluded
-    expect(JSON.stringify(s!.cachedContent)).not.toContain('Warming');
+    expect(JSON.stringify(s!.content.toJSON())).not.toContain('"Warming"');
   });
 
   it('doc-relative ref (../Impacts/Src.cmir) resolves the same file', () => {
@@ -82,7 +82,7 @@ describe('refresh data path over real files', () => {
     writeFileSync(path.join(impacts, 'Src.cmir'), serializeNative(doc([heading('block', 'W', 'wid'), card('T', 'ev')])));
     const docPath = path.join(root, 'Speeches', '1AC.cmir');
     const section = refresh(docPath, '../Impacts/Src.cmir', 'doc', [root], 'wid');
-    expect((section as ReturnType<typeof extractSection>)!.cachedContent!.length).toBe(1);
+    expect((section as ReturnType<typeof extractSection>)!.content.childCount).toBe(1);
   });
 
   it('a traversal ref cannot read a file outside the root (defense in depth)', () => {
@@ -110,6 +110,6 @@ describe('refresh data path over real files', () => {
     writeFileSync(path.join(impacts, 'Src.cmir'), serializeNative(doc([heading('block', 'W', 'wid'), card('T', 'shared ev')])));
     const bobDoc = path.join(root, 'Tournaments', 'R1', 'Doc.cmir');
     const section = refresh(bobDoc, 'Impacts/Src.cmir', 'root', [root], 'wid');
-    expect(JSON.stringify((section as ReturnType<typeof extractSection>)!.cachedContent)).toContain('shared ev');
+    expect(JSON.stringify((section as ReturnType<typeof extractSection>)!.content.toJSON())).toContain('shared ev');
   });
 });

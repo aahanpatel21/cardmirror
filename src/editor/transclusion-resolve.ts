@@ -22,7 +22,8 @@ export type ResolveReason =
   | 'no-source-ref'
   | 'source-unreadable'
   | 'parse-failed'
-  | 'heading-missing';
+  | 'heading-missing'
+  | 'cancelled';
 
 export interface ResolveOutcome {
   ok: boolean;
@@ -51,6 +52,8 @@ export function refreshFailMessage(reason: ResolveReason | undefined): string {
       return 'Source file could not be read — showing cached content.';
     case 'heading-missing':
       return 'That heading is gone from the source — showing cached content.';
+    case 'cancelled':
+      return '';
     default:
       return 'Could not refresh the live zone — showing cached content.';
   }

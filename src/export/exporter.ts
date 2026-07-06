@@ -11,7 +11,6 @@
  *   - Stable heading IDs → `pmd-heading-<uuid>` bookmarks bracketing the heading paragraph.
  */
 
-import { Fragment } from 'prosemirror-model';
 import type { Mark, Node as PMNode } from 'prosemirror-model';
 import {
   el,
@@ -108,11 +107,14 @@ const RELS_CLOSE = '</Relationships>';
  */
 const HEADING_LIKE = new Set(['pocket', 'hat', 'block', 'tag', 'analytic']);
 
-/** Schema container nodes whose children we emit at the parent level. */
+/** Schema container nodes whose children we emit at the parent level. A
+ *  `transclusion_ref` (live zone) flattens here too — docx has no transclusion
+ *  concept, so its cards emit as ordinary content (TRANSCLUSION_PLAN.md §10). */
 const TRANSPARENT_CONTAINERS = new Set([
   'doc',
   'card',
   'analytic_unit',
+  'transclusion_ref',
 ]);
 
 class DocxExporter {
@@ -184,10 +186,6 @@ class DocxExporter {
   }
 
   private emitBlock(node: PMNode): void {
-    if (node.type.name === 'transclusion_ref') {
-      this.emitTransclusion(node);
-      return;
-    }
     if (TRANSPARENT_CONTAINERS.has(node.type.name)) {
       this.emitChildren(node);
       return;
@@ -198,26 +196,6 @@ class DocxExporter {
     }
     // Every other block-level node is a paragraph kind.
     this.emitParagraph(node);
-  }
-
-  /**
-   * Flatten a transclusion "live zone" on export: emit its cached content as
-   * ordinary document content, dropping the transclusion identity entirely
-   * (docx has no such concept — see TRANSCLUSION_PLAN.md §10). The `.cmir`
-   * path never reaches the exporter, so this is inherently docx-only and
-   * cmir-preserving. A malformed or empty cache emits nothing. Nested zones
-   * inside the cache flatten too, since each child recurses through emitBlock.
-   */
-  private emitTransclusion(node: PMNode): void {
-    const cached = node.attrs['cached_content'];
-    if (cached == null || !Array.isArray(cached)) return;
-    let frag: Fragment;
-    try {
-      frag = Fragment.fromJSON(node.type.schema, cached);
-    } catch {
-      return;
-    }
-    frag.forEach((child) => this.emitBlock(child));
   }
 
   /**

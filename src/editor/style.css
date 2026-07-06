@@ -2410,22 +2410,6 @@ code {
 .pmd-transclusion-body .pmd-analytic-unit:hover {
   border-left-color: transparent;
 }
-.pmd-transclusion-placeholder {
-  color: var(--pmd-c-text-muted, #888);
-  font-style: italic;
-  font-size: 12px;
-  padding: 0.2rem 0;
-}
-.pmd-transclusion-placeholder[data-kind='cycle'],
-.pmd-transclusion-placeholder[data-kind='depth'] {
-  color: var(--pmd-c-warn, #b26a00);
-}
-/* Nested zone: a lighter inset rail so depth reads without shouting. */
-.pmd-transclusion-nested {
-  border-left-width: 2px;
-  border-left-style: dashed;
-  margin: 0.15rem 0;
-}
 @media (prefers-reduced-motion: reduce) {
   .pmd-transclusion-crumb,
   .pmd-transclusion-status,
@@ -2451,6 +2435,19 @@ code {
 .pmd-transclusion-glyph-btn:focus-visible {
   outline: 2px solid var(--pmd-c-transclusion);
   outline-offset: 1px;
+}
+/* "Edited" dot — ambient (visible at rest) so a locally-contextualised zone
+   reads at a glance; lit only when the zone diverges from its last source pull. */
+.pmd-transclusion-edited-dot {
+  display: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pmd-c-warn, #b26a00);
+  flex: 0 0 auto;
+}
+.pmd-transclusion-edited-dot.is-edited {
+  display: inline-block;
 }
 .pmd-transclusion-menu {
   position: absolute;

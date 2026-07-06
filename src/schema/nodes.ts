@@ -313,26 +313,27 @@ export const nodes: { [name: string]: NodeSpec } = {
   },
 
   /**
-   * Transclusion "live zone" — a read-only region rendering the contents
-   * under a heading in another CardMirror file (see TRANSCLUSION_PLAN.md).
+   * Transclusion "live zone" — a region mirroring the contents under a heading
+   * in another CardMirror file (see TRANSCLUSION_PLAN.md).
    *
-   * A block-level ATOM (no editable content). The transcluded cards live in
-   * `cached_content` as a serialized ProseMirror fragment (an array of node
-   * JSON — the output of `Fragment.toJSON`), so the zone is self-contained:
-   * a `.cmir` renders its zones anywhere it's moved, and a judge with none
-   * of the source files still sees the evidence. Refresh (desktop only)
-   * re-reads the source and replaces the fragment; `.docx` export flattens
-   * the fragment to plain content (dropping the transclusion identity).
+   * The transcluded cards are REAL child nodes (same block content as the doc),
+   * so the zone is self-contained (a `.cmir` renders its zones anywhere it's
+   * moved; a judge with none of the source files still sees the evidence), the
+   * cards show up in the outline and Find, and — crucially — the zone is
+   * EDITABLE: you can contextualise a tag or its highlighting in place without
+   * breaking the link. Divergence from the last-pulled source is tracked by
+   * `source_content_hash` (the NodeView shows an "edited" dot). Refresh
+   * (desktop only) re-reads the source and replaces the children (confirming
+   * first when edited); Detach unwraps the children and drops the link;
+   * `.docx` export flattens (the zone is a transparent container).
    *
-   * Read-only + isolating: the caret can't enter; the zone is selected and
-   * moved as a unit, and edited only via the explicit Detach command (which
-   * materializes the cache as ordinary content). Rendering is the NodeView's
-   * job (transclusion-nodeview.ts); toDOM/parseDOM exist only so the node
-   * survives HTML copy-paste. The `.cmir` path round-trips via `toJSON`
-   * (attrs are serialized generically), independent of toDOM.
+   * `isolating` keeps edits inside the zone (it moves and merges as a unit).
+   * Rendering (the rail chrome + editable body) is the NodeView's job
+   * (transclusion-nodeview.ts). The `.cmir` path round-trips via `toJSON`
+   * (attrs + children serialize generically), independent of toDOM.
    */
   transclusion_ref: {
-    atom: true,
+    content: BLOCK_CONTENT,
     isolating: true,
     defining: true,
     attrs: {
@@ -355,19 +356,12 @@ export const nodes: { [name: string]: NodeSpec } = {
         default: '',
         validate: (v: unknown) => typeof v === 'string',
       },
-      /** Hash of the cached fragment — staleness compare vs the live source. */
-      content_hash: {
+      /** Hash of the children AS LAST PULLED from source. The zone is "edited"
+       *  when the current children hash differs — that's how local
+       *  contextualisation is detected without breaking the link. */
+      source_content_hash: {
         default: '',
         validate: (v: unknown) => typeof v === 'string',
-      },
-      /** The transcluded content: `Fragment.toJSON()` (array of node JSON)
-       *  or null when empty/unresolved. Stored as ONE opaque value so a
-       *  refresh is a clean last-writer-wins replacement under co-editing
-       *  (TRANSCLUSION_PLAN.md §11). Validate never throws — a malformed
-       *  cache must not fail the whole `.cmir` load. */
-      cached_content: {
-        default: null as unknown[] | null,
-        validate: (v: unknown) => v === null || Array.isArray(v),
       },
       /** Epoch ms of the last successful resolve (0 = never refreshed). */
       last_refreshed: {
@@ -383,23 +377,16 @@ export const nodes: { [name: string]: NodeSpec } = {
     parseDOM: [
       {
         tag: 'div.pmd-transclusion-ref',
+        // Content (children) is parsed from the div's contents; only the
+        // link metadata comes from data-attributes.
         getAttrs: (dom: HTMLElement) => {
-          let cached: unknown = null;
-          try {
-            const raw = dom.getAttribute('data-cached-content');
-            cached = raw ? JSON.parse(raw) : null;
-          } catch {
-            cached = null;
-          }
-          if (cached !== null && !Array.isArray(cached)) cached = null;
           const lr = Number(dom.getAttribute('data-last-refreshed') ?? '0');
           return {
             source_ref: dom.getAttribute('data-source-ref') ?? '',
             source_ref_base:
               dom.getAttribute('data-source-ref-base') === 'root' ? 'root' : 'doc',
             source_heading_id: dom.getAttribute('data-source-heading-id') ?? '',
-            content_hash: dom.getAttribute('data-content-hash') ?? '',
-            cached_content: cached,
+            source_content_hash: dom.getAttribute('data-source-content-hash') ?? '',
             last_refreshed: Number.isFinite(lr) ? lr : 0,
             source_label: dom.getAttribute('data-source-label') ?? '',
           };
@@ -413,11 +400,11 @@ export const nodes: { [name: string]: NodeSpec } = {
         'data-source-ref': String(node.attrs['source_ref'] ?? ''),
         'data-source-ref-base': String(node.attrs['source_ref_base'] ?? 'doc'),
         'data-source-heading-id': String(node.attrs['source_heading_id'] ?? ''),
-        'data-content-hash': String(node.attrs['content_hash'] ?? ''),
-        'data-cached-content': JSON.stringify(node.attrs['cached_content'] ?? null),
+        'data-source-content-hash': String(node.attrs['source_content_hash'] ?? ''),
         'data-last-refreshed': String(node.attrs['last_refreshed'] ?? 0),
         'data-source-label': String(node.attrs['source_label'] ?? ''),
       },
+      0,
     ],
   },
 

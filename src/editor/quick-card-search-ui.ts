@@ -1715,7 +1715,7 @@ class QuickCardSearchUI {
       showToast(buildZoneErrorMessage(outcome.reason));
       return;
     }
-    insertZoneAtSelection(view, outcome.attrs);
+    insertZoneAtSelection(view, outcome.attrs, outcome.content);
     showToast(`Inserted live zone "${outcome.headingLabel}".`);
     this.input.focus();
   }

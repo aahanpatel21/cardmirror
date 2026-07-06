@@ -5,18 +5,20 @@
  */
 import { NodeSelection } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
-import type { Node as PMNode, Schema } from 'prosemirror-model';
+import type { Node as PMNode, Schema, Fragment } from 'prosemirror-model';
 import { newHeadingId } from '../schema/index.js';
 import {
   isTransclusionNode,
+  isZoneEdited,
   zoneIdentity,
   detachSlice,
   createTransclusionNode,
   extractSection,
   chooseSourceRef,
   directZoneIdentities,
-  fragmentFromCache,
+  prepareZoneContent,
   type TransclusionAttrs,
+  type SourceRefBase,
 } from './transclusion.js';
 import { getViewDocPath } from './transclusion-doc-path.js';
 import { resolveTransclusion, type ResolveOutcome } from './transclusion-resolve.js';
@@ -41,15 +43,17 @@ export interface BuildZoneOutcome {
   ok: boolean;
   reason?: BuildZoneReason;
   attrs?: TransclusionAttrs;
+  /** The zone's child content (id-rewritten), ready to insert. */
+  content?: Fragment;
   headingLabel?: string;
 }
 
 /**
- * Build the attrs for a new live zone from an already-parsed source doc + a
- * target heading id. Shared by every creation entry point (the picker's
- * transclude mode and per-header Mod+Enter). Snapshots the section now,
- * computes a portable source ref, and rejects direct self-embedding. Pure aside
- * from the `last_refreshed` timestamp, so it's unit-testable.
+ * Build a new live zone (attrs + child content) from an already-parsed source
+ * doc + a target heading id. Shared by every creation entry point (the picker's
+ * transclude mode and per-header Mod+Enter). Snapshots the section now, rewrites
+ * its heading ids to fresh ones, computes a portable source ref, and rejects
+ * direct self-embedding. Pure aside from the `last_refreshed` timestamp.
  */
 export function buildLiveZoneAttrs(
   schema: Schema,
@@ -66,20 +70,20 @@ export function buildLiveZoneAttrs(
   if (!docPath) return { ok: false, reason: 'no-doc-path' };
   const chosen = chooseSourceRef(docPath, sourceAbsPath, roots);
   if (!chosen) return { ok: false, reason: 'no-portable-ref' };
+  const { content, hash } = prepareZoneContent(section.content, newHeadingId);
   const attrs: TransclusionAttrs = {
     source_ref: chosen.ref,
     source_ref_base: chosen.base,
     source_heading_id: headingId,
-    content_hash: section.contentHash,
-    cached_content: section.cachedContent,
+    source_content_hash: hash,
     last_refreshed: Date.now(),
     source_label: crumbLabel(sourceName, section.headingLabel),
   };
-  const node = createTransclusionNode(schema, attrs);
-  if (directZoneIdentities(fragmentFromCache(schema, section.cachedContent)).has(zoneIdentity(node))) {
+  const node = createTransclusionNode(schema, attrs, content);
+  if (directZoneIdentities(content).has(zoneIdentity(node))) {
     return { ok: false, reason: 'self-cycle' };
   }
-  return { ok: true, attrs, headingLabel: section.headingLabel };
+  return { ok: true, attrs, content, headingLabel: section.headingLabel };
 }
 
 /** Toast message for a failed live-zone build. */
@@ -130,6 +134,13 @@ export async function refreshZoneAtPos(
 ): Promise<ResolveOutcome> {
   const node = view.state.doc.nodeAt(pos);
   if (!node || !isTransclusionNode(node)) return { ok: false, reason: 'heading-missing' };
+  // Refresh discards local contextualisations — confirm when the zone is edited.
+  if (isZoneEdited(node) && typeof window !== 'undefined') {
+    const proceed = window.confirm(
+      'Refresh will replace your local edits to this live zone with the current source. Continue?',
+    );
+    if (!proceed) return { ok: false, reason: 'cancelled' };
+  }
   const identity = zoneIdentity(node);
   const docPath = getViewDocPath(view);
   const outcome = await resolveTransclusion(
@@ -145,42 +156,52 @@ export async function refreshZoneAtPos(
   const live = view.state.doc.nodeAt(targetPos);
   if (!live || !isTransclusionNode(live)) return outcome;
 
-  const tr = view.state.tr.setNodeMarkup(targetPos, undefined, {
-    ...live.attrs,
-    cached_content: outcome.result.cachedContent,
-    content_hash: outcome.result.contentHash,
-    last_refreshed: Date.now(),
-    source_label: crumbLabel(outcome.sourceName ?? '', outcome.result.headingLabel),
-  });
+  // Replace the whole zone node with a fresh one: new children (source ids
+  // rewritten), reset content hash + timestamp + label.
+  const { content, hash } = prepareZoneContent(outcome.result.content, newHeadingId);
+  const newNode = createTransclusionNode(
+    view.state.schema,
+    {
+      source_ref: String(live.attrs['source_ref'] ?? ''),
+      source_ref_base: (live.attrs['source_ref_base'] === 'root' ? 'root' : 'doc') as SourceRefBase,
+      source_heading_id: String(live.attrs['source_heading_id'] ?? ''),
+      source_content_hash: hash,
+      last_refreshed: Date.now(),
+      source_label: crumbLabel(outcome.sourceName ?? '', outcome.result.headingLabel),
+    },
+    content,
+  );
+  const tr = view.state.tr.replaceWith(targetPos, targetPos + live.nodeSize, newNode);
   tr.setMeta('addToHistory', true);
   view.dispatch(tr);
   return outcome;
 }
 
 /**
- * Detach the zone at `pos`: replace it with its cached cards as ordinary
- * editable content (heading ids rewritten), breaking the link. An empty cache
- * just removes the zone. Returns false if there's no zone there.
+ * Detach the zone at `pos`: replace it with its children as ordinary editable
+ * content, breaking the link (edits are kept — the ids are already unique). An
+ * empty zone just vanishes. Returns false if there's no zone there.
  */
 export function detachZoneAtPos(view: EditorView, pos: number): boolean {
   const node = view.state.doc.nodeAt(pos);
   if (!node || !isTransclusionNode(node)) return false;
-  const slice = detachSlice(view.state.schema, node, newHeadingId);
+  const slice = detachSlice(node);
   const tr = view.state.tr.replaceRange(pos, pos + node.nodeSize, slice);
   view.dispatch(tr.scrollIntoView());
   return true;
 }
 
 /**
- * Insert a new live zone after the top-level block containing the selection,
- * and select it. Returns false if the schema won't allow it (shouldn't happen
- * at the doc root).
+ * Insert a new live zone (with its child content) after the top-level block
+ * containing the selection, and select it. Returns false if the schema won't
+ * allow it (shouldn't happen at the doc root).
  */
 export function insertZoneAtSelection(
   view: EditorView,
   attrs: Partial<TransclusionAttrs>,
+  content?: Fragment,
 ): boolean {
-  const node = createTransclusionNode(view.state.schema, attrs);
+  const node = createTransclusionNode(view.state.schema, attrs, content);
   const { $from } = view.state.selection;
   const pos = $from.depth > 0 ? $from.after(1) : $from.pos;
   let tr = view.state.tr.insert(pos, node);

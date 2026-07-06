@@ -1,120 +1,27 @@
 /**
- * Read-only NodeView for a transclusion "live zone" (TRANSCLUSION_PLAN.md §4).
+ * NodeView for a transclusion "live zone" (TRANSCLUSION_PLAN.md §4).
  *
- * Renders the cached fragment read-only behind a left gutter rail (the reused
- * card-unit rail grammar, persistent, in --pmd-c-transclusion) with a link
- * glyph at its head and a reveal-on-hover header bar (breadcrumb, synced date,
- * Refresh / Detach). Nested zones render recursively with a depth cap and a
- * cycle guard. The node is an atom, so the caret never enters and PM manages
- * selection over the whole zone as a unit.
+ * The transcluded cards are REAL child nodes, so the zone is EDITABLE (a
+ * `contentDOM` holds the children) — you can contextualise a tag or its
+ * highlighting in place without breaking the link. A left gutter rail (the
+ * reused card-unit rail grammar, in --pmd-c-transclusion) with a clickable link
+ * glyph marks it; the glyph opens a Refresh / Unlink menu, and a reveal-on-hover
+ * header shows the source breadcrumb, synced date, and an "edited" dot when the
+ * zone diverges from the last-pulled source. Refresh re-reads the source and
+ * replaces the children (confirming first when edited); Detach unwraps them.
  */
-import { DOMSerializer, Fragment } from 'prosemirror-model';
 import type { Node as PMNode } from 'prosemirror-model';
 import type { EditorView, NodeView } from 'prosemirror-view';
 import { icon, type IconName } from './icons.js';
 import { showToast } from './toast.js';
-import {
-  TRANSCLUSION_NODE,
-  MAX_NEST_DEPTH,
-  fragmentFromCache,
-  zoneIdentity,
-} from './transclusion.js';
+import { isZoneEdited } from './transclusion.js';
 import { refreshZoneAtPos, detachZoneAtPos } from './transclusion-actions.js';
 import { transclusionSupported, refreshFailMessage } from './transclusion-resolve.js';
-
-interface RenderCtx {
-  depth: number;
-  ancestors: Set<string>;
-}
-
-function placeholderEl(kind: string, text: string): HTMLElement {
-  const el = document.createElement('div');
-  el.className = 'pmd-transclusion-placeholder';
-  el.setAttribute('data-kind', kind);
-  el.textContent = text;
-  return el;
-}
 
 function railGlyph(): HTMLElement {
   const g = icon('link', { label: 'Live zone' });
   g.classList.add('pmd-transclusion-glyph');
   return g;
-}
-
-/** Render a fragment into `target`, intercepting nested zones for guarded
- *  recursion and serializing everything else via the schema's toDOM. */
-function renderFragmentInto(
-  target: HTMLElement,
-  schema: EditorView['state']['schema'],
-  frag: Fragment,
-  ctx: RenderCtx,
-): void {
-  const serializer = DOMSerializer.fromSchema(schema);
-  frag.forEach((node) => {
-    if (node.type.name === TRANSCLUSION_NODE) {
-      target.appendChild(renderNestedZone(schema, node, ctx));
-    } else {
-      target.appendChild(serializer.serializeNode(node));
-    }
-  });
-}
-
-function renderNestedZone(
-  schema: EditorView['state']['schema'],
-  node: PMNode,
-  ctx: RenderCtx,
-): HTMLElement {
-  const wrap = document.createElement('div');
-  wrap.className = 'pmd-transclusion pmd-transclusion-nested';
-  wrap.appendChild(railGlyph());
-
-  const id = zoneIdentity(node);
-  if (ctx.ancestors.has(id)) {
-    wrap.appendChild(placeholderEl('cycle', 'Live zone not expanded (cycle).'));
-    return wrap;
-  }
-  if (ctx.depth >= MAX_NEST_DEPTH) {
-    wrap.appendChild(placeholderEl('depth', 'Live zone not expanded (nesting too deep).'));
-    return wrap;
-  }
-  const body = document.createElement('div');
-  body.className = 'pmd-transclusion-body';
-  const inner = fragmentFromCache(schema, node.attrs['cached_content']);
-  if (inner.size === 0) {
-    body.appendChild(placeholderEl('empty', 'Empty live zone.'));
-  } else {
-    renderFragmentInto(body, schema, inner, {
-      depth: ctx.depth + 1,
-      ancestors: new Set([...ctx.ancestors, id]),
-    });
-  }
-  wrap.appendChild(body);
-  return wrap;
-}
-
-/**
- * Populate `target` with a zone's cached content, read-only, applying the
- * nested-zone depth cap and cycle guard. Returns whether the zone is empty.
- * Exported so the rendering + guards can be unit-tested without an EditorView.
- */
-export function populateZoneBody(
-  target: HTMLElement,
-  schema: EditorView['state']['schema'],
-  node: PMNode,
-): boolean {
-  target.replaceChildren();
-  const frag = fragmentFromCache(schema, node.attrs['cached_content']);
-  if (frag.size === 0) {
-    target.appendChild(
-      placeholderEl('empty', 'This live zone is empty — nothing under the source heading yet.'),
-    );
-    return true;
-  }
-  renderFragmentInto(target, schema, frag, {
-    depth: 0,
-    ancestors: new Set([zoneIdentity(node)]),
-  });
-  return false;
 }
 
 function formatSyncedDate(ms: number): string {
@@ -127,9 +34,10 @@ function formatSyncedDate(ms: number): string {
 
 class TransclusionView implements NodeView {
   readonly dom: HTMLElement;
+  readonly contentDOM: HTMLElement;
   private readonly headerEl: HTMLElement;
-  private readonly bodyEl: HTMLElement;
   private statusEl: HTMLElement | null = null;
+  private editedDot: HTMLElement | null = null;
   private node: PMNode;
   private readonly view: EditorView;
   private readonly getPos: () => number | undefined;
@@ -144,26 +52,27 @@ class TransclusionView implements NodeView {
 
     this.dom = document.createElement('div');
     this.dom.className = 'pmd-transclusion';
-    this.dom.setAttribute('contenteditable', 'false');
 
+    // Chrome — not editable content.
     this.headerEl = document.createElement('div');
     this.headerEl.className = 'pmd-transclusion-header';
-    this.bodyEl = document.createElement('div');
-    this.bodyEl.className = 'pmd-transclusion-body';
-    this.dom.appendChild(this.headerEl);
-    this.dom.appendChild(this.bodyEl);
+    this.headerEl.setAttribute('contenteditable', 'false');
 
+    // The editable body: PM renders the transcluded children here.
+    this.contentDOM = document.createElement('div');
+    this.contentDOM.className = 'pmd-transclusion-body';
+
+    this.dom.appendChild(this.headerEl);
+    this.dom.appendChild(this.contentDOM);
     this.renderHeader();
-    this.renderBody();
   }
 
   private renderHeader(): void {
     this.closeMenu();
     this.headerEl.replaceChildren();
 
-    // The always-visible rail glyph is itself the primary click target — it
-    // opens a small Refresh / Unlink menu, so the actions are reachable without
-    // hovering (and on touch). The hover-reveal buttons remain as a mouse fast-path.
+    // The always-visible rail glyph is the primary click target — it opens a
+    // Refresh / Unlink menu (reachable without hovering, and on touch).
     const glyphBtn = document.createElement('button');
     glyphBtn.type = 'button';
     glyphBtn.className = 'pmd-transclusion-glyph-btn';
@@ -181,6 +90,13 @@ class TransclusionView implements NodeView {
     });
     this.headerEl.appendChild(glyphBtn);
 
+    // "Edited" dot — lit when the zone diverges from the last-pulled source.
+    const dot = document.createElement('span');
+    dot.className = 'pmd-transclusion-edited-dot';
+    dot.title = 'Edited — differs from source. Refresh to reset.';
+    this.editedDot = dot;
+    this.headerEl.appendChild(dot);
+
     const crumb = document.createElement('span');
     crumb.className = 'pmd-transclusion-crumb';
     crumb.textContent = String(this.node.attrs['source_label'] || 'Live zone');
@@ -190,18 +106,22 @@ class TransclusionView implements NodeView {
     status.className = 'pmd-transclusion-status';
     this.statusEl = status;
     this.headerEl.appendChild(status);
-    this.refreshStatusText();
 
     const actions = document.createElement('div');
     actions.className = 'pmd-transclusion-actions';
     actions.appendChild(this.actionButton('reset', 'Refresh from source', () => this.onRefresh()));
-    actions.appendChild(this.actionButton('edit', 'Detach to editable copy', () => this.onDetach()));
+    actions.appendChild(this.actionButton('edit', 'Unlink (detach)', () => this.onDetach()));
     this.headerEl.appendChild(actions);
+
+    this.refreshStatusText();
+    this.refreshEditedDot();
   }
 
-  private renderBody(): void {
-    const empty = populateZoneBody(this.bodyEl, this.view.state.schema, this.node);
-    this.dom.classList.toggle('pmd-transclusion-is-empty', empty);
+  private refreshEditedDot(): void {
+    if (!this.editedDot) return;
+    const edited = isZoneEdited(this.node);
+    this.editedDot.classList.toggle('is-edited', edited);
+    this.dom.classList.toggle('pmd-transclusion-edited', edited);
   }
 
   private refreshStatusText(): void {
@@ -232,7 +152,6 @@ class TransclusionView implements NodeView {
     btn.title = label;
     btn.setAttribute('aria-label', label);
     btn.appendChild(icon(iconName));
-    // Keep PM from treating the click as a selection gesture.
     btn.addEventListener('mousedown', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -252,6 +171,7 @@ class TransclusionView implements NodeView {
     }
     const menu = document.createElement('div');
     menu.className = 'pmd-transclusion-menu';
+    menu.setAttribute('contenteditable', 'false');
     menu.appendChild(
       this.menuItem('reset', 'Refresh from source', () => {
         this.closeMenu();
@@ -266,7 +186,6 @@ class TransclusionView implements NodeView {
     );
     this.headerEl.appendChild(menu);
     this.menuEl = menu;
-    // Defer the outside-click listener so this very click doesn't close it.
     setTimeout(() => {
       document.addEventListener('mousedown', this.onOutsidePointer, true);
       document.addEventListener('keydown', this.onMenuKey, true);
@@ -328,7 +247,9 @@ class TransclusionView implements NodeView {
       this.busy = false;
       if (outcome.ok) {
         this.transient = null;
-        // The dispatch already fired update() → the body + synced date are fresh.
+        this.refreshStatusText();
+        // The dispatch replaced the node → a fresh NodeView renders the update.
+      } else if (outcome.reason === 'cancelled') {
         this.refreshStatusText();
       } else {
         this.transient = outcome.reason === 'not-desktop' ? 'web' : 'unreachable';
@@ -346,19 +267,17 @@ class TransclusionView implements NodeView {
 
   update(node: PMNode): boolean {
     if (node.type !== this.node.type) return false;
-    const contentChanged =
-      node.attrs['content_hash'] !== this.node.attrs['content_hash'] ||
-      node.attrs['cached_content'] !== this.node.attrs['cached_content'];
     const labelChanged = node.attrs['source_label'] !== this.node.attrs['source_label'];
+    const lastRefreshedChanged = node.attrs['last_refreshed'] !== this.node.attrs['last_refreshed'];
     this.node = node;
-    // A refresh landed (locally or from a co-editing peer) — clear any stale
-    // transient error and re-render what changed.
-    if (contentChanged) {
-      this.transient = null;
-      this.renderBody();
+    // Clear a stale transient error once a refresh has landed.
+    if (lastRefreshedChanged) this.transient = null;
+    if (labelChanged) this.renderHeader();
+    else {
+      this.refreshStatusText();
+      this.refreshEditedDot();
     }
-    if (contentChanged || labelChanged) this.renderHeader();
-    else this.refreshStatusText();
+    // Return true so PM diffs the children into contentDOM itself.
     return true;
   }
 
@@ -370,14 +289,17 @@ class TransclusionView implements NodeView {
     this.dom.classList.remove('ProseMirror-selectednode');
   }
 
-  /** Keep events on our own chrome (the header buttons) away from PM. */
+  /** Keep events on our own chrome (header buttons / menu) away from PM;
+   *  events inside the editable body fall through so edits work normally. */
   stopEvent(e: Event): boolean {
     const t = e.target as HTMLElement | null;
     return !!t?.closest?.('.pmd-transclusion-header');
   }
 
-  ignoreMutation(): boolean {
-    return true;
+  /** Ignore mutations in our chrome; let PM handle the editable content. */
+  ignoreMutation(m: MutationRecord | { type: 'selection'; target: Node }): boolean {
+    if (m.type === 'selection') return false;
+    return !this.contentDOM.contains((m as MutationRecord).target);
   }
 
   destroy(): void {

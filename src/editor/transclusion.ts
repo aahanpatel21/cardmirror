@@ -33,18 +33,17 @@ export interface TransclusionAttrs {
   source_ref: string;
   source_ref_base: SourceRefBase;
   source_heading_id: string;
-  content_hash: string;
-  cached_content: unknown[] | null;
+  /** Hash of the children as last pulled from source (edit detection). */
+  source_content_hash: string;
   last_refreshed: number;
   source_label: string;
 }
 
 export interface ExtractResult {
-  /** `Fragment.toJSON()` (array of node JSON) or null when the section is
-   *  empty — suitable to store directly in `cached_content`. */
-  cachedContent: unknown[] | null;
-  /** Stable hash of the cached fragment, for staleness comparison. */
-  contentHash: string;
+  /** The transcluded content as a Fragment, with the source's original heading
+   *  ids (the caller rewrites them to fresh ids before inserting). Empty when
+   *  the section has no content under the heading. */
+  content: Fragment;
   /** The target heading's own text (for the breadcrumb). */
   headingLabel: string;
   /** Schema type of the target heading (pocket/hat/block/tag/analytic). */
@@ -81,45 +80,58 @@ export function extractSection(doc: PMNode, headingId: string): ExtractResult | 
   const to = range.to;
   if (to < from) return null;
 
-  const slice = doc.slice(from, to);
-  const frag = slice.content;
-  const cachedContent = frag.size > 0 ? (frag.toJSON() as unknown[] | null) : null;
   return {
-    cachedContent: cachedContent ?? null,
-    contentHash: hashFragmentJSON(cachedContent ?? null),
+    content: doc.slice(from, to).content,
     headingLabel: entry.text.trim() || TYPE_LABEL[entry.type] || entry.type,
     headingType: entry.type,
   };
 }
 
-/** Deserialize a `cached_content` value into a Fragment, tolerating any
- *  malformed shape (returns an empty Fragment rather than throwing, so a
- *  corrupt cache can never white-screen the editor). */
-export function fragmentFromCache(schema: Schema, cache: unknown): Fragment {
-  if (cache == null) return Fragment.empty;
-  try {
-    return Fragment.fromJSON(schema, cache as Parameters<typeof Fragment.fromJSON>[1]);
-  } catch {
-    return Fragment.empty;
-  }
+/** Hash of a fragment's content — the value stored in `source_content_hash`
+ *  and compared against for edit detection. Empty → the 'empty' sentinel. */
+export function contentHash(content: Fragment): string {
+  return hashFragmentJSON(content.size ? content.toJSON() : null);
 }
 
-/** Build a `transclusion_ref` node from attrs (missing fields defaulted). */
+/** Whether the zone's children differ from what refresh last pulled — i.e. the
+ *  user has locally contextualised it (edited a tag, its highlighting, …). */
+export function isZoneEdited(node: PMNode): boolean {
+  if (node.type.name !== TRANSCLUSION_NODE) return false;
+  return contentHash(node.content) !== String(node.attrs['source_content_hash'] ?? '');
+}
+
+/**
+ * Prepare an extracted section to become a zone's children: rewrite heading ids
+ * to fresh ones (so two zones of the same source, or the source itself opened
+ * alongside, never collide ids), and hash the result for `source_content_hash`.
+ */
+export function prepareZoneContent(
+  content: Fragment,
+  freshId: () => string,
+): { content: Fragment; hash: string } {
+  const rewritten = rewriteHeadingIdsInFragment(content, freshId);
+  return { content: rewritten, hash: contentHash(rewritten) };
+}
+
+/** Build a `transclusion_ref` node from attrs + child content. */
 export function createTransclusionNode(
   schema: Schema,
   attrs: Partial<TransclusionAttrs>,
+  content?: Fragment,
 ): PMNode {
   const type = schema.nodes[TRANSCLUSION_NODE];
   if (!type) throw new Error('transclusion_ref not registered in schema');
-  return type.create({
-    source_ref: attrs.source_ref ?? '',
-    source_ref_base: attrs.source_ref_base ?? 'doc',
-    source_heading_id: attrs.source_heading_id ?? '',
-    content_hash: attrs.content_hash ?? '',
-    cached_content: attrs.cached_content ?? null,
-    last_refreshed: attrs.last_refreshed ?? 0,
-    source_label: attrs.source_label ?? '',
-  });
+  return type.create(
+    {
+      source_ref: attrs.source_ref ?? '',
+      source_ref_base: attrs.source_ref_base ?? 'doc',
+      source_heading_id: attrs.source_heading_id ?? '',
+      source_content_hash: attrs.source_content_hash ?? '',
+      last_refreshed: attrs.last_refreshed ?? 0,
+      source_label: attrs.source_label ?? '',
+    },
+    content,
+  );
 }
 
 /** The stable identity of a zone's target — `source_ref` + heading id.
@@ -133,19 +145,13 @@ export function zoneIdentity(node: PMNode): string {
 
 /**
  * The content a Detach should leave behind: the zone's cached fragment as a
- * Slice, ready to replace the node. Heading ids inside are rewritten so a
- * detached copy never shares a UUID with the source (which would confuse the
- * nav pane and future transclusions). Returns an empty Slice for an empty
- * cache (the zone then just vanishes on detach).
+ * Slice, ready to replace the node. The children already carry unique
+ * (rewritten) ids from insert/refresh, so no further rewrite is needed.
+ * Returns an empty Slice for an empty zone (which then just vanishes).
  */
-export function detachSlice(
-  schema: Schema,
-  node: PMNode,
-  freshId: () => string,
-): Slice {
-  const frag = fragmentFromCache(schema, node.attrs['cached_content']);
-  if (frag.size === 0) return Slice.empty;
-  return new Slice(rewriteHeadingIdsInFragment(frag, freshId), 0, 0);
+export function detachSlice(node: PMNode): Slice {
+  if (node.content.size === 0) return Slice.empty;
+  return new Slice(node.content, 0, 0);
 }
 
 /** Rewrite every heading id in a fragment to a fresh UUID (deep). Mirrors the
