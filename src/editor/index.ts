@@ -184,6 +184,7 @@ import {
   enterMidTag,
   enterAtTagEnd,
   enterInHeading,
+  enterAtZoneStart,
 } from './tag-keymap.js';
 import { enterWithConfiguredStyle } from './enter-style.js';
 import { keepCursorInLeadingBlockOnBlockedMerge } from './boundary-cursor-keymap.js';
@@ -4335,6 +4336,7 @@ export function buildEditorPlugins(): Plugin[] {
         // structural block whose enterAfter* setting picks a style.
         enterWithConfiguredStyle(state, dispatch, view) ||
         enterAtTagEnd(state, dispatch, view) ||
+        enterAtZoneStart(state, dispatch, view) ||
         enterMidTag(state, dispatch, view) ||
         enterInHeading(state, dispatch, view),
     }),

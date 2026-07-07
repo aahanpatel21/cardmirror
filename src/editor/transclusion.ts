@@ -11,7 +11,7 @@
  * Nothing here touches the DOM or Electron, so it is fully unit-testable.
  */
 import { Fragment, Slice } from 'prosemirror-model';
-import type { Node as PMNode, Schema } from 'prosemirror-model';
+import type { Node as PMNode, Schema, ResolvedPos } from 'prosemirror-model';
 import { NodeSelection } from 'prosemirror-state';
 import type { Selection } from 'prosemirror-state';
 import {
@@ -71,6 +71,20 @@ export function enclosingZonePos(doc: PMNode, pos: number): number | null {
     if ($pos.node(d).type.name === TRANSCLUSION_NODE) return $pos.before(d);
   }
   return null;
+}
+
+/**
+ * Depth of the innermost live zone containing `$from`, or 0 at the doc root. A
+ * zone is structurally a mini-doc, so its direct children sit at depth
+ * `enclosingZoneDepth + 1` — the base structural/boundary commands measure
+ * against so they operate INSIDE a zone (see `structuralBaseDepth` in
+ * ribbon-commands, and the zone-edge Enter escape in tag-keymap).
+ */
+export function enclosingZoneDepth($from: ResolvedPos): number {
+  for (let d = 1; d <= $from.depth; d++) {
+    if ($from.node(d).type.name === TRANSCLUSION_NODE) return d;
+  }
+  return 0;
 }
 
 /**

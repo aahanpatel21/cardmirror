@@ -347,6 +347,26 @@ function structuralBaseDepth($from: ResolvedPos): number {
   return 0;
 }
 
+/**
+ * True when the cursor is at the very END of a live zone's LAST content — the
+ * end of the last body of the zone's last card / analytic_unit. A structural
+ * heading key there BREAKS OUT: the new head/card lands after the zone
+ * (splitContainerAtBody), cutting off the section, and the level ceiling is
+ * exempt (the heading is leaving the zone). Anywhere else, the key stays in.
+ */
+function isZoneBottomBreakout($from: ResolvedPos, base: number): boolean {
+  if (base === 0) return false;
+  if ($from.depth !== base + 2) return false; // a body inside a container in the zone
+  if (!SPLITTABLE_BODY_SLOTS.has($from.parent.type.name)) return false;
+  if ($from.parentOffset !== $from.parent.content.size) return false; // at the body's end
+  const zone = $from.node(base);
+  const container = $from.node(base + 1);
+  return (
+    $from.index(base) === zone.childCount - 1 && // container is the zone's last child
+    $from.index(base + 1) === container.childCount - 1 // body is the container's last
+  );
+}
+
 /** Highest rank (lowest `TYPE_TO_LEVEL`) among a zone's heading descendants, or
  *  0 when the zone has no headings — no ceiling, so any heading is allowed
  *  (nothing to "outrank"). */
@@ -433,8 +453,11 @@ export function setHeading(typeName: HeadingTypeName): Command {
     const $from = state.selection.$from;
     const base = structuralBaseDepth($from);
     // A live zone can't gain a heading that outranks its highest — block F4–F6
-    // for pocket/hat/block above the zone's ceiling (cards are always fine).
-    if (blockedByZoneLevel($from, base, typeName, view)) return true;
+    // for pocket/hat/block above the zone's ceiling (cards are always fine). A
+    // bottom-edge break-out is exempt: that heading lands OUTSIDE the zone.
+    if (!isZoneBottomBreakout($from, base) && blockedByZoneLevel($from, base, typeName, view)) {
+      return true;
+    }
 
     if ($from.depth === base + 1) {
       const parent = $from.parent;
@@ -836,6 +859,22 @@ function splitContainerAtBody(
 
   const containerFrom = $from.before(base + 1);
   const containerTo = $from.after(base + 1);
+
+  // Zone bottom edge → break OUT: `beforeContainer` stays inside the zone, and
+  // the lifted new head/card lands AFTER the zone (outside), cutting off the
+  // section. (Anywhere else in the zone, it stays in — the branch below.)
+  if (isZoneBottomBreakout($from, base)) {
+    const zoneAfter = $from.after(base);
+    let tr = state.tr.replaceWith(containerFrom, containerTo, beforeContainer);
+    const insertPos = tr.mapping.map(zoneAfter);
+    tr = tr.insert(insertPos, Fragment.fromArray(liftedNodes));
+    const cursorPos =
+      insertPos + insideOffset + Math.min($from.parentOffset, cursorBody.content.size);
+    tr = tr.setSelection(TextSelection.create(tr.doc, cursorPos));
+    dispatch(tr.scrollIntoView());
+    return true;
+  }
+
   const replacement = Fragment.fromArray([beforeContainer, ...liftedNodes]);
   let tr = state.tr.replaceWith(containerFrom, containerTo, replacement);
 

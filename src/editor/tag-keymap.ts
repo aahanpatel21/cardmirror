@@ -31,6 +31,7 @@ import { Selection, TextSelection, type Command, type EditorState, type Transact
 import { Fragment, type Node as PMNode } from 'prosemirror-model';
 import { schema } from '../schema/index.js';
 import { newHeadingId } from '../schema/ids.js';
+import { enclosingZoneDepth } from './transclusion.js';
 
 const HEAD_NODE_TYPES = new Set(['tag', 'analytic']);
 const CARD_NODE_TYPES = new Set(['card', 'analytic_unit']);
@@ -817,4 +818,46 @@ export const enterInHeading: Command = (state, dispatch) => {
   tr = tr.setSelection(TextSelection.create(tr.doc, cursorPos));
   dispatch(tr.scrollIntoView());
   return true;
+};
+
+/**
+ * Enter at the very START of a live zone's first header → a same-kind empty
+ * header appears ABOVE the zone, OUTSIDE it. Mirrors "Enter at the start of a
+ * card's tag makes a new card above, outside the card" (your "space before")
+ * for the whole zone. Runs BEFORE enterMidTag / enterInHeading, which would
+ * otherwise place the new header INSIDE the zone; a header in the zone's
+ * INTERIOR falls through to them (stays in), so only the top edge escapes.
+ */
+export const enterAtZoneStart: Command = (state, dispatch) => {
+  if (!state.selection.empty) return false;
+  const $from = state.selection.$from;
+  if ($from.parentOffset !== 0) return false; // must be at the very start
+  const base = enclosingZoneDepth($from);
+  if (base === 0) return false; // not in a zone
+  if ($from.index(base) !== 0) return false; // not the zone's FIRST child block
+
+  const parent = $from.parent;
+  const zonePos = $from.before(base); // just before the transclusion_ref
+
+  // Standalone heading (pocket / hat / block) that is the zone's first child.
+  if ($from.depth === base + 1 && HEADING_TYPES.has(parent.type.name)) {
+    if (!dispatch) return true;
+    const newHeading = parent.type.createChecked({ id: newHeadingId() }, Fragment.empty);
+    dispatch(state.tr.insert(zonePos, newHeading).scrollIntoView());
+    return true;
+  }
+
+  // Card tag / analytic anchor whose container is the zone's first child.
+  if ($from.depth === base + 2 && HEAD_NODE_TYPES.has(parent.type.name)) {
+    const container = $from.node(base + 1);
+    if (!CARD_NODE_TYPES.has(container.type.name)) return false;
+    if (container.firstChild !== parent) return false; // head isn't the anchor
+    if (!dispatch) return true;
+    const newHead = parent.type.createChecked({ id: newHeadingId() }, Fragment.empty);
+    const newContainer = container.type.createChecked(null, [newHead]);
+    dispatch(state.tr.insert(zonePos, newContainer).scrollIntoView());
+    return true;
+  }
+
+  return false;
 };

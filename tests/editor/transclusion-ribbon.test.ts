@@ -15,6 +15,7 @@ import type { Command as PMCommand } from 'prosemirror-state';
 import { schema, newHeadingId } from '../../src/schema/index.js';
 import { createTransclusionNode, contentHash, isTransclusionNode } from '../../src/editor/transclusion.js';
 import { setTag, setHeading, setAnalytic } from '../../src/editor/ribbon-commands.js';
+import { enterAtZoneStart } from '../../src/editor/tag-keymap.js';
 
 function card(tag: string, body: string): PMNode {
   return schema.nodes['card']!.createChecked(null, [
@@ -48,6 +49,32 @@ function run(doc: PMNode, pos: number, cmd: PMCommand): PMNode {
   expect(ok, 'command should handle the key inside a zone').toBe(true);
   return outDoc;
 }
+/** parentOffset-0 position at the start of the heading whose text is `text`. */
+function startOf(doc: PMNode, text: string): number {
+  let pos = -1;
+  doc.descendants((n, p) => {
+    if (
+      pos < 0 &&
+      ['tag', 'pocket', 'hat', 'block', 'analytic'].includes(n.type.name) &&
+      n.textContent === text
+    ) {
+      pos = p + 1;
+    }
+    return true;
+  });
+  return pos;
+}
+
+/** Position at the END of the body/text run containing `text`. */
+function endOfBody(doc: PMNode, text: string): number {
+  let pos = -1;
+  doc.descendants((n, p) => {
+    if (pos < 0 && n.isText && n.text?.includes(text)) pos = p + n.text!.length;
+    return true;
+  });
+  return pos;
+}
+
 /** The single zone node in a doc + its direct-child type names. */
 function zoneChildren(doc: PMNode): string[] {
   let names: string[] = [];
@@ -135,5 +162,73 @@ describe('zone heading-level ceiling (no heading higher than the zone contains)'
     );
     const after = run(doc, posOf(doc, 'para'), setHeading('block'));
     expect(zoneChildren(after)).toContain('block');
+  });
+});
+
+describe('Enter at the top edge of a zone spawns a header above, outside it', () => {
+  it('Enter at the start of the zone’s first card tag → new card before the zone', () => {
+    const doc = docOf(zone([card('First', 'body')]));
+    const after = run(doc, startOf(doc, 'First'), enterAtZoneStart);
+    expect(after.childCount).toBe(2);
+    expect(after.child(0).type.name).toBe('card');
+    expect(after.child(0).textContent).toBe(''); // new empty tag
+    expect(isTransclusionNode(after.child(1))).toBe(true);
+    expect(zoneChildren(after)).toEqual(['card']); // original still inside the zone
+  });
+
+  it('Enter at the start of a standalone block at the zone top → block before the zone', () => {
+    const doc = docOf(
+      zone([
+        schema.nodes['block']!.create({ id: newHeadingId() }, schema.text('Blk')),
+        card('T', 'b'),
+      ]),
+    );
+    const after = run(doc, startOf(doc, 'Blk'), enterAtZoneStart);
+    expect(after.childCount).toBe(2);
+    expect(after.child(0).type.name).toBe('block');
+    expect(after.child(0).textContent).toBe('');
+    expect(isTransclusionNode(after.child(1))).toBe(true);
+  });
+
+  it('does nothing at the start of a NON-first header inside the zone (stays in)', () => {
+    const doc = docOf(zone([card('First', 'b1'), card('Second', 'b2')]));
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, startOf(doc, 'Second')),
+    });
+    expect(enterAtZoneStart(state, undefined)).toBe(false);
+  });
+});
+
+describe('a heading key at the bottom edge of a zone breaks out, after it', () => {
+  it('F7 at the end of the zone’s last body → new card AFTER the zone', () => {
+    const doc = docOf(zone([card('T', 'lastbody')]));
+    const after = run(doc, endOfBody(doc, 'lastbody'), setTag());
+    expect(after.childCount).toBe(2);
+    expect(isTransclusionNode(after.child(0))).toBe(true); // zone kept its tag
+    expect(after.child(1).type.name).toBe('card'); // new card outside
+    expect(after.child(1).textContent).toBe('lastbody');
+  });
+
+  it('F6 at the zone bottom breaks out even when the ceiling would block it inside', () => {
+    const doc = docOf(
+      zone([
+        schema.nodes['block']!.create({ id: newHeadingId() }, schema.text('Blk')),
+        card('T', 'lastbody'),
+      ]),
+    );
+    const after = run(doc, endOfBody(doc, 'lastbody'), setHeading('block'));
+    expect(after.childCount).toBe(2);
+    expect(isTransclusionNode(after.child(0))).toBe(true);
+    expect(after.child(1).type.name).toBe('block'); // OUTSIDE — ceiling exempt
+    expect(after.child(1).textContent).toBe('lastbody');
+  });
+
+  it('F7 at a NON-last body stays INSIDE the zone (no break-out)', () => {
+    const doc = docOf(zone([card('First', 'body1'), card('Second', 'body2')]));
+    const after = run(doc, endOfBody(doc, 'body1'), setTag());
+    expect(after.childCount).toBe(1); // still just the zone
+    expect(isTransclusionNode(after.child(0))).toBe(true);
+    expect(zoneChildren(after).filter((t) => t === 'card').length).toBe(3);
   });
 });
