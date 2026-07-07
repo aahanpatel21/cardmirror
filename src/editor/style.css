@@ -12379,19 +12379,35 @@ body.pmd-multi-doc .pmd-cardcutter-trim {
 .pmd-send-bar-clickable {
   cursor: pointer;
 }
-.pmd-send-invite-header {
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--pmd-c-accent);
-  padding: 0.35rem 0.6rem 0.15rem;
-  user-select: none;
+/* Per-contact collaboration-invite button. Hidden until the pill is opened
+   by a CLICK (invite mode) — a drag-to-send never reveals it. */
+.pmd-send-invite-btn {
+  display: none;
 }
-.pmd-send-invite-mode .pmd-send-target {
+.pmd-send-invite-mode .pmd-send-invite-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--pmd-c-border-soft);
+  border-radius: 6px;
+  background: var(--pmd-c-bg);
+  color: var(--pmd-c-accent);
   cursor: pointer;
 }
-.pmd-send-invite-mode .pmd-send-target:hover {
+.pmd-send-invite-btn svg {
+  display: block;
+}
+.pmd-send-invite-mode .pmd-send-invite-btn:hover {
   background: var(--pmd-c-hover);
+  border-color: var(--pmd-c-accent);
+}
+/* In invite mode the row itself isn't the affordance — only its button is. */
+.pmd-send-invite-mode .pmd-send-target {
+  cursor: default;
 }
 
 /* Session-invite rows act, they don't insert: a compact Join button in

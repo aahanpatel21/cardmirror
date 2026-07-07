@@ -58,6 +58,10 @@ function unionRect(
   };
 }
 
+/** Two-people glyph for the per-contact "invite to collaborate" button. */
+const COLLAB_INVITE_ICON =
+  '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+
 export class SendPillController {
   private root!: HTMLDivElement;
   private bar!: HTMLDivElement;
@@ -67,10 +71,10 @@ export class SendPillController {
   private unsubscribeSettings: (() => void) | null = null;
   private unsubscribeController: (() => void) | null = null;
   private expanded = false;
-  /** Click-to-invite mode: the panel is open from a CLICK (not a drag)
-   *  and rows send session invites instead of absorbing cards. */
+  /** Click-to-invite mode: the panel is open from a CLICK (not a drag), so
+   *  each row shows a collaboration-invite button. A drag-to-send never
+   *  reveals the buttons (the `pmd-send-invite-mode` class gates them). */
   private inviteMode = false;
-  private inviteHeader: HTMLDivElement | null = null;
   private onDocPointerDown: ((e: PointerEvent) => void) | null = null;
   /** Row element → resolved target, rebuilt with the partner/group list. */
   private targets = new Map<HTMLElement, SendTarget>();
@@ -169,16 +173,6 @@ export class SendPillController {
       if (event === 'end') this.collapse();
     });
 
-    this.panel.addEventListener('click', (e) => {
-      if (!this.inviteMode) return;
-      const row = (e.target as HTMLElement).closest('.pmd-send-target');
-      if (!(row instanceof HTMLElement)) return;
-      const target = this.targets.get(row);
-      if (!target) return;
-      this.collapse();
-      collabInviter()?.({ codes: target.codes, label: target.label, via: target.via });
-    });
-
     this.renderTargets();
     this.applyVisibility();
     this.unsubscribeSettings = settings.subscribe(() => {
@@ -201,12 +195,8 @@ export class SendPillController {
   private openInviteMode(): void {
     this.inviteMode = true;
     this.expand();
-    if (!this.inviteHeader) {
-      this.inviteHeader = document.createElement('div');
-      this.inviteHeader.className = 'pmd-send-invite-header';
-      this.inviteHeader.textContent = 'Invite to collaboration session';
-    }
-    this.panel.prepend(this.inviteHeader);
+    // Reveals the per-row collaboration-invite buttons (CSS-gated on this
+    // class), so they appear only on a click-open, never mid-drag.
     this.root.classList.add('pmd-send-invite-mode');
     // Outside click closes (capture so editor clicks count too).
     this.onDocPointerDown = (e: PointerEvent) => {
@@ -247,14 +237,40 @@ export class SendPillController {
 
     if (groups.length > 0) {
       this.panel.appendChild(this.sectionLabel('Groups'));
-      for (const g of groups) this.panel.appendChild(this.groupRow(g, partners));
+      for (const g of groups) {
+        const row = this.groupRow(g, partners);
+        this.addInviteButton(row);
+        this.panel.appendChild(row);
+      }
     }
     if (partners.length > 0) {
       this.panel.appendChild(this.sectionLabel('To'));
       for (const p of partners) {
-        this.panel.appendChild(this.targetRow(p.name || p.code, [p.code], p.name || p.code));
+        const row = this.targetRow(p.name || p.code, [p.code], p.name || p.code);
+        this.addInviteButton(row);
+        this.panel.appendChild(row);
       }
     }
+  }
+
+  /** Append the per-contact "invite to collaborate" button. Hidden by CSS
+   *  until the pill is opened by a click (invite mode); clicking it starts a
+   *  session on the current doc (if none) and invites that recipient/group. */
+  private addInviteButton(row: HTMLElement): void {
+    const target = this.targets.get(row);
+    if (!target) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pmd-send-invite-btn';
+    btn.title = 'Invite to collaborate';
+    btn.setAttribute('aria-label', 'Invite to collaborate');
+    btn.innerHTML = COLLAB_INVITE_ICON;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.collapse();
+      collabInviter()?.({ codes: target.codes, label: target.label, via: target.via });
+    });
+    row.appendChild(btn);
   }
 
   private sectionLabel(text: string): HTMLElement {
@@ -313,7 +329,6 @@ export class SendPillController {
     if (this.inviteMode) {
       this.inviteMode = false;
       this.root.classList.remove('pmd-send-invite-mode');
-      this.inviteHeader?.remove();
       if (this.onDocPointerDown) {
         document.removeEventListener('pointerdown', this.onDocPointerDown, true);
         this.onDocPointerDown = null;
