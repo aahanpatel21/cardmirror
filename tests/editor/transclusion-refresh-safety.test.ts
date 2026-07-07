@@ -5,8 +5,7 @@
  *  - it refuses (reason 'ambiguous') rather than overwrite the WRONG same-identity
  *    zone when the clicked pos goes stale during the async source read;
  *  - it re-confirms when the target became edited DURING the read;
- *  - it refuses (reason 'cycle') when the refreshed section transitively
- *    transcludes the very zone being refreshed;
+ *  - it flattens a nested zone in the refreshed section to plain content;
  *  - `deepZoneIdentities` sees nested zone identities at any depth.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
@@ -29,7 +28,7 @@ import {
   zoneIdentity,
   isTransclusionNode,
 } from '../../src/editor/transclusion.js';
-import { refreshZoneAtPos } from '../../src/editor/transclusion-actions.js';
+import { refreshZoneAtPos, replaceZoneAtPos } from '../../src/editor/transclusion-actions.js';
 
 function card(tag: string, body: string): PMNode {
   return schema.nodes['card']!.createChecked(null, [
@@ -121,20 +120,26 @@ describe('refreshZoneAtPos — safety', () => {
     view.destroy();
   });
 
-  it('refuses (cycle) when the refreshed section transitively transcludes this zone', async () => {
+  it('flattens a nested zone in the refreshed section (no cycle, no nested zone)', async () => {
     const view = makeView([zoneNode([card('Orig', 'orig-ev')], REF)]);
-    // The source section now contains a nested zone pointing back at this target.
-    const selfRef = createTransclusionNode(schema, REF, Fragment.fromArray([card('inner', 'z')]));
+    // The source section contains a nested zone; refresh must flatten it to plain
+    // content rather than nest another zone (which is what could form a cycle).
+    const nested = createTransclusionNode(schema, REF, Fragment.fromArray([card('inner', 'inner-ev')]));
     resolveMock.mockResolvedValue({
       ok: true,
-      result: { content: Fragment.fromArray([selfRef]), headingLabel: 'H', headingType: 'block' },
+      result: { content: Fragment.fromArray([nested]), headingLabel: 'H', headingType: 'block' },
       sourceName: 'S.cmir',
     });
     const outcome = await refreshZoneAtPos(view, 0);
-    expect(outcome.ok).toBe(false);
-    expect(outcome.reason).toBe('cycle');
-    // Cache preserved.
-    expect(view.state.doc.textContent).toContain('orig-ev');
+    expect(outcome.ok).toBe(true);
+    let zones = 0;
+    view.state.doc.descendants((n) => {
+      if (isTransclusionNode(n)) zones++;
+      return true;
+    });
+    expect(zones).toBe(1); // only the outer zone — the nested one was flattened
+    expect(view.state.doc.textContent).toContain('inner-ev');
+    expect(view.state.doc.textContent).not.toContain('orig-ev'); // replaced by refresh
     view.destroy();
   });
 
@@ -165,6 +170,37 @@ describe('refreshZoneAtPos — safety', () => {
     expect(outcome.reason).toBe('cancelled');       // user said no
     expect(view.state.doc.textContent).toContain('ZZZ');          // the edit survived
     expect(view.state.doc.textContent).not.toContain('from-source'); // source not applied
+    view.destroy();
+  });
+});
+
+describe('replaceZoneAtPos — re-pick identity safety', () => {
+  const NEW = { source_ref: 'N.cmir', source_ref_base: 'doc' as const, source_heading_id: 'H2' };
+
+  it('re-targets the zone located by identity even when the pos went stale', () => {
+    const z = zoneNode([card('Old', 'old-ev')], REF);
+    const view = makeView([z]);
+    // Shift the zone so the captured pos (0) is stale; identity still finds it.
+    view.dispatch(view.state.tr.insert(0, schema.nodes['paragraph']!.create()));
+    const ok = replaceZoneAtPos(view, 0, zoneIdentity(z), NEW, Fragment.fromArray([card('New', 'new-ev')]));
+    expect(ok).toBe(true);
+    expect(view.state.doc.textContent).toContain('new-ev');
+    expect(view.state.doc.textContent).not.toContain('old-ev');
+    view.destroy();
+  });
+
+  it('refuses (no change) when duplicate-identity zones make a stale pos ambiguous', () => {
+    const a = zoneNode([card('A', 'aaa')], REF);
+    const b = zoneNode([card('B', 'bbb')], REF); // same identity as A
+    const view = makeView([a, b]);
+    const posB = a.nodeSize;
+    // Shift both so posB no longer points at B; two identity matches → ambiguous.
+    view.dispatch(view.state.tr.insert(0, schema.nodes['paragraph']!.create()));
+    const ok = replaceZoneAtPos(view, posB, zoneIdentity(a), NEW, Fragment.fromArray([card('New', 'new-ev')]));
+    expect(ok).toBe(false);
+    expect(view.state.doc.textContent).toContain('aaa'); // both untouched
+    expect(view.state.doc.textContent).toContain('bbb');
+    expect(view.state.doc.textContent).not.toContain('new-ev');
     view.destroy();
   });
 });

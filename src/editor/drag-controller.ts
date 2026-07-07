@@ -24,6 +24,8 @@ import { newHeadingId } from '../schema/ids.js';
 import { preciseScrollIntoView } from './precise-scroll.js';
 import { READ_MODE_DRAG_META } from './reading-marker.js';
 import { autoScrollUnderPointer } from './drag-autoscroll.js';
+import { getViewDocPath } from './transclusion-doc-path.js';
+import { flattenZones, fragmentHasZone } from './transclusion.js';
 
 export interface DragItem {
   /** Doc position range covering the dragged unit (heading + its
@@ -212,12 +214,23 @@ class DragControllerImpl {
       const slices = items.map((item) =>
         item.prebuilt ?? srcView.state.doc.slice(item.from, item.to),
       );
+      // A live zone is live only in its home doc. Dropping into a DIFFERENT doc
+      // (a cross-view drop, or any dropzone/shelf insert — the shelf is a frozen
+      // paste) can't trust the zone's doc-relative ref here, so unwrap it to
+      // plain content — same rule as a cross-document copy/paste.
+      const tgtDoc = getViewDocPath(tgtView);
+      const srcDoc = isVirtual ? null : getViewDocPath(srcView);
+      const sameDoc = !isVirtual && srcDoc != null && srcDoc === tgtDoc;
       const tr = tgtView.state.tr;
       let target = insertPos;
       for (const slice of slices) {
         const rewritten = rewriteHeadingIds(slice);
-        tr.insert(target, rewritten.content);
-        target += rewritten.content.size;
+        const content =
+          sameDoc || !fragmentHasZone(rewritten.content)
+            ? rewritten.content
+            : flattenZones(rewritten.content);
+        tr.insert(target, content);
+        target += content.size;
       }
       // Land the caret on the top of the dropped section, then jump the
       // viewport to it exactly like clicking that heading in the nav pane.

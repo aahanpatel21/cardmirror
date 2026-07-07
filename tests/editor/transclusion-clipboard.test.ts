@@ -12,6 +12,7 @@ import {
   stampZoneOrigins,
   resolvePastedZones,
   fragmentHasZone,
+  flattenZones,
   isTransclusionNode,
 } from '../../src/editor/transclusion.js';
 
@@ -77,5 +78,12 @@ describe('clipboard live-zone handling', () => {
   it('an unstamped (unknown-origin) zone also unwraps on paste', () => {
     const out = resolvePastedZones(Fragment.fromArray([zone([card('A', 'a')])]), '/lib/Doc.cmir');
     expect(count(out)).toEqual({ zones: 0, cards: 1 });
+  });
+
+  it('flattenZones unwraps a nested zone to plain content', () => {
+    const inner = zone([card('Inner', 'inner-ev')]);
+    const flat = flattenZones(Fragment.fromArray([card('C', 'c'), inner]));
+    expect(count(flat)).toEqual({ zones: 0, cards: 2 });
+    expect(flat.textBetween(0, flat.size, ' ')).toContain('inner-ev');
   });
 });

@@ -271,9 +271,10 @@ export interface QuickCardSearchOptions {
   /** The transcluding document's own on-disk path, needed to compute a
    *  portable `source_ref`. Only used in transclude mode. */
   docPath?: string | null;
-  /** "Re-pick source" for an existing zone: choosing a header re-targets the
-   *  zone at this doc position in place, rather than inserting a new one. */
-  rePickTarget?: number;
+  /** "Re-pick source" for an existing zone: choosing a header re-targets that
+   *  zone in place (located by identity, so a stale position is safe) rather
+   *  than inserting a new one. */
+  rePickTarget?: { pos: number; identity: string };
 }
 
 /** A unified palette row — a quick card, dropzone item, command,
@@ -761,9 +762,9 @@ class QuickCardSearchUI {
   private openFilePath: (path: string, name: string) => void = () => {};
   private transcludeMode = false;
   private docPath: string | null = null;
-  /** When set, choosing a header RE-TARGETS the existing zone at this doc pos
-   *  (Re-pick source) instead of inserting a new one. */
-  private rePickTarget: number | null = null;
+  /** When set, choosing a header RE-TARGETS this existing zone (Re-pick source)
+   *  instead of inserting a new one. Located by identity at replace time. */
+  private rePickTarget: { pos: number; identity: string } | null = null;
 
   private results: PaletteResult[] = [];
   /** Full ranked list for the current query; `results` holds the rendered
@@ -1725,7 +1726,13 @@ class QuickCardSearchUI {
     }
     if (this.rePickTarget != null) {
       // Re-pick source: re-target the existing zone in place (one-shot → close).
-      const ok = replaceZoneAtPos(view, this.rePickTarget, outcome.attrs, outcome.content);
+      const ok = replaceZoneAtPos(
+        view,
+        this.rePickTarget.pos,
+        this.rePickTarget.identity,
+        outcome.attrs,
+        outcome.content,
+      );
       showToast(ok ? `Re-linked live zone "${outcome.headingLabel}".` : 'That live zone is no longer here.');
       this.close();
       return;

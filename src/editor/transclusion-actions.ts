@@ -15,7 +15,6 @@ import {
   createTransclusionNode,
   extractSection,
   chooseSourceRef,
-  deepZoneIdentities,
   prepareZoneContent,
   type TransclusionAttrs,
   type SourceRefBase,
@@ -47,8 +46,7 @@ export type BuildZoneReason =
   | 'no-heading-id'
   | 'no-section'
   | 'no-doc-path'
-  | 'no-portable-ref'
-  | 'self-cycle';
+  | 'no-portable-ref';
 
 export interface BuildZoneOutcome {
   ok: boolean;
@@ -91,12 +89,8 @@ export function buildLiveZoneAttrs(
     last_refreshed: Date.now(),
     source_label: crumbLabel(sourceName, section.headingLabel),
   };
-  const node = createTransclusionNode(schema, attrs, content);
-  // Reject direct AND transitive self-embedding (a nested cached zone, at any
-  // depth, that points back at this same target) — not just direct children.
-  if (deepZoneIdentities(content).has(zoneIdentity(node))) {
-    return { ok: false, reason: 'self-cycle' };
-  }
+  // No cycle guard needed: prepareZoneContent flattened any nested zones, so the
+  // content is structurally zone-free and can't reference this (or any) zone.
   return { ok: true, attrs, content, headingLabel: section.headingLabel };
 }
 
@@ -111,8 +105,6 @@ export function buildZoneErrorMessage(reason: BuildZoneReason | undefined): stri
       return 'Save this document first, then insert a live zone.';
     case 'no-portable-ref':
       return 'Couldn’t make a portable link to that file.';
-    case 'self-cycle':
-      return 'That section transcludes itself — can’t create a cycle.';
     default:
       return 'Could not insert the live zone.';
   }
@@ -183,14 +175,9 @@ export async function refreshZoneAtPos(
     return { ok: false, reason: 'cancelled' };
   }
 
-  // Replace the whole zone node with a fresh one: new children (source ids
-  // rewritten), reset content hash + timestamp + label.
+  // Replace the whole zone node with a fresh one: new children (nested zones
+  // flattened, source ids rewritten), reset content hash + timestamp + label.
   const { content, hash } = prepareZoneContent(outcome.result.content, newHeadingId);
-  // Cycle backstop: refuse if the freshly-pulled section transitively transcludes
-  // this very zone — otherwise each refresh re-nests its own snapshot deeper.
-  if (deepZoneIdentities(content).has(identity)) {
-    return { ok: false, reason: 'cycle', sourceName: outcome.sourceName };
-  }
   const newNode = createTransclusionNode(
     view.state.schema,
     {
@@ -261,13 +248,20 @@ export function insertZoneAtSelection(
 export function replaceZoneAtPos(
   view: EditorView,
   pos: number,
+  identity: string,
   attrs: Partial<TransclusionAttrs>,
   content?: Fragment,
 ): boolean {
-  const node = view.state.doc.nodeAt(pos);
+  // The picker is a long interaction, so `pos` may have gone stale (a collab
+  // peer edit, etc.). Re-locate the ORIGINAL zone by identity — findZonePos
+  // refuses (null) if it's ambiguous or gone, so we never re-target the wrong
+  // zone. (identity is the zone's pre-re-pick source_ref + heading id.)
+  const targetPos = findZonePos(view.state.doc, identity, pos);
+  if (targetPos === null) return false;
+  const node = view.state.doc.nodeAt(targetPos);
   if (!node || !isTransclusionNode(node)) return false;
   const newNode = createTransclusionNode(view.state.schema, attrs, content);
-  const tr = view.state.tr.replaceWith(pos, pos + node.nodeSize, newNode);
+  const tr = view.state.tr.replaceWith(targetPos, targetPos + node.nodeSize, newNode);
   tr.setMeta('addToHistory', true);
   view.dispatch(tr.scrollIntoView());
   return true;
@@ -275,15 +269,17 @@ export function replaceZoneAtPos(
 
 /** How to open the picker in "re-pick" mode. Registered by the app wiring
  *  (index.ts) because the picker needs deps the NodeView doesn't carry. */
-let rePickOpener: ((view: EditorView, pos: number) => void) | null = null;
-export function setRePickOpener(fn: (view: EditorView, pos: number) => void): void {
+let rePickOpener: ((view: EditorView, pos: number, identity: string) => void) | null = null;
+export function setRePickOpener(fn: (view: EditorView, pos: number, identity: string) => void): void {
   rePickOpener = fn;
 }
-/** Open the re-pick picker for the zone at `pos`. No-op (false) when nothing is
- *  registered — e.g. the web build, where creation/refresh aren't available. */
+/** Open the re-pick picker for the zone at `pos`. No-op (false) when there's no
+ *  zone there or nothing is registered (e.g. the web build). Captures the zone's
+ *  identity now so the eventual replace can re-locate it safely. */
 export function rePickZoneAtPos(view: EditorView, pos: number): boolean {
-  if (!rePickOpener) return false;
-  rePickOpener(view, pos);
+  const node = view.state.doc.nodeAt(pos);
+  if (!node || !isTransclusionNode(node) || !rePickOpener) return false;
+  rePickOpener(view, pos, zoneIdentity(node));
   return true;
 }
 

@@ -112,7 +112,13 @@ export function prepareZoneContent(
   content: Fragment,
   freshId: () => string,
 ): { content: Fragment; hash: string } {
-  const rewritten = rewriteHeadingIdsInFragment(content, freshId);
+  // A section pulled into a zone keeps only PLAIN content: any nested zones are
+  // flattened to their snapshot. A zone is live only in the document it was
+  // created in — nested inside another zone it becomes ordinary content (update
+  // it in its home doc and re-snapshot). This also makes a zone's children
+  // structurally zone-free, so a cycle can never form.
+  const flattened = flattenZones(content);
+  const rewritten = rewriteHeadingIdsInFragment(flattened, freshId);
   return { content: rewritten, hash: contentHash(rewritten) };
 }
 
@@ -226,6 +232,24 @@ export function fragmentHasZone(frag: Fragment): boolean {
   };
   frag.forEach(walk);
   return found;
+}
+
+/** Unwrap every zone in a fragment to its cached content (recursively). A zone
+ *  is live only in the document it was created in; nested inside another zone —
+ *  or ported elsewhere — it becomes ordinary content. Shared by content-prep
+ *  (nested zones) and cross-document drops. */
+export function flattenZones(frag: Fragment): Fragment {
+  const out: PMNode[] = [];
+  frag.forEach((child) => {
+    const mapped = child.content.size ? flattenZones(child.content) : child.content;
+    const node = mapped === child.content ? child : child.type.create(child.attrs, mapped, child.marks);
+    if (node.type.name === TRANSCLUSION_NODE) {
+      node.content.forEach((c) => out.push(c));
+    } else {
+      out.push(node);
+    }
+  });
+  return Fragment.fromArray(out);
 }
 
 /** Rebuild a fragment, applying `fn` to every zone node at any depth (children

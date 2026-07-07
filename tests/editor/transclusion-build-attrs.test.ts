@@ -5,7 +5,7 @@
  * snapshot the section, choose a portable ref, reject self-embedding.
  */
 import { describe, expect, it } from 'vitest';
-import { Node as PMNode } from 'prosemirror-model';
+import { Node as PMNode, Fragment } from 'prosemirror-model';
 import { schema, newHeadingId } from '../../src/schema/index.js';
 import { chooseSourceRef, createTransclusionNode } from '../../src/editor/transclusion.js';
 import { buildLiveZoneAttrs } from '../../src/editor/transclusion-actions.js';
@@ -69,17 +69,25 @@ describe('buildLiveZoneAttrs — rejections', () => {
     const r = buildLiveZoneAttrs(schema, src, 'wid', 'S.cmir', 'C:\\a\\Doc.cmir', 'D:\\b\\S.cmir', []);
     expect(r.reason).toBe('no-portable-ref');
   });
-  it('self-cycle: the section already transcludes itself', () => {
-    // Compute the ref this insert would produce, then embed a matching zone
-    // in the source section so the self-embed guard fires.
+  it('flattens a nested zone in the section to plain content (no cycle)', () => {
+    // The source section contains a nested zone. Building must flatten it to its
+    // snapshot — the built content is zone-free, so a cycle can never form.
     const chosen = chooseSourceRef(DOCPATH, SRCPATH, [ROOT])!;
-    const selfZone = createTransclusionNode(schema, {
-      source_ref: chosen.ref,
-      source_ref_base: chosen.base,
-      source_heading_id: 'wid',
-    });
-    const selfSrc = doc([heading('block', 'Warming', 'wid'), selfZone, card('T', 'e')]);
-    const r = buildLiveZoneAttrs(schema, selfSrc, 'wid', 'Warming.cmir', DOCPATH, SRCPATH, [ROOT]);
-    expect(r.reason).toBe('self-cycle');
+    const nested = createTransclusionNode(
+      schema,
+      { source_ref: chosen.ref, source_ref_base: chosen.base, source_heading_id: 'other' },
+      Fragment.fromArray([card('Nested', 'nested-ev')]),
+    );
+    const src2 = doc([heading('block', 'Warming', 'wid'), nested, card('T', 'e')]);
+    const r = buildLiveZoneAttrs(schema, src2, 'wid', 'Warming.cmir', DOCPATH, SRCPATH, [ROOT]);
+    expect(r.ok).toBe(true);
+    let zones = 0;
+    const walk = (n: PMNode): void => {
+      if (n.type.name === 'transclusion_ref') zones++;
+      n.content.forEach(walk);
+    };
+    r.content!.forEach(walk);
+    expect(zones).toBe(0); // nested zone flattened away
+    expect(r.content!.textBetween(0, r.content!.size, ' ')).toContain('nested-ev');
   });
 });

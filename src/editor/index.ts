@@ -7664,7 +7664,7 @@ async function applyRecovery(
 // Wire a live zone's "Re-pick source" (from its glyph menu) to reopen the picker
 // in re-pick mode for that zone — same deps as the insertLiveZone command, which
 // live in this module.
-setRePickOpener((targetView, pos) => {
+setRePickOpener((targetView, pos, identity) => {
   const paneEl =
     (targetView.dom.closest('.pmd-pane') as HTMLElement | null) ?? editorEl ?? null;
   quickCardSearchUI.open({
@@ -7674,7 +7674,7 @@ setRePickOpener((targetView, pos) => {
     openFilePath: openFileByPath,
     transcludeMode: true,
     docPath: getViewDocPath(targetView),
-    rePickTarget: pos,
+    rePickTarget: { pos, identity },
   });
 });
 
