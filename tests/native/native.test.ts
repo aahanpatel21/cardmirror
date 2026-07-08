@@ -168,6 +168,13 @@ describe('native format (.cmir)', () => {
     expect(() => parseNative(bytes)).toThrow(/not a cardmirror file/i);
   });
 
+  it('gives an actionable message for an empty read (undownloaded cloud file)', () => {
+    // A Dropbox / iCloud "online only" placeholder reads back as 0 bytes; the
+    // message must point at the real cause, not "failed to parse JSON".
+    expect(() => parseNative(new Uint8Array())).toThrow(/online only|make it available offline/i);
+    expect(() => parseNative(new Uint8Array())).not.toThrow(/parse JSON/i);
+  });
+
   it('refuses non-JSON bytes', () => {
     const bytes = new TextEncoder().encode('plain text, no JSON');
     expect(() => parseNative(bytes)).toThrow(/cardmirror/i);

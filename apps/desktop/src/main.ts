@@ -201,6 +201,39 @@ function pickMultiPaneTarget(): BrowserWindow | null {
   return null;
 }
 
+const CLOUD_WAIT_TIMEOUT_MS = 20_000;
+const CLOUD_WAIT_POLL_MS = 400;
+const cloudWaitDelay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Read a document file, waiting out a cloud "online-only" placeholder.
+ *
+ * A fully-synced file reads back exactly `stat.size` bytes. A Dropbox / iCloud
+ * "online only" placeholder that hasn't downloaded reads back SHORT — often 0
+ * bytes — because the provider materializes the content asynchronously and the
+ * first read returns before the download lands. (A 0-byte read is what surfaces
+ * downstream as "Not a CardMirror file: failed to parse JSON".) Opening the file
+ * re-posts the fetch, so we re-read on a short interval to let an in-flight
+ * download finish, up to a bounded timeout.
+ *
+ * Best-effort: returns whatever bytes it has after the wait (the parser then
+ * gives a clear "not downloaded" message if it's still short). The fast path —
+ * a normal, materialized file — returns on the first read with just one extra
+ * `stat`.
+ */
+async function readDocumentBytes(filePath: string): Promise<Buffer> {
+  let bytes = await fs.readFile(filePath);
+  if (bytes.length >= (await fs.stat(filePath)).size) return bytes;
+  const started = Date.now();
+  while (Date.now() - started < CLOUD_WAIT_TIMEOUT_MS) {
+    await cloudWaitDelay(CLOUD_WAIT_POLL_MS);
+    const size = (await fs.stat(filePath)).size;
+    bytes = await fs.readFile(filePath);
+    if (bytes.length >= size) break;
+  }
+  return bytes;
+}
+
 /** Open a file the OS handed us (macOS `open-file`, Windows / Linux
  *  argv at launch or second-instance — e.g. "Open with… CardMirror").
  *  Multi-pane reuses an open window and routes the file through its
@@ -228,7 +261,7 @@ async function openExternalFile(filePath: string): Promise<void> {
     return;
   }
   try {
-    const buf = await fs.readFile(filePath);
+    const buf = await readDocumentBytes(filePath);
     createWindow({
       filename: path.basename(filePath),
       bytes: new Uint8Array(buf),
@@ -555,7 +588,7 @@ ipcMain.handle('host:open-file', async (event, opts: { filters?: FileFilter[] })
   });
   if (result.canceled || result.filePaths.length === 0) return null;
   const filePath = result.filePaths[0]!;
-  const bytes = await fs.readFile(filePath);
+  const bytes = await readDocumentBytes(filePath);
   return {
     name: path.basename(filePath),
     bytes: new Uint8Array(bytes),
@@ -598,7 +631,7 @@ ipcMain.handle('host:cardcutter-read', async (_event, explicit: string | null) =
 ipcMain.handle('host:read-file-at-path', async (_event, filePath: string) => {
   if (typeof filePath !== 'string' || !filePath) return null;
   try {
-    const bytes = await fs.readFile(filePath);
+    const bytes = await readDocumentBytes(filePath);
     const ext = path.extname(filePath).toLowerCase();
     const format: 'cmir' | 'docx' | null =
       ext === '.cmir' ? 'cmir' : ext === '.docx' ? 'docx' : null;
@@ -714,7 +747,7 @@ ipcMain.handle(
     const real = await safeResolveCmirPath(a.docPath, a.sourceRef, a.refBase, a.rootList, a.sourceAbs);
     if (!real) return null;
     try {
-      const bytes = await fs.readFile(real);
+      const bytes = await readDocumentBytes(real);
       return { bytes: new Uint8Array(bytes), name: path.basename(real) };
     } catch {
       return null;

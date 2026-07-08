@@ -137,6 +137,19 @@ export interface ParseNativeResult {
  *  with a descriptive message when the bytes aren't a valid CardMirror
  *  file — caller can show that to the user. */
 export function parseNative(bytes: Uint8Array): ParseNativeResult {
+  // An empty read is the tell-tale of a cloud "online-only" placeholder
+  // (Dropbox / iCloud Drive) that hasn't downloaded: `readFile` hands back 0
+  // bytes instead of the real content, which would otherwise die cryptically as
+  // "failed to parse JSON (Unexpected end of JSON input)". Say what's actually
+  // wrong and how to fix it.
+  if (bytes.length === 0) {
+    throw new Error(
+      'This file is empty or hasn’t finished downloading. If it lives in Dropbox ' +
+        'or iCloud Drive, it may be set to “online only” — make it available ' +
+        'offline (in Finder, right-click → Make available offline / Download Now), ' +
+        'then open it again.',
+    );
+  }
   let parsed: unknown;
   try {
     // Compressed files (gzip magic) inflate first; legacy plaintext files
