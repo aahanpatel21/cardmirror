@@ -28,17 +28,18 @@ for the parts that aren't.
 6. [Quick Cards](#6-quick-cards)
 7. [The multi-doc workspace](#7-the-multi-doc-workspace)
 8. [Reading and delivering a speech](#8-reading-and-delivering-a-speech)
-9. [Comments and notes](#9-comments-and-notes)
-10. [Learn: spaced-repetition flashcards](#10-learn-spaced-repetition-flashcards)
-11. [AI features](#11-ai-features)
-12. [Send to Verbatim Flow](#12-send-to-verbatim-flow)
-13. [Voice control](#13-voice-control)
-14. [Saving and file formats](#14-saving-and-file-formats)
-15. [Settings reference](#15-settings-reference)
-16. [Appearance and accessibility](#16-appearance-and-accessibility)
-17. [Keyboard shortcuts](#17-keyboard-shortcuts)
-18. [What's not here yet](#18-whats-not-here-yet)
-19. [Glossary](#19-glossary)
+9. [Live zones (transclusion)](#9-live-zones-transclusion)
+10. [Comments and notes](#10-comments-and-notes)
+11. [Learn: spaced-repetition flashcards](#11-learn-spaced-repetition-flashcards)
+12. [AI features](#12-ai-features)
+13. [Send to Verbatim Flow](#13-send-to-verbatim-flow)
+14. [Voice control](#14-voice-control)
+15. [Saving and file formats](#15-saving-and-file-formats)
+16. [Settings reference](#16-settings-reference)
+17. [Appearance and accessibility](#17-appearance-and-accessibility)
+18. [Keyboard shortcuts](#18-keyboard-shortcuts)
+19. [What's not here yet](#19-whats-not-here-yet)
+20. [Glossary](#20-glossary)
 
 ## 1. Getting started
 
@@ -75,8 +76,8 @@ A few capabilities still need the **desktop app**: the background
 **[file-library search](#the-search-everything-palette-mod-shift-space)**,
 **folder-wide** bulk operations (the web app runs Clean / Convert one
 file at a time instead),
-**[Send to Verbatim Flow](#12-send-to-verbatim-flow)**,
-**[voice control](#13-voice-control)**, and
+**[Send to Verbatim Flow](#13-send-to-verbatim-flow)**,
+**[voice control](#14-voice-control)**, and
 **[card sharing](#card-sharing-send-and-receive-pills)**. And saving in
 place needs a Chromium browser — in **Firefox and Safari** the editor runs
 but **[Save](#saving)** downloads a copy instead.
@@ -171,7 +172,7 @@ covered in full in the section linked.
 - **[A real multi-doc workspace](#7-the-multi-doc-workspace)** — three
   editable panes side by side, each with its own outline and history, and
   drag-copy between them.
-- **[Live zones (transclusion)](#live-zones-transclusion)** — embed a
+- **[Live zones (transclusion)](#9-live-zones-transclusion)** — embed a
   section from another file as a live-linked, editable copy you can refresh
   from its source. *(Desktop to create or refresh.)*
 - **[Read mode that locks the keyboard](#8-reading-and-delivering-a-speech)**
@@ -186,17 +187,17 @@ covered in full in the section linked.
 - **[Card sharing](#card-sharing-send-and-receive-pills)** — send cards to
   other people's machines, end-to-end encrypted, with Send and Receive pills
   beside the dropzone. *(Desktop only.)*
-- **[Spaced-repetition flashcards](#10-learn-spaced-repetition-flashcards)**
+- **[Spaced-repetition flashcards](#11-learn-spaced-repetition-flashcards)**
   — study your own evidence; cards live on your machine and never travel
   with a shared file.
-- **[Private notes](#9-comments-and-notes)** — a personal annotation that,
+- **[Private notes](#10-comments-and-notes)** — a personal annotation that,
   like flashcards, stays out of the file you share unless you opt in.
-- **[AI features](#11-ai-features)** — format a cite, repair OCR/PDF
+- **[AI features](#12-ai-features)** — format a cite, repair OCR/PDF
   extraction errors, ask a question about a selection, or generate alt text
   and tables from an image.
-- **[Translate a selection](#11-ai-features)** — to the clipboard, with a
+- **[Translate a selection](#12-ai-features)** — to the clipboard, with a
   keyless backend that works even without AI features set up.
-- **[Display customizations and accessibility](#16-appearance-and-accessibility)**
+- **[Display customizations and accessibility](#17-appearance-and-accessibility)**
   — themes, dyslexia-friendly fonts, per-style colors, and color overrides
   that change how styles look on your screen without altering the document
   or its style definitions.
@@ -393,7 +394,7 @@ warnings, your custom rules), and regular **Shrink (Mod-8)** and **Regrow
   into the current one — handy when cutting a long article.
 - **Format Cite from selection (Mod-Shift-X)** uses AI to turn a pasted
   citation or URL into a properly styled cite (see
-  [AI features](#11-ai-features)).
+  [AI features](#12-ai-features)).
 - **Create Reference** copies the selected card text to your clipboard as
   a "for reference" excerpt: a `<<CITE FOR REFERENCE>>` heading line,
   body text reduced by 3pt, and highlights converted to a quiet grey
@@ -484,7 +485,7 @@ color to all of them at once.
 - **Insert Image** (Format menu) inserts an image from a file; you can
   also paste one from the clipboard. Right-click an image to **edit its
   alt text** (or have AI write it) and to **generate a table from the
-  image** (see [AI features](#11-ai-features)). Alt text round-trips to
+  image** (see [AI features](#12-ai-features)). Alt text round-trips to
   Word.
 
 ### Footnotes and endnotes
@@ -836,66 +837,6 @@ Drag a card, or a heading from a pane's outline, into another pane to
 **copy** it there (the source keeps its copy). This is the same gesture
 as [send-to-speech](#8-reading-and-delivering-a-speech).
 
-### Live zones (transclusion)
-
-A **live zone** embeds a section from *another* file — a heading and the
-cards beneath it — into the document you're working in, kept linked to its
-source. Pull a block from a backfile into today's case once, and a refresh
-later brings in whatever the source says now. *(Creating and refreshing
-live zones is desktop-only — it reads the other file from disk. Zones
-you've already made still render in the web version.)*
-
-**Make one.** Open the [Search Everything palette](#5-finding-things)
-(Mod-Shift-Space), find the source file, and dive into it. Land on the
-heading you want and press **Mod-Enter** ("⌘↵ transclude") to drop that
-section into your document as a live zone. The source can be a `.cmir` file
-or a Word `.docx`; for a Word file, CardMirror adds a small, invisible
-bookmark to it so it can find the same heading again later — nothing else in
-the file changes. If it can't write that bookmark, it declines rather than
-make a zone that could never refresh.
-
-**Spot one.** A live zone shows a teal rail down its left edge, and in the
-navigation pane the headings inside it carry a faint green rail, so you can
-see at a glance which parts of your outline are transcluded. A small glyph
-at the zone's top-left opens its menu.
-
-**Edit in place.** A zone's cards are fully editable — cut, highlight,
-re-tag, add cards — right where they sit; you don't have to unlink first. A
-dot on the glyph marks a zone whose contents you've changed from the source.
-
-**Refresh.** *Refresh Live Zone* (from the command bar, or the glyph menu's
-*Refresh from source*) re-reads the source and replaces the zone your cursor
-is in with the current version. *Refresh All Live Zones* does the whole
-document at once, behind a single confirmation, since it discards local
-edits everywhere. Either way, if you've edited a zone, CardMirror confirms
-before overwriting your changes. If the source heading has been *emptied*
-since you last synced, a refresh keeps your cached copy rather than blanking
-the zone.
-
-**The glyph menu.**
-
-- **Open source file** — open the file the zone came from.
-- **Refresh from source** — the single-zone refresh above.
-- **Re-pick source…** — point the zone at a different file or heading.
-- **Unlink** — break the link, leaving the content behind as ordinary cards
-  you own.
-- **Delete** — remove the zone *and* its contents.
-
-**Living within the boundary.** A live zone behaves as one unit: drag it in
-the outline or on the page and the whole thing moves together. You can add
-headings and cards inside a zone, but not a heading that would outrank the
-zone's own top heading (that would fracture the borrowed section), and you
-can't nest one zone inside another. Copying part of a zone and pasting it
-elsewhere pastes a plain, unlinked copy — the live link stays with the
-original. You can't transclude a heading that has no content under it.
-
-**Live zones need `.cmir`.** A live link only survives in CardMirror's own
-format. **Saving your document to Word (`.docx`) flattens every live zone to
-plain cards and drops its link** — the content stays, but it stops being
-live, and re-opening that `.docx` won't bring the zones back. Keep the
-working copy as `.cmir` if you want the zones to stay linked; export to
-`.docx` only for a hand-off.
-
 ---
 
 ## 8. Reading and delivering a speech
@@ -1016,7 +957,7 @@ there and pull it back later — useful for parking common evidence temporarily.
 
 When it's time to share a speech with the judge or opponent, use the
 **Send Doc** options described under
-[Saving and file formats](#14-saving-and-file-formats) — a clean copy
+[Saving and file formats](#15-saving-and-file-formats) — a clean copy
 with comments, analytics, and undertags stripped — either through Save As
 or in one keystroke with **Save Send Doc (Mod-Alt-S)**.
 
@@ -1090,7 +1031,69 @@ point at the same relay. Leave both empty to use the official relay.
 
 ---
 
-## 9. Comments and notes
+## 9. Live zones (transclusion)
+
+A **live zone** embeds a section from *another* file — a heading and the
+cards beneath it — into the document you're working in, kept linked to its
+source. Pull a block from a backfile into today's case once, and a refresh
+later brings in whatever the source says now. *(Creating and refreshing
+live zones is desktop-only — it reads the other file from disk. Zones
+you've already made still render in the web version.)*
+
+**Make one.** Open the [Search Everything palette](#5-finding-things)
+(Mod-Shift-Space), find the source file, and dive into it. Land on the
+heading you want and press **Mod-Enter** ("⌘↵ transclude") to drop that
+section into your document as a live zone. The source can be a `.cmir` file
+or a Word `.docx`; for a Word file, CardMirror adds a small, invisible
+bookmark to it so it can find the same heading again later — nothing else in
+the file changes. If it can't write that bookmark, it declines rather than
+make a zone that could never refresh.
+
+**Spot one.** A live zone shows a teal rail down its left edge, and in the
+navigation pane the headings inside it carry a faint green rail, so you can
+see at a glance which parts of your outline are transcluded. A small glyph
+at the zone's top-left opens its menu.
+
+**Edit in place.** A zone's cards are fully editable — cut, highlight,
+re-tag, add cards — right where they sit; you don't have to unlink first. A
+dot on the glyph marks a zone whose contents you've changed from the source.
+
+**Refresh.** *Refresh Live Zone* (from the command bar, or the glyph menu's
+*Refresh from source*) re-reads the source and replaces the zone your cursor
+is in with the current version. *Refresh All Live Zones* does the whole
+document at once, behind a single confirmation, since it discards local
+edits everywhere. Either way, if you've edited a zone, CardMirror confirms
+before overwriting your changes. If the source heading has been *emptied*
+since you last synced, a refresh keeps your cached copy rather than blanking
+the zone.
+
+**The glyph menu.**
+
+- **Open source file** — open the file the zone came from.
+- **Refresh from source** — the single-zone refresh above.
+- **Re-pick source…** — point the zone at a different file or heading.
+- **Unlink** — break the link, leaving the content behind as ordinary cards
+  you own.
+- **Delete** — remove the zone *and* its contents.
+
+**Living within the boundary.** A live zone behaves as one unit: drag it in
+the outline or on the page and the whole thing moves together. You can add
+headings and cards inside a zone, but not a heading that would outrank the
+zone's own top heading (that would fracture the borrowed section), and you
+can't nest one zone inside another. Copying part of a zone and pasting it
+elsewhere pastes a plain, unlinked copy — the live link stays with the
+original. You can't transclude a heading that has no content under it.
+
+**Live zones need `.cmir`.** A live link only survives in CardMirror's own
+format. **Saving your document to Word (`.docx`) flattens every live zone to
+plain cards and drops its link** — the content stays, but it stops being
+live, and re-opening that `.docx` won't bring the zones back. Keep the
+working copy as `.cmir` if you want the zones to stay linked; export to
+`.docx` only for a hand-off.
+
+---
+
+## 10. Comments and notes
 
 Toggle the **comments column** on the right with the Comments button. It
 holds four kinds of entity, each pinned beside the text it refers to:
@@ -1104,7 +1107,7 @@ sluggish, hiding it may help.
 | **Comment** | Yes (standard Word comment) | Feedback others should see |
 | **AI note** | No, unless you opt in | Answers from Ask AI |
 | **Private note** | No, unless you opt in | Your own annotations |
-| **Flashcard** | No, never | Study material (see [Learn](#10-learn-spaced-repetition-flashcards)) |
+| **Flashcard** | No, never | Study material (see [Learn](#11-learn-spaced-repetition-flashcards)) |
 
 - **Add a comment** to a selection from the comments cluster; comments
   are threads — others can reply.
@@ -1134,7 +1137,7 @@ to an **Unanchored** section at the bottom of the column, with a
 
 ---
 
-## 10. Learn: spaced-repetition flashcards
+## 11. Learn: spaced-repetition flashcards
 
 CardMirror can turn your evidence into spaced-repetition flashcards, so
 you can actually remember your files. This has no Verbatim equivalent.
@@ -1182,7 +1185,7 @@ turn it off under Settings → Appearance → **Flashcards-due dot**.
 
 ---
 
-## 11. AI features
+## 12. AI features
 
 A handful of features call out to Anthropic's Claude. They're **off by
 default** and require a key.
@@ -1296,7 +1299,7 @@ activity lists are all customizable.
 
 ---
 
-## 12. Send to Verbatim Flow
+## 13. Send to Verbatim Flow
 
 **(Windows only. Experimental.)** With Excel open and a workbook whose name
 contains "Flow", CardMirror can push your work straight into Verbatim
@@ -1324,7 +1327,7 @@ Keyboard shortcuts**. They appear only on Windows.
 
 ---
 
-## 13. Voice control
+## 14. Voice control
 
 **(Desktop only. Experimental.)** Press **Ctrl-Shift-V** to start a
 hands-free editing session and work a card by voice — read text aloud to
@@ -1415,7 +1418,7 @@ dictation errors (it doesn't change command recognition).
 
 ---
 
-## 14. Saving and file formats
+## 15. Saving and file formats
 
 ### Opening files
 
@@ -1436,7 +1439,7 @@ and dragging cards around inside the editor is unaffected.
 - **`.docx`** — Word/Verbatim format. Use it to share. CardMirror writes
   docx that's indistinguishable from Verbatim's own output; some
   CardMirror-only extras (private notes, AI notes, flashcards) are left
-  out unless you opt in, and [live zones](#live-zones-transclusion) flatten
+  out unless you opt in, and [live zones](#9-live-zones-transclusion) flatten
   to plain cards (their links don't survive Word).
 
 ### Cleaning .docx styles ("stylepox")
@@ -1541,7 +1544,7 @@ time.
 
 ---
 
-## 15. Settings reference
+## 16. Settings reference
 
 Open settings with the **gear** icon. Settings are grouped into tabs.
 
@@ -1609,7 +1612,7 @@ headers shown inside each tab.
 - **Keep a Verbatim Flow connection warm** *(Windows)* — start the
   background Excel connection when CardMirror launches so your first
   Send to Flow is fast; leave off to start it on demand
-  (see [Send to Verbatim Flow](#12-send-to-verbatim-flow)).
+  (see [Send to Verbatim Flow](#13-send-to-verbatim-flow)).
 
 ### Files
 
@@ -1674,7 +1677,7 @@ file search scans.
 ### Appearance
 
 How things look. None of these change the file — only your view (see
-[Appearance and accessibility](#16-appearance-and-accessibility)).
+[Appearance and accessibility](#17-appearance-and-accessibility)).
 
 **Theme & chrome**
 
@@ -1850,7 +1853,7 @@ Typing helpers and the behavior of the cutting and condense commands
 - **Translation** — backend (MyMemory / Anthropic / Google Cloud
   Translation), source and target languages, MyMemory email, and Google
   API key for the Translate command (Mod-Shift-T). See
-  [Translate](#11-ai-features).
+  [Translate](#12-ai-features).
 - **Prepend a "translation by" marker** — put a `[TRANSLATION BY …]` line
   above the translated text on the clipboard. On by default.
 
@@ -1859,7 +1862,7 @@ Typing helpers and the behavior of the cutting and condense commands
 Rebind any command: search for it, click **+** to add a binding, **×** to
 remove one, **↺** to restore its default. A few window-level shortcuts
 (like Mod-W) are handled by the OS and can't be overridden (see
-[Keyboard shortcuts](#17-keyboard-shortcuts)).
+[Keyboard shortcuts](#18-keyboard-shortcuts)).
 
 ### Comments & AI
 
@@ -1867,7 +1870,7 @@ remove one, **↺** to restore its default. A few window-level shortcuts
 - **Comment author initials** — the badge on your comments;
   auto-derived from the name if left blank.
 - **Enable AI features** — master switch for the AI comment features;
-  needs an API key (see [AI features](#11-ai-features)).
+  needs an API key (see [AI features](#12-ai-features)).
 - **Anthropic API key** — stored locally; sent only to api.anthropic.com.
 - **AI model (advanced)** — the Claude model id all AI features use; blank
   uses the model built into your release. Set a newer id if the built-in
@@ -1934,7 +1937,7 @@ remove one, **↺** to restore its default. A few window-level shortcuts
 
 ---
 
-## 16. Appearance and accessibility
+## 17. Appearance and accessibility
 
 Everything visual in CardMirror is customizable, and — importantly — your
 display choices **never change the file**. The way you like to see Tags is
@@ -1967,7 +1970,7 @@ everyone, apply direct formatting in the document itself).
 
 ---
 
-## 17. Keyboard shortcuts
+## 18. Keyboard shortcuts
 
 All defaults; rebind any of them in **Settings → Keyboard shortcuts**.
 **Mod** = Ctrl (Windows/Linux) or ⌘ (macOS).
@@ -2053,7 +2056,7 @@ The full, current list is always in the app: press **📖** in the ribbon.
 
 ---
 
-## 18. What's not here yet
+## 19. What's not here yet
 
 CardMirror is in active development. Planned, but not built yet:
 
@@ -2092,7 +2095,7 @@ revision metadata.
 
 ---
 
-## 19. Glossary
+## 20. Glossary
 
 - **Pocket / Hat / Block / Tag** — the four heading levels (Word Heading
   1–4).
