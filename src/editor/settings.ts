@@ -204,14 +204,23 @@ const DEFAULT_DISPLAY_TYPOGRAPHY: DisplayTypography = {
 export interface DisplayColors {
   analytic: string;
   undertag: string;
+  /** Reading-marker text AND the "unread after a marker" tint (one shared hue).
+   *  Display-only — the stored mark stays FF0000, so export + detection are
+   *  unaffected; this just recolors both on screen. */
+  readingMarker: string;
 }
 
 export const DEFAULT_DISPLAY_COLORS: DisplayColors = {
   analytic: '#1F3864',
   undertag: '#385623',
+  readingMarker: '#FF0000',
 };
 
-export const DISPLAY_COLOR_KEYS: (keyof DisplayColors)[] = ['analytic', 'undertag'];
+export const DISPLAY_COLOR_KEYS: (keyof DisplayColors)[] = [
+  'analytic',
+  'undertag',
+  'readingMarker',
+];
 
 /** A user-defined keyboard macro: pressing `key` types `text` at the
  *  cursor. `id` is a stable local handle for the editor UI. */
@@ -1679,10 +1688,10 @@ export const SETTING_METADATA: SettingMeta[] = [
     key: 'markUnreadAfterMarker',
     label: 'Turn text after a mark red',
     description:
-      "When on, all card body text after a mark turns red, which visually denotes portions you didn't read. This is bounded per card, and is preserved in exported versions of the document.",
+      "When on, all card body text after a mark turns red, which visually denotes portions you didn't read. This is bounded per card, and is preserved in exported versions of the document. Its color follows the reading-marker Style color.",
     kind: 'toggle',
-    category: 'general',
-    section: 'Editor behavior',
+    category: 'appearance',
+    section: 'Document typography',
     aliases: ['reading marker', 'unread', 'red text', 'marked'],
   },
   // ─── General ────────────────────────────────────────────────────
@@ -2216,7 +2225,7 @@ export const SETTING_METADATA: SettingMeta[] = [
     key: 'displayColors',
     label: 'Style colors',
     description:
-      'Pick the color used for Analytic and Undertag text. The same colors appear under Accessibility → Color overrides (Document text) — editing either place changes both. In dark mode they stay on these colors as long as the theme isn’t applied to the document; when it is, the document switches to a lighter built-in blue/green for contrast.',
+      'Pick the color used for Analytic text, Undertag text, and the reading marker (which also tints the "unread after a marker" text). The same colors appear under Accessibility → Color overrides (Document text) — editing either place changes both. Analytic/Undertag switch to a lighter built-in blue/green in dark mode when the theme is applied to the document; the reading marker keeps your color.',
     kind: 'displayColors',
     category: 'appearance',
     section: 'Document typography',
@@ -2233,12 +2242,12 @@ export const SETTING_METADATA: SettingMeta[] = [
   },
   {
     key: 'showCharacterStyles',
-    label: 'Show character styles',
+    label: 'Show character styles in ribbon',
     description:
       'Show the cite / underline / emphasis character-style buttons in the ribbon. When off, just that sub-panel is hidden; the rest of the formatting panel stays visible.',
     kind: 'toggle',
     category: 'appearance',
-    section: 'Document typography',
+    section: 'Formatting panel',
   },
   {
     key: 'formattingPanelMode',
@@ -3861,6 +3870,7 @@ export const CUSTOMIZABLE_COLOR_TOKENS: readonly CustomizableColorToken[] = [
   // pickers stay linked to one value.
   { group: 'Document text', name: 'pmd-color-analytic', label: 'Analytic text' },
   { group: 'Document text', name: 'pmd-color-undertag', label: 'Undertag text' },
+  { group: 'Document text', name: 'pmd-color-reading-marker', label: 'Reading marker & unread text' },
   // ── Meaning-carrying hues, rebindable so colorblind users have
   //    direct recourse. The band foreground pair (band-fg-light/dark)
   //    is deliberately NOT here: text-on-band contrast only makes
@@ -3872,7 +3882,6 @@ export const CUSTOMIZABLE_COLOR_TOKENS: readonly CustomizableColorToken[] = [
   { group: 'Annotations', name: 'pmd-c-note', label: 'Private note accent' },
   { group: 'Annotations', name: 'pmd-c-repair-accent', label: 'Paragraph repair accent' },
   { group: 'Annotations', name: 'pmd-c-transclusion', label: 'Live-zone rail' },
-  { group: 'Annotations', name: 'pmd-c-reading-marker', label: 'Reading marker & unread-after text' },
   { group: 'Editor', name: 'pmd-c-link', label: 'Hyperlink' },
   { group: 'Editor', name: 'pmd-c-spellcheck', label: 'Misspelling underline' },
   { group: 'Status', name: 'pmd-c-notify-dot', label: 'Due-date dot' },
@@ -3901,6 +3910,7 @@ export const CUSTOMIZABLE_COLOR_TOKENS: readonly CustomizableColorToken[] = [
 export const DISPLAY_COLOR_TOKEN_TO_KEY: Readonly<Record<string, keyof DisplayColors>> = {
   'pmd-color-analytic': 'analytic',
   'pmd-color-undertag': 'undertag',
+  'pmd-color-reading-marker': 'readingMarker',
 };
 
 /** Token names actually managed by `customColorOverrides` — every

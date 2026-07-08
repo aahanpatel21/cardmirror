@@ -4,6 +4,7 @@ import {
   CUSTOMIZABLE_COLOR_TOKENS,
   CUSTOM_OVERRIDE_TOKEN_NAMES,
   CYCLABLE_SETTINGS,
+  DISPLAY_COLOR_TOKEN_TO_KEY,
 } from '../../src/editor/settings.js';
 
 // SettingsStore tolerates the absence of localStorage / window (its
@@ -149,11 +150,19 @@ describe('accessibility color tokens', () => {
     expect(CUSTOM_OVERRIDE_TOKEN_NAMES).toContain('pmd-c-transclusion');
   });
 
-  it('exposes the reading-marker / unread hue as a rebindable override', () => {
-    const tok = CUSTOMIZABLE_COLOR_TOKENS.find((t) => t.name === 'pmd-c-reading-marker');
+  it('exposes the reading-marker / unread hue as a displayColors-backed Style color', () => {
+    const tok = CUSTOMIZABLE_COLOR_TOKENS.find((t) => t.name === 'pmd-color-reading-marker');
     expect(tok).toBeTruthy();
     expect(tok!.label).toMatch(/marker/i);
-    expect(CUSTOM_OVERRIDE_TOKEN_NAMES).toContain('pmd-c-reading-marker');
+    expect(tok!.group).toBe('Document text');
+    // Backed by displayColors (like analytic/undertag) so the Appearance Style-
+    // colors picker and the Accessibility row stay linked — NOT a customColorOverride.
+    expect(DISPLAY_COLOR_TOKEN_TO_KEY['pmd-color-reading-marker']).toBe('readingMarker');
+    expect(CUSTOM_OVERRIDE_TOKEN_NAMES).not.toContain('pmd-color-reading-marker');
+  });
+
+  it('displayColors carries a reading-marker default (red)', () => {
+    expect(new SettingsStore().get('displayColors').readingMarker.toUpperCase()).toBe('#FF0000');
   });
 });
 

@@ -1252,6 +1252,7 @@ function buildColorsEditor(): HTMLElement {
   const LABELS: Record<keyof DisplayColors, string> = {
     analytic: 'Analytic',
     undertag: 'Undertag',
+    readingMarker: 'Reading marker',
   };
 
   function setColor(key: keyof DisplayColors, value: string): void {
