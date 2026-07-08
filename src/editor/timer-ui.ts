@@ -14,7 +14,8 @@
  *   Compact  → display | (start/reset stacked) | (aff/neg)
  *
  * Editable display: when paused, clicking the display makes it
- * `contenteditable` in any mode. The user types MM:SS or seconds; on blur or
+ * `contenteditable` in any mode. The user types MM:SS or keypad digits (last
+ * two digits are seconds, e.g. 800 → 8:00); on blur or
  * Enter we parse + `setActiveRemainingMs`, which writes the active mode's clock
  * (in a prep mode that adjusts that side's saved balance, not just the speech
  * timer).
@@ -45,9 +46,14 @@ function formatMs(ms: number): string {
   return `${m}:${String(r).padStart(2, '0')}`;
 }
 
-/** Parse user-typed `MM:SS` or `SS` into ms. Returns null if
- *  unparseable. */
-function parseTimeInput(s: string): number | null {
+/** Parse a user-typed timer value into ms, or null if unparseable.
+ *
+ *  - `MM:SS` is taken literally (seconds must be < 60): `8:00` → 8 min.
+ *  - Bare digits are read keypad / microwave style — the LAST TWO digits are
+ *    seconds, everything before them is minutes: `800` → 8:00, `130` → 1:30,
+ *    `1230` → 12:30. One- or two-digit input has no minutes part, so it's just
+ *    seconds: `45` → 0:45, `90` → 1:30 (the 90 seconds carry). */
+export function parseTimeInput(s: string): number | null {
   const trimmed = s.trim();
   if (!trimmed) return null;
   const colonMatch = trimmed.match(/^(\d+):(\d{1,2})$/);
@@ -57,8 +63,11 @@ function parseTimeInput(s: string): number | null {
     if (sec >= 60) return null;
     return (m * 60 + sec) * 1000;
   }
-  const intMatch = trimmed.match(/^\d+$/);
-  if (intMatch) return parseInt(trimmed, 10) * 1000;
+  if (/^\d+$/.test(trimmed)) {
+    const seconds = parseInt(trimmed.length <= 2 ? trimmed : trimmed.slice(-2), 10);
+    const minutes = trimmed.length <= 2 ? 0 : parseInt(trimmed.slice(0, -2), 10);
+    return (minutes * 60 + seconds) * 1000;
+  }
   return null;
 }
 
