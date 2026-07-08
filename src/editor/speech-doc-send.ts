@@ -19,7 +19,7 @@ import { closeHistory } from 'prosemirror-history';
 import { schema } from '../schema/index.js';
 import { rewriteHeadingIds } from './drag-controller.js';
 import { nearestValidInsertPos } from './insert-position.js';
-import { flattenZonesInSlice } from './transclusion.js';
+import { flattenZonesInSlice, enclosingZonePos } from './transclusion.js';
 import { normalizeSelectionForSend } from './send-normalize.js';
 import { getSpeechDocResolver } from './speech-doc-registry.js';
 import { getElectronHost } from './host/index.js';
@@ -103,15 +103,48 @@ function enclosingStructureRange(doc: PMNode, $pos: ResolvedPos): SendRange | nu
  *  applies (e.g., empty doc). `resolveSendSlice` slices over this. */
 export function resolveSendRange(view: EditorView): SendRange | null {
   const sel = view.state.selection;
+  const doc = view.state.doc;
   if (!sel.empty) {
+    // A selection INSIDE a live zone (isolating, so it can't cross the boundary)
+    // sends the whole transcluded cards it overlaps — as a cached copy (the slice
+    // carries no zone node, so no live link travels). The general normalizer only
+    // sees top-level doc children and would miss it, returning null.
+    const zonePos = enclosingZonePos(doc, sel.from);
+    if (zonePos !== null && zonePos === enclosingZonePos(doc, sel.to)) {
+      return zoneChildSendRange(doc, zonePos, sel.from, sel.to);
+    }
     // Normalize an arbitrary selection to a run of whole top-level nodes that
     // leads with a structural unit, so whatever is sent can always be placed
     // cleanly on receipt (never splitting a card). Returns null when nothing
     // structural is selected.
-    return normalizeSelectionForSend(view.state.doc, sel.from, sel.to);
+    return normalizeSelectionForSend(doc, sel.from, sel.to);
   }
   // Empty selection: the cursor's enclosing structure (card / heading + section).
-  return enclosingStructureRange(view.state.doc, sel.$from);
+  return enclosingStructureRange(doc, sel.$from);
+}
+
+/** Range covering the whole transcluded cards (zone children) that overlap
+ *  [from, to], for a selection inside a live zone. Whole-node boundaries keep the
+ *  resulting slice clean (openStart/openEnd 0) and free of the zone wrapper. */
+export function zoneChildSendRange(
+  doc: PMNode,
+  zonePos: number,
+  from: number,
+  to: number,
+): SendRange | null {
+  const zone = doc.nodeAt(zonePos);
+  if (!zone) return null;
+  let rangeFrom = -1;
+  let rangeTo = -1;
+  zone.forEach((child, offset) => {
+    const cStart = zonePos + 1 + offset;
+    const cEnd = cStart + child.nodeSize;
+    if (cEnd > from && cStart < to) {
+      if (rangeFrom === -1) rangeFrom = cStart;
+      rangeTo = cEnd;
+    }
+  });
+  return rangeFrom === -1 ? null : { from: rangeFrom, to: rangeTo };
 }
 
 /** Range for **select / copy current heading**: ALWAYS the structure

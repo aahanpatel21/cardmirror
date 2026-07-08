@@ -4644,6 +4644,21 @@ html.pmd-nav-flat .pmd-nav-type-analytic:hover .pmd-nav-label {
   display: block;
 }
 
+/* Live zone: as a non-listed top-level child it (and its cards) would be hidden
+   by the rule above. Re-show the zone + its body so the transcluded cards get
+   the normal read-mode card treatment below (those `.pmd-card > …` rules are
+   depth-independent). Hide the zone's own chrome. */
+.pmd-read-mode .ProseMirror > .pmd-transclusion {
+  display: block;
+}
+.pmd-read-mode .pmd-transclusion > .pmd-transclusion-body {
+  display: block;
+}
+.pmd-read-mode .pmd-transclusion-glyph-btn,
+.pmd-read-mode .pmd-transclusion-menu {
+  display: none;
+}
+
 /* Inside a card: keep tag, cite_paragraph, in-card analytic, and the
    condensed-flow body. Hide undertags. */
 .pmd-read-mode .pmd-card > * { display: none; }

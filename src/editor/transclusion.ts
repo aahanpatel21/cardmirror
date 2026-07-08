@@ -288,67 +288,15 @@ export function flattenZones(frag: Fragment): Fragment {
  *  inbox, send-to-speech), which are all effectively cross-doc. */
 export function flattenZonesInSlice(slice: Slice): Slice {
   if (!fragmentHasZone(slice.content)) return slice;
-  return new Slice(flattenZones(slice.content), slice.openStart, slice.openEnd);
-}
-
-/** Rebuild a fragment, applying `fn` to every zone node at any depth (children
- *  are mapped first, so a fn that rewrites attrs sees already-mapped content). */
-function mapZones(frag: Fragment, fn: (node: PMNode) => PMNode): Fragment {
-  const out: PMNode[] = [];
-  frag.forEach((child) => {
-    const mappedContent = child.content.size ? mapZones(child.content, fn) : child.content;
-    let node = mappedContent === child.content ? child : child.type.create(child.attrs, mappedContent, child.marks);
-    if (node.type.name === TRANSCLUSION_NODE) node = fn(node);
-    out.push(node);
-  });
-  return Fragment.fromArray(out);
-}
-
-/** Clipboard COPY: stamp every zone with the document it was copied from, so a
- *  later paste can distinguish a same-doc paste from a cross-doc one. Transient
- *  — paste clears it again. */
-export function stampZoneOrigins(frag: Fragment, originDocPath: string): Fragment {
-  return mapZones(frag, (node) =>
-    node.type.create({ ...node.attrs, source_origin: originDocPath }, node.content, node.marks),
-  );
-}
-
-/**
- * Clipboard PASTE. A zone whose stamped origin is THIS document keeps its live
- * link (its doc-relative `source_ref` is still valid). A zone from ANOTHER
- * document can't trust that ref here, so it's UNWRAPPED to its cached cards as
- * ordinary content — i.e. a cross-doc paste behaves like a normal card paste,
- * with no lingering link. The transient origin stamp is always cleared.
- */
-export function resolvePastedZones(frag: Fragment, destDocPath: string | null): Fragment {
-  const out: PMNode[] = [];
-  frag.forEach((child) => {
-    // Recurse first, so nested zones are resolved before their parent.
-    const mapped = child.content.size ? resolvePastedZones(child.content, destDocPath) : child.content;
-    const node = mapped === child.content ? child : child.type.create(child.attrs, mapped, child.marks);
-    if (node.type.name !== TRANSCLUSION_NODE) {
-      out.push(node);
-      return;
-    }
-    const origin = String(node.attrs['source_origin'] ?? '');
-    const sameDoc = origin !== '' && destDocPath != null && origin === destDocPath;
-    if (sameDoc) {
-      // Keep the live link; clear the transient stamp AND recompute the content
-      // hash — freshHeadingIds (run before us) rewrote the child ids, which would
-      // otherwise make an unedited copy read as "edited".
-      out.push(
-        node.type.create(
-          { ...node.attrs, source_origin: '', source_content_hash: contentHash(node.content) },
-          node.content,
-          node.marks,
-        ),
-      );
-    } else {
-      // Cross-doc (or unknown origin) → drop the link, splice the cached cards in.
-      node.content.forEach((c) => out.push(c));
-    }
-  });
-  return Fragment.fromArray(out);
+  // Removing a zone that sits on an OPEN edge of the slice makes the content one
+  // level shallower there, so the open depth must drop by that wrapper level.
+  // Otherwise PM's Fitter opens one node too deep and merges away the first /
+  // last heading boundary — the "pasted headings get unformatted" symptom.
+  const firstIsZone = isTransclusionNode(slice.content.firstChild);
+  const lastIsZone = isTransclusionNode(slice.content.lastChild);
+  const openStart = firstIsZone && slice.openStart > 0 ? slice.openStart - 1 : slice.openStart;
+  const openEnd = lastIsZone && slice.openEnd > 0 ? slice.openEnd - 1 : slice.openEnd;
+  return new Slice(flattenZones(slice.content), openStart, openEnd);
 }
 
 /** If the current selection is a NodeSelection over a live zone, return it. */

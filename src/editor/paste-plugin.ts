@@ -53,18 +53,8 @@ import { schema } from '../schema/index.js';
 import { freshHeadingIds } from './drag-controller.js';
 import { condenseBranchC, condenseMerge } from './condense.js';
 import { buildImageNodeFromBlob, insertImageNode } from './image-insert.js';
-import { getViewDocPath } from './transclusion-doc-path.js';
-import { fragmentHasZone, stampZoneOrigins, resolvePastedZones, flattenZones } from './transclusion.js';
+import { fragmentHasZone, flattenZonesInSlice } from './transclusion.js';
 
-/** True when the current selection (the paste destination) sits inside a live
- *  zone — where a pasted zone would otherwise nest. */
-function pasteLandsInsideZone(view: EditorView): boolean {
-  const $from = view.state.selection.$from;
-  for (let d = $from.depth; d > 0; d--) {
-    if ($from.node(d).type.name === 'transclusion_ref') return true;
-  }
-  return false;
-}
 
 /**
  * Build a Slice representing `text` as plain inline content, splitting
@@ -365,29 +355,17 @@ export function buildPastePlugin(ctx: PastePluginCtx): Plugin<PluginState> {
       // Layout-table unwrap runs in the same hook so head-detect /
       // card-body fitting downstream see content that's already been
       // lifted out of any single-cell wrapping table.
-      // Clipboard COPY: stamp any live zones with the doc they came from, so
-      // paste can tell a same-doc paste (keep the live link) from a cross-doc
-      // one (freeze to a snapshot). Skipped entirely when no zone is involved.
-      transformCopied(slice, view) {
-        if (!fragmentHasZone(slice.content)) return slice;
-        return new Slice(
-          stampZoneOrigins(slice.content, getViewDocPath(view) ?? ''),
-          slice.openStart,
-          slice.openEnd,
-        );
-      },
-      transformPasted(slice, view) {
+      transformPasted(slice, _view) {
         const out = freshHeadingIds(unwrapSingleCellTables(slice));
         if (!fragmentHasZone(out.content)) return out;
-        // A zone can't nest inside another zone: if the paste lands INSIDE a
-        // zone, flatten to plain content regardless of origin. Otherwise apply
-        // the origin rule — a zone pasted from another document can't trust its
-        // doc-relative source_ref, so it freezes to plain content; a same-doc
-        // paste keeps the live link.
-        const resolved = pasteLandsInsideZone(view)
-          ? flattenZones(out.content)
-          : resolvePastedZones(out.content, getViewDocPath(view));
-        return new Slice(resolved, out.openStart, out.openEnd);
+        // Any zone content on the clipboard pastes as a PLAIN cached copy (its
+        // cards), never a live link. A partial in-zone copy shouldn't drag the
+        // whole zone's linkage along (which would make a refresh pull ALL the
+        // source's cards into both the copy and the paste), and a paste into a
+        // zone can't nest. flattenZonesInSlice also corrects the open depths so
+        // the pasted headings keep their formatting. To duplicate a live zone,
+        // use the transclude command (it mints a fresh link).
+        return flattenZonesInSlice(out);
       },
       handlePaste(view, event, slice) {
         // Clipboard image paste — screenshots, copy-image from a
