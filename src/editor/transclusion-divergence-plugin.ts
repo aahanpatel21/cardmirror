@@ -17,7 +17,7 @@ import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
 import type { Node as PMNode } from 'prosemirror-model';
 import { isTransclusionNode, zoneIdentity } from './transclusion.js';
 import { transclusionSupported } from './transclusion-resolve.js';
-import { isInterDocZone, checkAllZoneDivergence } from './transclusion-divergence.js';
+import { isInterDocZone, checkAllZoneDivergence, inDocDivergence } from './transclusion-divergence.js';
 import { settings } from './settings.js';
 
 /** Class a diverged zone's outer DOM (the NodeView wrapper) carries — the
@@ -30,6 +30,10 @@ export const DIVERGENCE_IDLE_MS = 10 * 60 * 1000;
 /** Short coalescing delay for the post-refresh recheck (so Refresh-All fires one
  *  recheck, not one per zone). */
 const REFRESH_RECHECK_MS = 400;
+
+/** Debounce for the in-doc copy divergence recheck — long enough not to run per
+ *  keystroke, short enough that the badge appears soon after you stop typing. */
+const IN_DOC_RECHECK_MS = 500;
 
 /** Transaction meta a refresh stamps so this plugin re-checks promptly and
  *  clears the badge on the just-updated zone (see refreshZoneAtPos). */
@@ -79,6 +83,36 @@ export async function requestDivergenceCheck(view: EditorView): Promise<void> {
   view.dispatch(view.state.tr.setMeta(transclusionDivergenceKey, diverged));
 }
 
+export interface LiveZoneCheckSummary {
+  /** False off-desktop, where sources can't be read. */
+  desktop: boolean;
+  /** Cross-file live zones present in the doc. */
+  total: number;
+  /** Sources actually read (reachable). */
+  checked: number;
+  /** Sources found changed since last pulled. */
+  diverged: number;
+}
+
+/** Manually check every cross-file live zone's source for changes and update the
+ *  badges — but pull NOTHING (that's Refresh). Runs even in read mode (it's an
+ *  explicit, read-only action) and returns a summary for the caller to surface. */
+export async function checkLiveZoneSources(view: EditorView): Promise<LiveZoneCheckSummary> {
+  let total = 0;
+  view.state.doc.descendants((node) => {
+    if (!isTransclusionNode(node)) return true;
+    if (isInterDocZone(node)) total++;
+    return false; // zones never nest
+  });
+  if (!transclusionSupported()) return { desktop: false, total, checked: 0, diverged: 0 };
+  const { diverged, checked } = await checkAllZoneDivergence(view);
+  const current = transclusionDivergenceKey.getState(view.state)?.diverged ?? new Set<string>();
+  if (!setsEqual(diverged, current)) {
+    view.dispatch(view.state.tr.setMeta(transclusionDivergenceKey, diverged));
+  }
+  return { desktop: true, total, checked, diverged: diverged.size };
+}
+
 export function makeTransclusionDivergencePlugin(): Plugin<DivergenceState> {
   return new Plugin<DivergenceState>({
     key: transclusionDivergenceKey,
@@ -89,7 +123,9 @@ export function makeTransclusionDivergencePlugin(): Plugin<DivergenceState> {
         const diverged = meta ?? value.diverged;
         const refreshSeq = value.refreshSeq + (tr.getMeta(ZONE_REFRESHED_META) === true ? 1 : 0);
         // Rebuild decorations when the set changes or positions shift; otherwise
-        // reuse — the identity-keyed set is stable across ordinary edits.
+        // reuse — the identity-keyed set is stable across ordinary edits. (In-doc
+        // divergence is folded in by a debounced recheck in view(), not here — it
+        // must not run per keystroke.)
         if (meta || tr.docChanged) {
           return { diverged, decoSet: buildDecoSet(newState.doc, diverged), refreshSeq };
         }
@@ -105,6 +141,7 @@ export function makeTransclusionDivergencePlugin(): Plugin<DivergenceState> {
     view(editorView) {
       let idle: ReturnType<typeof setTimeout> | null = null;
       let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+      let inDocTimer: ReturnType<typeof setTimeout> | null = null;
       let destroyed = false;
       const scheduleRefreshRecheck = (): void => {
         if (refreshTimer) clearTimeout(refreshTimer);
@@ -112,6 +149,24 @@ export function makeTransclusionDivergencePlugin(): Plugin<DivergenceState> {
           refreshTimer = null;
           if (!destroyed) void requestDivergenceCheck(editorView);
         }, REFRESH_RECHECK_MS);
+      };
+      // In-doc copies resolve from the live doc (sync, cheap), so their badge can
+      // update shortly after an edit — but NOT per keystroke. Debounce it: fold
+      // the in-doc divergence into the set once typing pauses.
+      const scheduleInDocRecheck = (): void => {
+        if (inDocTimer) clearTimeout(inDocTimer);
+        inDocTimer = setTimeout(() => {
+          inDocTimer = null;
+          if (destroyed) return;
+          const { all, diverged: inDoc } = inDocDivergence(editorView.state.doc);
+          const current =
+            transclusionDivergenceKey.getState(editorView.state)?.diverged ?? new Set<string>();
+          const merged = new Set([...current].filter((id) => !all.has(id)));
+          for (const id of inDoc) merged.add(id);
+          if (!setsEqual(merged, current)) {
+            editorView.dispatch(editorView.state.tr.setMeta(transclusionDivergenceKey, merged));
+          }
+        }, IN_DOC_RECHECK_MS);
       };
       const armIdle = (): void => {
         if (idle) clearTimeout(idle);
@@ -131,8 +186,12 @@ export function makeTransclusionDivergencePlugin(): Plugin<DivergenceState> {
       return {
         update(v, prevState) {
           // Any real edit means the user is active — push the quiet-moment
-          // recheck out so it lands once they've paused.
-          if (!v.state.doc.eq(prevState.doc)) armIdle();
+          // recheck out so it lands once they've paused, and debounce the cheap
+          // in-doc divergence recheck.
+          if (!v.state.doc.eq(prevState.doc)) {
+            armIdle();
+            scheduleInDocRecheck();
+          }
           // A refresh just re-pulled a zone — recheck promptly so a now-in-sync
           // zone's badge clears without waiting for the idle cadence.
           const seq = transclusionDivergenceKey.getState(v.state)?.refreshSeq ?? 0;
@@ -144,6 +203,7 @@ export function makeTransclusionDivergencePlugin(): Plugin<DivergenceState> {
           clearTimeout(initial);
           if (idle) clearTimeout(idle);
           if (refreshTimer) clearTimeout(refreshTimer);
+          if (inDocTimer) clearTimeout(inDocTimer);
         },
       };
     },

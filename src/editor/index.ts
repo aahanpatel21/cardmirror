@@ -137,8 +137,10 @@ import {
   readModeAwareRedo,
 } from './read-mode-plugin.js';
 import { markUnreadPlugin, MARK_UNREAD_TOGGLE } from './mark-unread-plugin.js';
-import { makeIntraTransclusionPlugin, openSelfZonePicker } from './intra-transclusion-plugin.js';
-import { makeTransclusionDivergencePlugin } from './transclusion-divergence-plugin.js';
+import { makeSelfRefPlugin } from './self-transclusion-plugin.js';
+import { openInsertSelfRef, openInsertInDocCopy } from './self-transclusion-commands.js';
+import { flattenSelfRefs, flattenSelfRefsInSlice } from './self-transclusion.js';
+import { makeTransclusionDivergencePlugin, transclusionDivergenceKey } from './transclusion-divergence-plugin.js';
 import { tagCollabTransaction, collabPluginSource, setCollabInviteJoiner, setCollabInviter } from './collab/collab-hooks.js';
 import { learnHighlightPlugin, flashcardRangeAt } from './learn-highlight-plugin.js';
 import { repairHighlightPlugin } from './repair-highlight-plugin.js';
@@ -174,6 +176,8 @@ import { imageContextMenuPlugin } from './image-context-menu-plugin.js';
 import { editorNodeViews } from './image-resize-nodeview.js';
 import { setViewDocPath, getViewDocPath } from './transclusion-doc-path.js';
 import { setRePickOpener, setOpenSourceOpener } from './transclusion-actions.js';
+import { isTransclusionNode } from './transclusion.js';
+import { showConfirm } from './confirm-dialog.js';
 import { linkContextMenuPlugin } from './link-context-menu-plugin.js';
 import { wordSelectionPlugin } from './word-selection-plugin.js';
 import { typeOverBoundaryPlugin } from './type-over-boundary.js';
@@ -1436,8 +1440,12 @@ const ribbonContext: RibbonContext = {
     });
   },
   insertSelfLiveZone: () => {
-    // PROTOTYPE (intra-doc transclusion): pick a section of THIS doc to mirror.
-    if (view) openSelfZonePicker(view);
+    // Live View: pick a section of THIS doc to mirror read-only.
+    if (view) openInsertSelfRef(view);
+  },
+  insertInDocCopy: () => {
+    // Linked Copy from this doc: pick a section to copy in editably.
+    if (view) openInsertInDocCopy(view);
   },
   insertImage: () => {
     if (!view) return;
@@ -3430,6 +3438,7 @@ const VIEWLESS_RIBBON_COMMANDS = new Set<RibbonCommandId>([
   'openQuickCardSearch',
   'insertLiveZone',
   'insertSelfLiveZone',
+  'insertInDocCopy',
   // Opens the Quick Cards manager overlay — no active doc required.
   'manageQuickCards',
   // Multi-pane workspace commands — fire on the shell, not a
@@ -3475,6 +3484,7 @@ function runViewlessRibbon(id: RibbonCommandId): void {
     case 'openQuickCardSearch': ribbonContext.openQuickCardSearch(); return;
     case 'insertLiveZone': ribbonContext.insertLiveZone(); return;
     case 'insertSelfLiveZone': ribbonContext.insertSelfLiveZone(); return;
+    case 'insertInDocCopy': ribbonContext.insertInDocCopy(); return;
     case 'manageQuickCards': ribbonContext.manageQuickCards(); return;
     case 'toggleVoice': ribbonContext.toggleVoice(); return;
     case 'startFlowHost': ribbonContext.startFlowHost(); return;
@@ -4398,10 +4408,10 @@ export function buildEditorPlugins(): Plugin[] {
     // Cross-file live-zone divergence indicator: reads sources at quiet moments
     // and badges any zone whose source has moved on. Read-only, desktop-only.
     makeTransclusionDivergencePlugin(),
-    // PROTOTYPE (intra-doc transclusion): debounced bidirectional reconcile
-    // between a self-zone and its source section. Inert unless the doc holds a
-    // self-zone, which only the (flag-gated) create command produces.
-    makeIntraTransclusionPlugin(),
+    // Intra-doc live windows (self_ref): re-render each window read-only when the
+    // section it mirrors changes, via a node decoration. No sync/copy — the
+    // window is a by-reference view resolved live from the source.
+    makeSelfRefPlugin(),
     frozenSelectionPlugin,
     pilcrowSelectionPlugin,
     absorbPlugin,
@@ -4449,9 +4459,19 @@ export function buildEditorPlugins(): Plugin[] {
       props: {
         handleDOMEvents: {
           dragstart: (_view, event) => {
+            // Let a Live View (self_ref atom) drag natively — ProseMirror moves
+            // the node. Everything else (text selections) stays undraggable.
+            const target = event.target as HTMLElement | null;
+            if (target?.closest?.('.pmd-self-ref')) return false;
             event.preventDefault();
             return true;
           },
+        },
+        // Copying a Live View out of the doc can't carry the live reference, so
+        // materialize it to plain cards (resolved from this doc) — matching how a
+        // Linked Copy flattens on paste. (transformPasted flattens the copies.)
+        transformCopied(slice, view) {
+          return flattenSelfRefsInSlice(slice, view.state.doc, newHeadingId);
         },
       },
     }),
@@ -4539,8 +4559,17 @@ function mountView(doc: PMNode, threads: Thread[] = []): void {
       }
       const prevState = view.state;
       const prevCommentsState = commentsKey.getState(prevState);
+      const prevDivergedSet = transclusionDivergenceKey.getState(prevState)?.diverged;
       const next = view.state.apply(tx);
       view.updateState(next);
+      // The divergence set updates via a meta transaction (no doc change), so the
+      // docChanged-gated nav rebuild below wouldn't pick it up. Rebuild the nav
+      // when the set's identity changes (new Set only on a real change) so the
+      // "source updated" dots appear/clear. Doc edits keep the same Set ref, so
+      // this doesn't double up with the docChanged rebuild.
+      if (transclusionDivergenceKey.getState(next)?.diverged !== prevDivergedSet) {
+        scheduleHeavyUpdate();
+      }
       if (tx.docChanged) {
         // Suppress persistence while the benchmark drives temporary edits — they
         // are reverted from a snapshot, must never reach disk, and shouldn't
@@ -5922,9 +5951,14 @@ async function serializeForSave(
     // Async gzip: the DEFLATE runs off the main thread, so autosave's
     // debounced firing doesn't stall typing (manual saves get the same
     // benefit for free). Output bytes are identical to the sync path.
+    // `.cmir` keeps intra-doc windows (self_ref) as live references — the
+    // source is in the same file, so the file stays self-contained.
     return serializeNativeAsync(exportDocNode, { ...threadsOpt, ...(docId ? { docId } : {}) });
   }
-  return toDocx(exportDocNode, { ...threadsOpt, ...(docId ? { docId } : {}) });
+  // Word has no live-window concept: materialize each self_ref window to real
+  // cards (resolved from the source, ids re-stamped) before export.
+  const docxNode = flattenSelfRefs(exportDocNode, newHeadingId);
+  return toDocx(docxNode, { ...threadsOpt, ...(docId ? { docId } : {}) });
 }
 
 /**
@@ -5932,6 +5966,44 @@ async function serializeForSave(
  * save (and the bytes hit disk / downloaded), `false` when they
  * cancelled the dialog or the OS file picker.
  */
+/** How many live zones the doc that a save would serialize contains — the same
+ *  doc `serializeForSave` exports (`view` when present, else `currentDoc`).
+ *  Zones never nest, so a matched zone isn't descended into. */
+function activeSaveDocZoneCount(): number {
+  const doc = view ? view.state.doc : currentDoc;
+  if (!doc) return 0;
+  let n = 0;
+  doc.descendants((node) => {
+    if (isTransclusionNode(node)) {
+      n++;
+      return false;
+    }
+    return true;
+  });
+  return n;
+}
+
+/** Warn before a `.docx` write that would flatten live zones. Word can't store
+ *  live links, so saving to `.docx` drops them (the content stays, the link
+ *  doesn't) — a silent, one-way loss if the doc is later reopened from that
+ *  `.docx`. Returns true to proceed, false to cancel. `.cmir` saves never ask. */
+async function confirmDocxUnlinksZones(): Promise<boolean> {
+  const count = activeSaveDocZoneCount();
+  if (count === 0) return true;
+  const zones = count === 1 ? 'a live zone' : `${count} live zones`;
+  const them = count === 1 ? 'it' : 'them';
+  return showConfirm({
+    title: 'Saving to Word unlinks live zones',
+    message:
+      `This document contains ${zones}. Word (.docx) files can't hold live links, ` +
+      `so saving to .docx flattens ${them} to plain cards — the content stays, but the ` +
+      `link to the source is dropped and won't come back when you reopen the .docx. ` +
+      `Save as CardMirror (.cmir) instead to keep the live zones.`,
+    confirmLabel: 'Save to Word anyway',
+    cancelLabel: 'Cancel',
+  });
+}
+
 export async function runSaveAsFlow(): Promise<boolean> {
   const file = activeFile();
   const suggestedName = basenameWithoutExt(file.filename ?? 'untitled');
@@ -5944,6 +6016,8 @@ export async function runSaveAsFlow(): Promise<boolean> {
     defaultFormat,
   });
   if (!choice) return false;
+  // Writing to .docx flattens any live zones — confirm before proceeding.
+  if (choice.format === 'docx' && !(await confirmDocxUnlinksZones())) return false;
   // A full-fidelity save (everything included, not read-mode) IS the
   // working document written to disk, so the doc adopts the new
   // name / handle / format. Anything that drops content — the Send
@@ -6227,6 +6301,8 @@ export async function runSaveFlow(): Promise<boolean> {
   if (!(await getHost().ensureWritable(file.handle))) {
     return runSaveAsFlow();
   }
+  // Saving in place to a .docx flattens any live zones — confirm first.
+  if (file.format === 'docx' && !(await confirmDocxUnlinksZones())) return false;
   try {
     // Ensure a stable docId (minting + rekeying pre-save annotations on
     // first save), keyed to the focused doc in either layout.

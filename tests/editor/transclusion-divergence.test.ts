@@ -7,7 +7,7 @@ import {
   idIndependentHash,
   zoneReferenceShape,
 } from '../../src/editor/transclusion.js';
-import { SELF_SOURCE_REF } from '../../src/editor/intra-transclusion.js';
+import { createSelfRefNode } from '../../src/editor/self-transclusion.js';
 import {
   isInterDocZone,
   sourceShapeNow,
@@ -54,9 +54,8 @@ describe('isInterDocZone', () => {
   it('true for a real cross-file zone', () => {
     expect(isInterDocZone(interZone(frag(card('A', 'a'))))).toBe(true);
   });
-  it('false for an intra-doc self-zone', () => {
-    const self = interZone(frag(card('A', 'a')), { source_ref: SELF_SOURCE_REF });
-    expect(isInterDocZone(self)).toBe(false);
+  it('false for an intra-doc self_ref (a separate node type)', () => {
+    expect(isInterDocZone(createSelfRefNode(schema, 'sec-1', '↳ Sec'))).toBe(false);
   });
   it('false for a zone with no source ref', () => {
     expect(isInterDocZone(interZone(frag(card('A', 'a')), { source_ref: '' }))).toBe(false);

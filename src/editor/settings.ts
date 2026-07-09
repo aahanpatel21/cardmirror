@@ -208,8 +208,10 @@ export interface DisplayColors {
    *  Display-only — the stored mark stays FF0000, so export + detection are
    *  unaffected; this just recolors both on screen. */
   readingMarker: string;
-  /** The live-zone "source updated" (diverged) badge. A hue distinct from the
-   *  teal rail and the amber edited-tint so all three read apart. */
+  /** The live-zone "source updated" (diverged) badge / nav rail. A muted red —
+   *  kept soft so, as a second nav rail beside the teal transclusion rail, it
+   *  pairs with rather than overpowers it (and stays clear of the AI purple used
+   *  elsewhere). */
   zoneDiverged: string;
 }
 
@@ -217,7 +219,7 @@ export const DEFAULT_DISPLAY_COLORS: DisplayColors = {
   analytic: '#1F3864',
   undertag: '#385623',
   readingMarker: '#FF0000',
-  zoneDiverged: '#8250DF',
+  zoneDiverged: '#C0504D',
 };
 
 export const DISPLAY_COLOR_KEYS: (keyof DisplayColors)[] = [
@@ -3879,7 +3881,7 @@ export const CUSTOMIZABLE_COLOR_TOKENS: readonly CustomizableColorToken[] = [
 
   // Live-zone chrome — also backed by displayColors (linked to the Appearance
   // Style-colors picker), grouped apart from document text.
-  { group: 'Live zones', name: 'pmd-color-zone-diverged', label: 'Source-updated badge' },
+  { group: 'Linked copies', name: 'pmd-color-zone-diverged', label: 'Source-updated badge' },
   // ── Meaning-carrying hues, rebindable so colorblind users have
   //    direct recourse. The band foreground pair (band-fg-light/dark)
   //    is deliberately NOT here: text-on-band contrast only makes

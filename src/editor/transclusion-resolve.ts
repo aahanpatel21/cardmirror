@@ -52,9 +52,9 @@ export function transclusionSupported(): boolean {
 export function refreshFailMessage(reason: ResolveReason | undefined): string {
   switch (reason) {
     case 'not-desktop':
-      return 'Live zones refresh on the desktop app.';
+      return 'Linked copies from a file refresh on the desktop app.';
     case 'no-doc-path':
-      return 'Save this document first, then refresh the live zone.';
+      return 'Save this document first, then refresh the linked copy.';
     case 'source-unreadable':
       return 'Source file not found — showing the last cached content.';
     case 'parse-failed':
@@ -68,7 +68,7 @@ export function refreshFailMessage(reason: ResolveReason | undefined): string {
     case 'cancelled':
       return '';
     default:
-      return 'Could not refresh the live zone — showing cached content.';
+      return 'Could not refresh the linked copy — showing cached content.';
   }
 }
 

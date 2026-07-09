@@ -28,6 +28,11 @@ export interface HeadingEntry {
    *  run — used for the nav-pane rail and to keep a zone heading's drag inside
    *  its zone. */
   zonePos: number | null;
+  /** True for a synthetic outline entry projected from an intra-doc live window
+   *  (`self_ref`). Its content isn't in the doc, so it's a READ-ONLY nav row:
+   *  `id` is null, `pos` points at the window, and drag/collapse/context-menu
+   *  are disabled. Set only by the nav layer (collectHeadings never emits it). */
+  windowed?: boolean;
 }
 
 export const TYPE_TO_LEVEL: Record<string, number> = {

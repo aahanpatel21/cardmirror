@@ -96,7 +96,7 @@ function readIndentFromStyle(dom: HTMLElement): number {
  * (see its content expression).
  */
 const BLOCK_CONTENT =
-  '(paragraph | pocket | hat | block | card | analytic_unit | undertag | cite_paragraph | card_body | table | transclusion_ref)*';
+  '(paragraph | pocket | hat | block | card | analytic_unit | undertag | cite_paragraph | card_body | table | transclusion_ref | self_ref)*';
 
 export const nodes: { [name: string]: NodeSpec } = {
   /** Top-level container. Sequence of block-level content. */
@@ -428,6 +428,57 @@ export const nodes: { [name: string]: NodeSpec } = {
         'data-source-abs': String(node.attrs['source_abs'] ?? ''),
       },
       0,
+    ],
+  },
+
+  /**
+   * Intra-document live window ("self-transclusion"). A by-REFERENCE, read-only
+   * projection of another section of THIS document: it stores only which section
+   * it mirrors (`source_heading_id`) — no content copy — and its NodeView renders
+   * that section's current content live (self-transclusion-nodeview.ts). `atom`:
+   * you edit at the source, never through the window (which is what makes it
+   * conflict-free — one editable copy, N live views). Flattens to plain cards on
+   * `.docx` export (Word has no live-window concept); round-trips by reference in
+   * `.cmir` (the source is in the same file, so the file stays self-contained).
+   */
+  self_ref: {
+    atom: true,
+    isolating: true,
+    defining: true,
+    selectable: true,
+    // Draggable as a unit (like a card). The editor's global `dragstart`
+    // suppression exempts `.pmd-self-ref` so ProseMirror moves the atom natively.
+    draggable: true,
+    attrs: {
+      /** Stable heading id of the mirrored section, in THIS document. */
+      source_heading_id: {
+        default: '',
+        validate: (v: unknown) => typeof v === 'string',
+      },
+      /** Human label for the window header, e.g. "↳ Impacts". */
+      source_label: {
+        default: '',
+        validate: (v: unknown) => typeof v === 'string',
+      },
+    },
+    parseDOM: [
+      {
+        tag: 'div.pmd-self-ref',
+        getAttrs: (dom: HTMLElement) => ({
+          source_heading_id: dom.getAttribute('data-source-heading-id') ?? '',
+          source_label: dom.getAttribute('data-source-label') ?? '',
+        }),
+      },
+    ],
+    // Placeholder DOM — the NodeView renders the live projection. No content
+    // hole: it's an atom.
+    toDOM: (node) => [
+      'div',
+      {
+        class: 'pmd-self-ref',
+        'data-source-heading-id': String(node.attrs['source_heading_id'] ?? ''),
+        'data-source-label': String(node.attrs['source_label'] ?? ''),
+      },
     ],
   },
 

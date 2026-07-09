@@ -9,16 +9,32 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Added
 
-- **Live zones flag when their source has changed.** A live zone already shows a
-  dot when *you've* edited its cards; now it also tells you when the *original*
-  section has moved on in the other file. CardMirror checks quietly — when you
-  open a document and periodically while it's idle — and badges any zone whose
-  source has diverged, so a stale copy is visible at a glance. Nothing is
-  overwritten: it's a prompt to **Refresh** when you're ready, and the badge
-  clears once you do. The badge color is configurable under Settings →
-  Appearance → Style colors ("Live-zone source-updated badge"). *(The check
-  reads the source file from disk, so it's desktop-only and never runs in read
-  mode.)*
+- **Show a section in more than one place — live views and linked copies.**
+  CardMirror can now display one section of content wherever you need it, kept
+  connected to its source. A **live view** is a read-only window onto another
+  section of *this* document — it always shows the current content, updating the
+  instant you edit the source (nesting and cycles handled automatically). A
+  **linked copy** is your own editable copy, kept linked so you can **Refresh**
+  it and get nudged when the source changes; its source can be another file *or*
+  this document. Insert either from the command bar. *(The former "live zones"
+  are the file-based linked copy — see below.)*
+
+- **Linked copies flag when their source has changed.** A linked copy already
+  shows a dot when *you've* edited it; now it also badges when the *original*
+  has moved on, so a stale copy is visible at a glance. Nothing is overwritten —
+  it's a prompt to **Refresh**, and the badge clears once you do. Check on demand
+  with *Check Linked Copy Sources for Updates*. The badge color is configurable
+  under Settings → Appearance → Style colors ("Linked-copy source-updated
+  badge"). *(For a copy from another file the check is desktop-only; a copy from
+  this document tracks its source live.)*
+
+### Changed
+
+- **"Live zones" are now "linked copies."** The old name conflated two different
+  things; "live" is now reserved for the truly-live read-only view, and the
+  editable, refreshable copy is a "linked copy." Commands and menus are renamed
+  accordingly ("embed" works as a search alias). Existing documents are
+  unaffected — only the wording changed.
 
 ## 0.1.0-beta.10 — 2026-07-07
 

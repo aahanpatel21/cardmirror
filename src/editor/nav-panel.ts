@@ -17,7 +17,35 @@ import { type Mappable } from 'prosemirror-transform';
 import { settings } from './settings.js';
 import { registerOpenContextMenu, clearOpenContextMenu } from './context-menu-registry.js';
 import { dragController, type DragItem, type DragSurface } from './drag-controller.js';
-import { isTransclusionNode } from './transclusion.js';
+import { isTransclusionNode, zoneIdentity } from './transclusion.js';
+import { isSelfRef, resolveSelfProjection } from './self-transclusion.js';
+import { transclusionDivergenceKey } from './transclusion-divergence-plugin.js';
+
+/** Outline entries including the content projected by intra-doc live windows
+ *  (`self_ref`). A window is an atom with no doc children, so `collectHeadings`
+ *  alone misses it; here each window's source projection is resolved and its
+ *  headings spliced in at the window's position as READ-ONLY (`windowed`) rows.
+ *  Kept in the nav layer so `headings.ts` needn't depend on self-transclusion. */
+function collectOutlineWithWindows(doc: PMNode): HeadingEntry[] {
+  const base = collectHeadings(doc);
+  const projected: HeadingEntry[] = [];
+  doc.descendants((node, pos) => {
+    if (!isSelfRef(node)) return true;
+    const proj = resolveSelfProjection(doc, String(node.attrs['source_heading_id'] ?? ''));
+    if (proj.missing || proj.content.size === 0) return false;
+    const wrapped = doc.type.create(null, proj.content);
+    for (const e of collectHeadings(wrapped)) {
+      // Point every projected row at the window and mark it windowed: no real
+      // doc node backs it, so id must be null and it's read-only in the nav.
+      projected.push({ ...e, pos, zonePos: pos, id: null, windowed: true });
+    }
+    return false; // atom — nothing to descend into
+  });
+  if (!projected.length) return base;
+  // Stable sort by pos slots each window's projected block at the window's
+  // position (no base heading shares a self_ref's pos), preserving inner order.
+  return [...base, ...projected].sort((a, b) => a.pos - b.pos);
+}
 import { preciseScrollIntoView } from './precise-scroll.js';
 import {
   collectHeadings,
@@ -44,6 +72,9 @@ const NAV_DOUBLE_CLICK_MS = 500;
  *  the window cancels — it's a scroll). Below typical browser
  *  context-menu timing so our pickup wins the gesture. */
 const NAV_LONG_PRESS_MS = 450;
+
+/** Shared empty set for the no-divergence fast path (avoids per-render alloc). */
+const EMPTY_POSITIONS: ReadonlySet<number> = new Set<number>();
 
 /**
  * Whether the user is holding the platform's "copy" modifier during
@@ -648,8 +679,25 @@ export class NavigationPanel {
     this.render(doc);
   }
 
+  /** Positions (in `doc`) of the live zones the divergence plugin has flagged.
+   *  The plugin keys divergence by zone IDENTITY, so we walk the doc's zones and
+   *  map any whose identity is in the diverged set to their current position. */
+  private divergedZonePositions(doc: PMNode): ReadonlySet<number> {
+    const diverged = this.view
+      ? transclusionDivergenceKey.getState(this.view.state)?.diverged
+      : undefined;
+    if (!diverged || diverged.size === 0) return EMPTY_POSITIONS;
+    const out = new Set<number>();
+    doc.descendants((node, pos) => {
+      if (!isTransclusionNode(node)) return true;
+      if (diverged.has(zoneIdentity(node))) out.add(pos);
+      return false; // zones never nest
+    });
+    return out;
+  }
+
   private render(doc: PMNode): void {
-    const entries = collectHeadings(doc);
+    const entries = collectOutlineWithWindows(doc);
 
     // Refresh the `lastSeenIds` set so `applyMaxLevelToNewHeadings`
     // (called by the multi-pane shell after cross-view drops) can
@@ -667,6 +715,11 @@ export class NavigationPanel {
     // entry index so the rendering loop below can light up the
     // right `<li>` cheaply.
     const hitEntryIndices = this.computeFindHitAncestorEntries(entries);
+
+    // Positions of live zones whose source has diverged (the divergence plugin's
+    // set, mapped from zone identity to position in THIS doc) — so the run's
+    // first nav row can carry a "source updated" dot, mirroring the editor badge.
+    const divergedZones = this.divergedZonePositions(doc);
 
     // Clear and re-build. For doc sizes we care about (max ~600 headings
     // in the example corpus) this is fine; if profiling shows it's hot,
@@ -698,12 +751,14 @@ export class NavigationPanel {
       }
 
       const next = entries[i + 1];
-      const hasChildren = next != null && next.level > entry.level;
+      // Windowed (projected) rows are read-only leaves — never collapsible.
+      const hasChildren = !entry.windowed && next != null && next.level > entry.level;
       const collapsed = entry.id != null && this.collapsed.has(entry.id);
       if (hasChildren && entry.id != null) this.collapsibleIds.add(entry.id);
 
       const li = document.createElement('li');
       li.className = `pmd-nav-item pmd-nav-level-${entry.level} pmd-nav-type-${entry.type}`;
+      if (entry.windowed) li.classList.add('pmd-nav-item-window');
       if (entry.id) li.dataset['id'] = entry.id;
       li.dataset['pos'] = String(entry.pos);
       if (entry.id != null && this.selectedIds.has(entry.id)) {
@@ -717,8 +772,21 @@ export class NavigationPanel {
       if (entry.zonePos != null) {
         li.classList.add('pmd-nav-item-zone');
         const prev = entries[i - 1];
-        if (!prev || prev.zonePos !== entry.zonePos) li.classList.add('pmd-nav-item-zone-start');
-        if (!next || next.zonePos !== entry.zonePos) li.classList.add('pmd-nav-item-zone-end');
+        const isZoneStart = !prev || prev.zonePos !== entry.zonePos;
+        const isZoneEnd = !next || next.zonePos !== entry.zonePos;
+        if (isZoneStart) li.classList.add('pmd-nav-item-zone-start');
+        if (isZoneEnd) li.classList.add('pmd-nav-item-zone-end');
+        // Diverged run: a second "source updated" rail (configurable muted red)
+        // that runs flush to the RIGHT of the green transclusion rail, spanning
+        // the whole zone like it — echoing the editor's glyph badge.
+        if (divergedZones.has(entry.zonePos)) {
+          li.classList.add('pmd-nav-item-diverged');
+          if (isZoneStart) li.classList.add('pmd-nav-item-diverged-start');
+          if (isZoneEnd) li.classList.add('pmd-nav-item-diverged-end');
+          const rail = document.createElement('span');
+          rail.className = 'pmd-nav-diverged-rail';
+          li.appendChild(rail);
+        }
       }
 
       const chevron = document.createElement('span');
@@ -749,18 +817,24 @@ export class NavigationPanel {
         li.appendChild(citePreview);
       }
 
-      // Pointer-based handler: distinguishes click (jump-to) from drag
-      // (move heading), and detects double-clicks (collapse toggle) in
-      // `onDragUp` rather than via the native `dblclick`, which a plain
-      // click's nav re-render would invalidate.
-      li.addEventListener('pointerdown', (e) => this.onLiPointerDown(e, entry, li));
-      li.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        // On mobile the browser synthesizes contextmenu from the same
-        // long-press that arms row pickup — suppress the menu there.
-        if (isMobileShellActive()) return;
-        this.openContextMenu(e.clientX, e.clientY, entry);
-      });
+      if (entry.windowed) {
+        // Read-only projected row: click scrolls to the window; no drag,
+        // selection, or context menu (nothing real to act on).
+        li.addEventListener('click', () => this.jumpTo(entry));
+      } else {
+        // Pointer-based handler: distinguishes click (jump-to) from drag
+        // (move heading), and detects double-clicks (collapse toggle) in
+        // `onDragUp` rather than via the native `dblclick`, which a plain
+        // click's nav re-render would invalidate.
+        li.addEventListener('pointerdown', (e) => this.onLiPointerDown(e, entry, li));
+        li.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          // On mobile the browser synthesizes contextmenu from the same
+          // long-press that arms row pickup — suppress the menu there.
+          if (isMobileShellActive()) return;
+          this.openContextMenu(e.clientX, e.clientY, entry);
+        });
+      }
 
       this.liEntries.set(li, entry);
       this.listEl.appendChild(li);
@@ -1819,6 +1893,25 @@ export class NavigationPanel {
    */
   private jumpTo(entry: HeadingEntry): void {
     if (!this.view) return;
+
+    // A windowed (projected) row is backed by the `self_ref` atom at entry.pos —
+    // there's no real heading node inside. Select the atom and scroll to its OWN
+    // DOM element (`domAtPos(pos)` lands just before it, which would scroll to
+    // the previous node — the "jumps above" bug).
+    if (entry.windowed) {
+      try {
+        this.view.dispatch(
+          this.view.state.tr.setSelection(NodeSelection.create(this.view.state.doc, entry.pos)),
+        );
+        this.view.focus();
+      } catch {
+        /* stale position — still try to scroll */
+      }
+      let el: Node | null = this.view.nodeDOM(entry.pos);
+      while (el && el.nodeType !== Node.ELEMENT_NODE) el = el.parentNode;
+      if (el instanceof HTMLElement) preciseScrollIntoView(this.view, el);
+      return;
+    }
 
     // Place the cursor at the start of the heading's content. entry.pos
     // is the position right before the heading node; +1 steps inside

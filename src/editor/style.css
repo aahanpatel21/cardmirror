@@ -770,11 +770,13 @@ button {
      applies in both light and dark, and red is readable on dark paper. Display-only
      — the stored mark stays FF0000, so export + detection are unaffected. */
   --pmd-color-reading-marker: var(--pmd-user-color-readingMarker, #ff0000);
-  /* Live-zone "source updated" (diverged) badge. Backed by displayColors
-     (Appearance -> Style colors, linked to Accessibility); theme-invariant so
-     the one chosen hue reads on both light and dark chrome. Default violet —
-     distinct from the teal rail and the amber edited-tint. */
-  --pmd-color-zone-diverged: var(--pmd-user-color-zoneDiverged, #8250df);
+  /* Live-zone "source updated" (diverged) badge + nav rail. Backed by
+     displayColors (Appearance -> Style colors, linked to Accessibility);
+     theme-invariant so the one chosen hue reads on both light and dark chrome.
+     Default a muted red — deliberately soft so the nav divergence rail pairs
+     with, rather than overpowers, the teal transclusion rail, and stays clear of
+     the AI purple used elsewhere. */
+  --pmd-color-zone-diverged: var(--pmd-user-color-zoneDiverged, #c0504d);
   --pmd-c-spellcheck: red;             /* misspelling squiggle */
   --pmd-c-live-indicator: #00ff66;     /* benchmark live dot */
   --pmd-c-bench-chip-bg: rgba(20, 22, 26, 0.92); /* diagnostics chip: fixed dark */
@@ -2427,7 +2429,7 @@ code {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--pmd-color-zone-diverged, #8250df);
+  background: var(--pmd-color-zone-diverged, #c0504d);
   border: 1px solid var(--pmd-c-bg);
   box-sizing: border-box;
   pointer-events: none;
@@ -2458,6 +2460,79 @@ code {
     animation: none;
   }
 }
+
+/* Intra-document live window (`self_ref`). A by-reference, read-only projection
+   of another section of this doc. Its rail sits at the SAME placement + width
+   as the inter-doc transclusion rail (left:0, width:2px), but reads as DOTTED
+   — a "this is a view, not your copy" cue. Unlike the inter-doc rail (invisible
+   at rest), the dotted rail is always visible, faded at rest; on hover it
+   saturates to the full transclusion green. It REPLACES the grey card-hover rail
+   (suppressed below), so there's one rail, not two. */
+.pmd-self-ref {
+  position: relative;
+  margin: 0.15em 0;
+}
+.pmd-self-ref::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 15px;
+  bottom: 0;
+  width: 2px;
+  /* Dotted rail in the transclusion green; opacity carries the rest→hover fade. */
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--pmd-c-transclusion) 0 4px,
+    transparent 4px 7px
+  );
+  opacity: 0.4;
+  transition: opacity 90ms ease;
+  pointer-events: none;
+}
+.pmd-self-ref:hover::before,
+.pmd-self-ref.ProseMirror-selectednode::before,
+.pmd-self-ref.pmd-transclusion-menu-open::before {
+  opacity: 1; /* fully saturated — the dots reach --pmd-c-transclusion */
+}
+.pmd-self-ref-glyph {
+  opacity: 0;
+}
+.pmd-self-ref:hover > .pmd-self-ref-glyph,
+.pmd-self-ref.ProseMirror-selectednode > .pmd-self-ref-glyph,
+.pmd-self-ref.pmd-transclusion-menu-open > .pmd-self-ref-glyph,
+.pmd-self-ref-glyph:focus-visible {
+  opacity: 1;
+}
+.pmd-self-ref.ProseMirror-selectednode {
+  outline: 2px solid var(--pmd-c-transclusion);
+  outline-offset: 2px;
+}
+.pmd-self-ref-body {
+  padding-left: 2px;
+}
+/* The projected cards render real card DOM; suppress their own grey hover rail
+   so the window's dotted green rail is the only one (mirrors .pmd-transclusion-
+   body). This is the "replace the grey line" the design calls for. */
+.pmd-self-ref-body .pmd-card:hover,
+.pmd-self-ref-body .pmd-analytic-unit:hover {
+  border-left-color: transparent;
+}
+.pmd-self-ref-note {
+  font-size: 0.85em;
+  opacity: 0.7;
+  font-style: italic;
+  padding: 0.2em 0;
+}
+.pmd-self-ref-missing::before {
+  background: var(--pmd-c-warn, #b26a00);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pmd-self-ref::before,
+  .pmd-self-ref-glyph {
+    transition: none;
+  }
+}
+
 /* Menu — opens from the glyph; carries the source detail that used to sit inline
    (file, section, sync date, edited) plus the actions. */
 .pmd-transclusion-menu {
@@ -4391,6 +4466,33 @@ body.pmd-nav-resize-active {
   border-top-right-radius: 2px;
 }
 .pmd-nav-item-zone-end::before {
+  bottom: 3px;
+  border-bottom-left-radius: 2px;
+  border-bottom-right-radius: 2px;
+}
+/* "Source updated" rail on a diverged live zone — a second rail in the
+   configurable divergence colour running flush to the RIGHT of the green
+   transclusion rail (which sits at left:3px, width:3px → occupies 3–6px), so the
+   two read as a paired gutter. Spans the whole run like the green rail, with
+   matching rounded start/end caps. Echoes the editor glyph badge. */
+.pmd-nav-diverged-rail {
+  position: absolute;
+  left: 6px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--pmd-color-zone-diverged, #c0504d);
+  /* Softened to sit at a similar visual weight to the teal transclusion rail
+     beside it (which is opacity 0.5), so the pair reads balanced. */
+  opacity: 0.6;
+  pointer-events: none;
+}
+.pmd-nav-item-diverged-start .pmd-nav-diverged-rail {
+  top: 3px;
+  border-top-left-radius: 2px;
+  border-top-right-radius: 2px;
+}
+.pmd-nav-item-diverged-end .pmd-nav-diverged-rail {
   bottom: 3px;
   border-bottom-left-radius: 2px;
   border-bottom-right-radius: 2px;

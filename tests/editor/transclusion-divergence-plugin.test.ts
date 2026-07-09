@@ -18,7 +18,7 @@ import {
 } from '../../src/editor/transclusion.js';
 import { transclusionNodeViews } from '../../src/editor/transclusion-nodeview.js';
 import type { ResolveOutcome } from '../../src/editor/transclusion-resolve.js';
-import { SELF_SOURCE_REF } from '../../src/editor/intra-transclusion.js';
+import { createSelfRefNode } from '../../src/editor/self-transclusion.js';
 
 // Mock the source-read layer: pretend we're on desktop and return whatever
 // content the test wants the "source now" to be.
@@ -34,8 +34,12 @@ vi.mock('../../src/editor/transclusion-resolve.js', async (importOriginal) => {
 
 // Imported AFTER the mock is registered so they pick up the mocked resolve.
 const { checkAllZoneDivergence } = await import('../../src/editor/transclusion-divergence.js');
-const { makeTransclusionDivergencePlugin, transclusionDivergenceKey, requestDivergenceCheck } =
-  await import('../../src/editor/transclusion-divergence-plugin.js');
+const {
+  makeTransclusionDivergencePlugin,
+  transclusionDivergenceKey,
+  requestDivergenceCheck,
+  checkLiveZoneSources,
+} = await import('../../src/editor/transclusion-divergence-plugin.js');
 
 function card(tag: string, body: string, id = newHeadingId()): PMNode {
   return schema.nodes['card']!.createChecked(null, [
@@ -153,21 +157,60 @@ describe('divergence decoration → NodeView badge', () => {
     view.destroy();
   });
 
-  it('ignores an intra-doc self-zone (handled by its own live sync)', async () => {
+  it('ignores an intra-doc self_ref (a separate node type, resolved live)', async () => {
     resolveMock.mockResolvedValue(sourced(frag(card('A', 'a'), card('B', 'CHANGED'))));
-    const selfZone = createTransclusionNode(
-      schema,
-      { source_ref: SELF_SOURCE_REF, source_heading_id: 'sec-1', source_shape_hash: idIndependentHash(PULLED) } as never,
-      PULLED,
-    );
     const doc = schema.nodes['doc']!.create(null, [
       schema.nodes['block']!.create({ id: 'h' }, schema.text('Heading')),
-      selfZone,
+      createSelfRefNode(schema, 'sec-1', '↳ Sec'),
     ]);
     const view = makeView(doc);
     const { checked, diverged } = await checkAllZoneDivergence(view);
-    expect(checked).toBe(0); // self-zones aren't read as cross-file sources
+    expect(checked).toBe(0); // self_refs are never read as cross-file sources
     expect(diverged.size).toBe(0);
+    expect(resolveMock).not.toHaveBeenCalled();
+    view.destroy();
+  });
+});
+
+describe('checkLiveZoneSources — manual check-only command', () => {
+  it('reports a changed source and lights the badge, without pulling', async () => {
+    resolveMock.mockResolvedValue(sourced(frag(card('A', 'a'), card('B', 'CHANGED'))));
+    const view = makeView(docWithZone());
+    const before = view.state.doc.toJSON(); // content must NOT change (check-only)
+
+    const s = await checkLiveZoneSources(view);
+    expect(s).toEqual({ desktop: true, total: 1, checked: 1, diverged: 1 });
+    expect(view.state.doc.toJSON()).toEqual(before); // nothing pulled
+    expect(
+      (view.dom.querySelector('.pmd-transclusion') as HTMLElement).classList.contains('pmd-zone-diverged'),
+    ).toBe(true); // badge lit
+    view.destroy();
+  });
+
+  it('reports all up to date when the source is unchanged', async () => {
+    resolveMock.mockResolvedValue(sourced(frag(card('A', 'a', 'x'), card('B', 'b', 'y'))));
+    const view = makeView(docWithZone());
+    const s = await checkLiveZoneSources(view);
+    expect(s).toEqual({ desktop: true, total: 1, checked: 1, diverged: 0 });
+    view.destroy();
+  });
+
+  it('counts an unreadable source as not-checked (kept, not flagged)', async () => {
+    resolveMock.mockResolvedValue({ ok: false, reason: 'source-unreadable' });
+    const view = makeView(docWithZone());
+    const s = await checkLiveZoneSources(view);
+    expect(s).toEqual({ desktop: true, total: 1, checked: 0, diverged: 0 });
+    view.destroy();
+  });
+
+  it('excludes intra-doc self_refs from the total', async () => {
+    const doc = schema.nodes['doc']!.create(null, [
+      schema.nodes['block']!.create({ id: 'h' }, schema.text('Heading')),
+      createSelfRefNode(schema, 'sec-1', '↳ Sec'),
+    ]);
+    const view = makeView(doc);
+    const s = await checkLiveZoneSources(view);
+    expect(s.total).toBe(0);
     expect(resolveMock).not.toHaveBeenCalled();
     view.destroy();
   });

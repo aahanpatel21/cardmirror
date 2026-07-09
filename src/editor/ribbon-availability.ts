@@ -22,7 +22,6 @@
 import { RIBBON_COMMAND_IDS, type RibbonCommandId } from './ribbon-commands.js';
 import { settings } from './settings.js';
 import { collabEnabled } from './collab/collab-gate.js';
-import { INTRA_TRANSCLUSION_ENABLED } from './intra-transclusion-plugin.js';
 import { getElectronHost, isWindowsHost } from './host/index.js';
 
 const FLOW_COMMANDS = new Set<RibbonCommandId>([
@@ -62,12 +61,16 @@ export function isRibbonCommandAvailable(id: RibbonCommandId): boolean {
   if (id === 'openCardCutter') return settings.get('cardCutterEnabled') === true;
   // Creating/refreshing a live zone reads other files from disk — desktop only.
   // Detach works on an already-cached zone, so it stays available everywhere.
-  if (id === 'insertLiveZone' || id === 'refreshLiveZone' || id === 'refreshAllLiveZones') {
+  if (
+    id === 'insertLiveZone' ||
+    id === 'refreshLiveZone' ||
+    id === 'refreshAllLiveZones' ||
+    id === 'checkLiveZoneSources'
+  ) {
     return getElectronHost() !== null;
   }
-  // PROTOTYPE: intra-doc live zones work entirely within the open doc (no disk),
-  // so they aren't desktop-gated — but they are behind the prototype flag.
-  if (id === 'insertSelfLiveZone') return INTRA_TRANSCLUSION_ENABLED;
+  // Intra-doc live windows work entirely within the open doc (no disk), so
+  // they're available everywhere (not desktop-gated).
   if (COLLAB_COMMANDS.has(id)) return collabEnabled();
   return true;
 }

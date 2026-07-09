@@ -16,6 +16,8 @@ import {
   extractSection,
   chooseSourceRef,
   prepareZoneContent,
+  SELF_SOURCE_REF,
+  isInDocCopy,
   type TransclusionAttrs,
   type SourceRefBase,
 } from './transclusion.js';
@@ -34,7 +36,7 @@ const CRUMB_SEP = ' › ';
 function confirmDiscardEdits(): Promise<boolean> {
   return showConfirm({
     title: 'Discard your edits?',
-    message: 'Refreshing replaces your local edits to this live zone with the current source.',
+    message: 'Refreshing replaces your local edits to this linked copy with the current source.',
     confirmLabel: 'Refresh',
     cancelLabel: 'Keep edits',
   });
@@ -103,6 +105,33 @@ export function buildLiveZoneAttrs(
   return { ok: true, attrs, content, headingLabel: section.headingLabel };
 }
 
+/**
+ * Build an in-doc LINKED COPY (attrs + content) from a section of THIS document.
+ * Like `buildLiveZoneAttrs` but the source is in-doc: no file path / portable
+ * ref, `source_ref` is the `SELF_SOURCE_REF` marker, and refresh + divergence
+ * resolve from the live doc. Nested cross-file copies flatten to a snapshot;
+ * nested live views (`self_ref`) are KEPT — a static copy may contain a live
+ * view (that's fine and intended).
+ */
+export function buildInDocCopyAttrs(doc: PMNode, headingId: string): BuildZoneOutcome {
+  if (!headingId) return { ok: false, reason: 'no-heading-id' };
+  const section = extractSection(doc, headingId);
+  if (!section) return { ok: false, reason: 'no-section' };
+  if (section.content.size === 0) return { ok: false, reason: 'empty-section' };
+  const { content, hash, shapeHash } = prepareZoneContent(section.content, newHeadingId);
+  const attrs: TransclusionAttrs = {
+    source_ref: SELF_SOURCE_REF,
+    source_ref_base: 'doc',
+    source_heading_id: headingId,
+    source_abs: '',
+    source_content_hash: hash,
+    source_shape_hash: shapeHash,
+    last_refreshed: Date.now(),
+    source_label: crumbLabel('', section.headingLabel),
+  };
+  return { ok: true, attrs, content, headingLabel: section.headingLabel };
+}
+
 /** Toast message for a failed live-zone build. */
 export function buildZoneErrorMessage(reason: BuildZoneReason | undefined): string {
   switch (reason) {
@@ -113,11 +142,11 @@ export function buildZoneErrorMessage(reason: BuildZoneReason | undefined): stri
     case 'empty-section':
       return 'That heading has no content to transclude.';
     case 'no-doc-path':
-      return 'Save this document first, then insert a live zone.';
+      return 'Save this document first, then insert a linked copy.';
     case 'no-portable-ref':
       return 'Couldn’t make a portable link to that file.';
     default:
-      return 'Could not insert the live zone.';
+      return 'Could not insert the linked copy.';
   }
 }
 
@@ -153,6 +182,13 @@ export interface RefreshOptions {
   confirmEdits?: boolean;
 }
 
+/** Resolve an in-doc linked copy's source from the live doc (no file read). */
+function resolveInDocSource(doc: PMNode, headingId: string): ResolveOutcome {
+  const section = extractSection(doc, headingId);
+  if (!section) return { ok: false, reason: 'heading-missing' };
+  return { ok: true, result: section, sourceName: '' };
+}
+
 export async function refreshZoneAtPos(
   view: EditorView,
   pos: number,
@@ -170,13 +206,17 @@ export async function refreshZoneAtPos(
   }
 
   const docPath = getViewDocPath(view);
-  const outcome = await resolveTransclusion(
-    docPath,
-    String(node.attrs['source_ref'] ?? ''),
-    node.attrs['source_ref_base'] === 'root' ? 'root' : 'doc',
-    String(node.attrs['source_heading_id'] ?? ''),
-    String(node.attrs['source_abs'] ?? ''),
-  );
+  // In-doc linked copies resolve from the LIVE doc (no file read); cross-file
+  // copies read the source file.
+  const outcome = isInDocCopy(node)
+    ? resolveInDocSource(view.state.doc, String(node.attrs['source_heading_id'] ?? ''))
+    : await resolveTransclusion(
+        docPath,
+        String(node.attrs['source_ref'] ?? ''),
+        node.attrs['source_ref_base'] === 'root' ? 'root' : 'doc',
+        String(node.attrs['source_heading_id'] ?? ''),
+        String(node.attrs['source_abs'] ?? ''),
+      );
   if (!outcome.ok || !outcome.result) return outcome;
   // The heading is still there but has been emptied since the last sync — refuse
   // rather than blank the zone (which would leave an invisible husk). Keep cache.
@@ -244,9 +284,9 @@ export interface RefreshAllSummary {
  *  edits and re-pulls every source, so it's confirmed once up front rather than
  *  once per edited zone. */
 function confirmRefreshAll(count: number): Promise<boolean> {
-  const zones = count === 1 ? 'the 1 live zone' : `all ${count} live zones`;
+  const zones = count === 1 ? 'the 1 linked copy' : `all ${count} linked copies`;
   return showConfirm({
-    title: 'Refresh every live zone?',
+    title: 'Refresh every linked copy?',
     message: `This replaces ${zones} in this document with their current sources, discarding any local edits and contextualization.`,
     confirmLabel: 'Refresh all',
     cancelLabel: 'Cancel',

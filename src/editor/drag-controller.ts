@@ -26,6 +26,7 @@ import { READ_MODE_DRAG_META } from './reading-marker.js';
 import { autoScrollUnderPointer } from './drag-autoscroll.js';
 import { getViewDocPath } from './transclusion-doc-path.js';
 import { flattenZones, fragmentHasZone, enclosingZonePos, isTransclusionNode } from './transclusion.js';
+import { flattenSelfRefsInSlice } from './self-transclusion.js';
 import { showToast } from './toast.js';
 
 export interface DragItem {
@@ -224,7 +225,13 @@ class DragControllerImpl {
       const sameDoc = !isVirtual && srcDoc != null && srcDoc === tgtDoc;
       const tr = tgtView.state.tr;
       let target = insertPos;
-      for (const slice of slices) {
+      for (let slice of slices) {
+        // Cross-doc: a Live View can't carry its reference — materialize it to
+        // plain cards (real cross-view only; virtual/shelf slices were already
+        // materialized when added to the shelf).
+        if (!sameDoc && !isVirtual) {
+          slice = flattenSelfRefsInSlice(slice, srcView.state.doc, newHeadingId);
+        }
         const rewritten = rewriteHeadingIds(slice);
         const content =
           sameDoc || !fragmentHasZone(rewritten.content)

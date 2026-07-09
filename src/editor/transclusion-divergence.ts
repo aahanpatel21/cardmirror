@@ -23,22 +23,25 @@ import { Fragment, type Node as PMNode } from 'prosemirror-model';
 import type { EditorView } from 'prosemirror-view';
 import {
   isTransclusionNode,
+  isInDocCopy,
+  extractSection,
   idIndependentHash,
   zoneReferenceShape,
   zoneIdentity,
   flattenZones,
   type SourceRefBase,
 } from './transclusion.js';
-import { SELF_SOURCE_REF } from './intra-transclusion.js';
 import { resolveTransclusion } from './transclusion-resolve.js';
 import { getViewDocPath } from './transclusion-doc-path.js';
 
 /** A cross-file live zone whose source we can meaningfully re-check: a real
- *  transclusion, not an intra-doc self-zone, with a source ref to read. */
+ *  transclusion with a source ref to read. (Intra-doc windows are a separate
+ *  node type — `self_ref` — so they're never `isTransclusionNode` and never
+ *  reach here.) */
 export function isInterDocZone(node: PMNode): boolean {
   if (!isTransclusionNode(node)) return false;
   const ref = String(node.attrs['source_ref'] ?? '');
-  return ref !== '' && ref !== SELF_SOURCE_REF;
+  return ref !== '';
 }
 
 /** The id-independent shape of a freshly-read source section, comparable to a
@@ -55,6 +58,28 @@ export function zoneDiverged(node: PMNode, sourceContent: Fragment): boolean {
   const ref = zoneReferenceShape(node);
   if (ref === null) return false;
   return sourceShapeNow(sourceContent) !== ref;
+}
+
+/**
+ * Synchronous divergence for IN-DOC linked copies only (source resolves from the
+ * live doc, so no file read is needed). Returns every in-doc copy's identity and
+ * which of them have diverged, so a caller can update just the in-doc portion of
+ * the divergence set on every doc change — making the badge appear the instant
+ * the source is edited, rather than waiting for the async file sweep.
+ */
+export function inDocDivergence(doc: PMNode): { all: Set<string>; diverged: Set<string> } {
+  const all = new Set<string>();
+  const diverged = new Set<string>();
+  doc.descendants((node) => {
+    if (!isTransclusionNode(node)) return true;
+    if (!isInDocCopy(node)) return false; // cross-file copies use the async sweep
+    const id = zoneIdentity(node);
+    all.add(id);
+    const section = extractSection(doc, String(node.attrs['source_heading_id'] ?? ''));
+    if (section && section.content.size > 0 && zoneDiverged(node, section.content)) diverged.add(id);
+    return false; // zones never nest
+  });
+  return { all, diverged };
 }
 
 /** A zone snapshot captured before the async source reads (positions may shift
@@ -90,16 +115,26 @@ export async function checkAllZoneDivergence(view: EditorView): Promise<Divergen
   const diverged = new Set<string>();
   let checked = 0;
   for (const { identity, node } of snapshots) {
-    const outcome = await resolveTransclusion(
-      docPath,
-      String(node.attrs['source_ref'] ?? ''),
-      node.attrs['source_ref_base'] === 'root' ? 'root' : ('doc' as SourceRefBase),
-      String(node.attrs['source_heading_id'] ?? ''),
-      String(node.attrs['source_abs'] ?? ''),
-    );
-    if (!outcome.ok || !outcome.result || outcome.result.content.size === 0) continue;
+    // In-doc linked copies compare against the LIVE doc section (sync, no file);
+    // cross-file copies read the source file.
+    let sourceContent: Fragment | null = null;
+    if (isInDocCopy(node)) {
+      const section = extractSection(view.state.doc, String(node.attrs['source_heading_id'] ?? ''));
+      sourceContent = section && section.content.size > 0 ? section.content : null;
+    } else {
+      const outcome = await resolveTransclusion(
+        docPath,
+        String(node.attrs['source_ref'] ?? ''),
+        node.attrs['source_ref_base'] === 'root' ? 'root' : ('doc' as SourceRefBase),
+        String(node.attrs['source_heading_id'] ?? ''),
+        String(node.attrs['source_abs'] ?? ''),
+      );
+      sourceContent =
+        outcome.ok && outcome.result && outcome.result.content.size > 0 ? outcome.result.content : null;
+    }
+    if (!sourceContent) continue;
     checked++;
-    if (zoneDiverged(node, outcome.result.content)) diverged.add(identity);
+    if (zoneDiverged(node, sourceContent)) diverged.add(identity);
   }
   return { diverged, checked };
 }
