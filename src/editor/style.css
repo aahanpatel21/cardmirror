@@ -2302,7 +2302,10 @@ code {
   user-select: none;
 }
 .pmd-card-number-sub {
-  margin-left: 1.4em;
+  /* No left margin: indentation is governed solely by the (per-level) indent
+     settings, exactly like the number glyph. A baked-in offset here indented
+     just the tag's first line even with indent off — inconsistent with the
+     number toggle. Weight + opacity still distinguish a substructure letter. */
   font-weight: 500;
   opacity: 0.85;
 }
