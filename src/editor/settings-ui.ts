@@ -702,6 +702,8 @@ class SettingsModal {
       label.appendChild(buildCardNumberIndentEditor());
     } else if (meta.kind === 'cardNumberSubIndent') {
       label.appendChild(buildCardNumberSubIndentEditor());
+    } else if (meta.kind === 'cardNumberColor') {
+      label.appendChild(buildCardNumberColorEditor());
     } else if (meta.kind === 'multiDocLayoutMode') {
       row.appendChild(text);
       row.appendChild(buildMultiDocLayoutModeEditor());
@@ -2885,6 +2887,79 @@ function buildCardNumberIndentEditor(): HTMLElement {
 
 function buildCardNumberSubIndentEditor(): HTMLElement {
   return buildIndentSelect('cardNumberingSubIndent');
+}
+
+/** Compact color control for the numbering glyphs. Reads/writes
+ *  customColorOverrides['pmd-c-card-number'] — the SAME value as the "Card
+ *  numbering" swatch under Accessibility → Color overrides — so the two stay
+ *  linked. Solid color only (no alpha); numbering glyphs are never translucent. */
+function buildCardNumberColorEditor(): HTMLElement {
+  const TOKEN = 'pmd-c-card-number';
+  const wrap = document.createElement('div');
+  wrap.className = 'pmd-inline-color-control';
+
+  const input = document.createElement('input');
+  input.type = 'color';
+  input.setAttribute('aria-label', 'Numbering color');
+
+  const reset = document.createElement('button');
+  reset.type = 'button';
+  reset.className = 'pmd-color-override-reset';
+  setIcon(reset, 'reset');
+  reset.title = 'Reset to default';
+
+  // Off-screen probe resolves any CSS color (hex / rgb / var) to rgb — the
+  // color input needs #rrggbb regardless of how the value is stored.
+  const probe = document.createElement('span');
+  probe.style.cssText =
+    'position:absolute;left:-9999px;top:0;visibility:hidden;pointer-events:none';
+  document.body.appendChild(probe);
+
+  const toHex = (css: string): string => {
+    probe.style.color = '';
+    probe.style.color = css || 'var(--pmd-c-card-number)';
+    const m = getComputedStyle(probe).color.match(/\d+/g);
+    if (!m || m.length < 3) return '#666666';
+    const h = (n: string): string =>
+      Math.max(0, Math.min(255, parseInt(n, 10))).toString(16).padStart(2, '0');
+    return `#${h(m[0]!)}${h(m[1]!)}${h(m[2]!)}`;
+  };
+  const isOverridden = (): boolean =>
+    Object.prototype.hasOwnProperty.call(settings.get('customColorOverrides'), TOKEN);
+  const effective = (): string => {
+    const ov = settings.get('customColorOverrides');
+    return isOverridden()
+      ? ov[TOKEN]!
+      : getComputedStyle(document.documentElement).getPropertyValue('--' + TOKEN).trim();
+  };
+
+  function refresh(): void {
+    input.value = toHex(effective());
+    reset.disabled = !isOverridden();
+  }
+  input.addEventListener('input', () => {
+    settings.set('customColorOverrides', {
+      ...settings.get('customColorOverrides'),
+      [TOKEN]: input.value,
+    });
+  });
+  reset.addEventListener('click', () => {
+    const cur = settings.get('customColorOverrides');
+    if (!Object.prototype.hasOwnProperty.call(cur, TOKEN)) return;
+    const next = { ...cur };
+    delete next[TOKEN];
+    settings.set('customColorOverrides', next);
+  });
+
+  wrap.appendChild(input);
+  wrap.appendChild(reset);
+  refresh();
+  const unsub = settings.subscribe(refresh);
+  registerRowCleanup(wrap, () => {
+    unsub();
+    probe.remove();
+  });
+  return wrap;
 }
 
 function buildRibbonTooltipModeEditor(): HTMLElement {

@@ -1596,6 +1596,7 @@ export interface SettingMeta {
     | 'cardNumberSubFormat'
     | 'cardNumberIndent'
     | 'cardNumberSubIndent'
+    | 'cardNumberColor'
     | 'lineHeights'
     | 'formattingPanelMode'
     | 'headingMode'
@@ -2401,6 +2402,19 @@ export const SETTING_METADATA: SettingMeta[] = [
     category: 'appearance',
     section: 'Card numbering',
     aliases: ['uppercase substructure', 'capital letters', 'sub capitalization'],
+  },
+  {
+    // Backed by customColorOverrides['pmd-c-card-number'] (a custom builder, not
+    // the generic `key` path), so it's the SAME value as the "Card numbering"
+    // swatch under Accessibility → Color overrides — edit either, both track.
+    key: 'customColorOverrides',
+    label: 'Numbering color',
+    description:
+      'The color of card numbers and substructure letters. Linked with the “Card numbering” swatch under Accessibility → Color overrides — changing one changes the other.',
+    kind: 'cardNumberColor',
+    category: 'appearance',
+    section: 'Card numbering',
+    aliases: ['numbering color', 'number color', 'substructure color'],
   },
   {
     key: 'cardNumberingIndent',
@@ -4045,6 +4059,7 @@ export const CUSTOMIZABLE_COLOR_TOKENS: readonly CustomizableColorToken[] = [
   { group: 'Annotations', name: 'pmd-c-transclusion', label: 'Live-zone rail' },
   { group: 'Editor', name: 'pmd-c-link', label: 'Hyperlink' },
   { group: 'Editor', name: 'pmd-c-spellcheck', label: 'Misspelling underline' },
+  { group: 'Editor', name: 'pmd-c-card-number', label: 'Card numbering' },
   { group: 'Status', name: 'pmd-c-notify-dot', label: 'Due-date dot' },
   { group: 'Find matches', name: 'pmd-c-find-match', label: 'Match highlight' },
   { group: 'Find matches', name: 'pmd-c-find-match-current', label: 'Current match highlight' },
