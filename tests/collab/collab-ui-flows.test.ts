@@ -59,9 +59,12 @@ beforeAll(async () => {
  *  confirm is an in-app dialog now — window.confirm never returns
  *  keyboard focus to the renderer on Windows/Linux Electron). */
 function clickPromptButton(label: string): void {
-  const btn = [...document.querySelectorAll('.pmd-route-overlay button')].find(
-    (b) => b.textContent === label,
-  ) as HTMLButtonElement | undefined;
+  // Route-style choice buttons carry the label in a <strong> (with a
+  // description below); the Cancel button is plain text.
+  const btn = [...document.querySelectorAll('.pmd-route-overlay button')].find((b) => {
+    const strong = b.querySelector('strong');
+    return (strong ? strong.textContent : b.textContent) === label;
+  }) as HTMLButtonElement | undefined;
   if (!btn) throw new Error(`no prompt button labeled "${label}"`);
   btn.click();
 }

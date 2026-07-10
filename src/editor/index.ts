@@ -39,7 +39,7 @@ import {
   buildDeleteStructureTr,
   installIncomingSpeechSliceHandler,
 } from './speech-doc-send.js';
-import { promptForText, promptForChoice } from './text-prompt.js';
+import { promptForText, promptForRouteChoice } from './text-prompt.js';
 import { openDocMenu } from './doc-menu-ui.js';
 import { createReference } from './create-reference.js';
 import { showToast } from './toast.js';
@@ -7094,15 +7094,22 @@ function confirmCloseCoEditedDoc(
     info.unsynced > 0
       ? ` ${info.unsynced} change${info.unsynced === 1 ? '' : 's'} still syncing will sync when you rejoin.`
       : '';
-  return promptForChoice<'keep' | 'end'>({
+  return promptForRouteChoice<'keep' | 'end'>({
     message: `Close ${name}?`,
-    detail:
-      "You're in a co-editing session. Closing keeps the session — rejoin it from the " +
-      `home-screen Sessions list to keep editing.${syncing} ` +
-      `${leaveLabel} instead to ${info.role === 'host' ? 'end it for everyone' : 'leave it'}.`,
     choices: [
-      { value: 'keep', label: 'Close', primary: true },
-      { value: 'end', label: leaveLabel },
+      {
+        value: 'keep',
+        label: 'Close',
+        description: `Keep the session — rejoin from the Sessions list to keep editing.${syncing}`,
+      },
+      {
+        value: 'end',
+        label: leaveLabel,
+        description:
+          info.role === 'host'
+            ? 'End the session for everyone.'
+            : 'Leave the session; your copy stays as it is.',
+      },
     ],
   }).then((c) => c ?? 'cancel');
 }
