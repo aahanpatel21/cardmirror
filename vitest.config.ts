@@ -5,20 +5,27 @@ export default defineConfig({
   test: {
     globals: true,
     include: ['tests/**/*.test.ts'],
-    exclude: ['tests/desktop/_*.ts'],
+    // The property-based Loro / co-editing fuzz suites spin up many wasm CRDT
+    // peers across dozens of seeds. That wasm memory accumulates in vitest's
+    // reused fork workers (it isn't freed per file), and the SUM across suites
+    // OOMs the ~7 GB CI runner — even though each file passes on its own, and
+    // regardless of parallelism (serializing just funnels it all into one fork).
+    // Skip the heaviest offenders on CI; they still run in local `npm test` and
+    // the pre-release sweep. Typecheck + the rest of the suite still gate CI.
+    exclude: [
+      'tests/desktop/_*.ts',
+      ...(process.env['CI']
+        ? [
+            'tests/collab/collab-transclusion-fuzz.test.ts',
+            'tests/collab/loro-fuzz.test.ts',
+            'tests/editor/collab-fuzz.test.ts',
+            'tests/editor/transclusion-numbering-fuzz.test.ts',
+          ]
+        : []),
+    ],
     benchmark: {
       include: ['benchmarks/**/*.bench.ts'],
     },
-    // CI runners have ~7 GB of RAM. The heavy Loro / transclusion co-editing
-    // fuzz suites can each peak a fork at a couple GB (multiple wasm peers +
-    // megabyte docs), and vitest's default parallelism (one fork per core) then
-    // runs several at once and blows the runner's memory — a V8 heap-limit OOM.
-    // On CI, cap concurrency to one fork at a time; with per-file isolation each
-    // suite still runs in a fresh process, so peak memory is a single file's
-    // rather than the sum of several. Local runs keep full parallelism.
-    ...(process.env['CI']
-      ? { poolOptions: { forks: { minForks: 1, maxForks: 1 } } }
-      : {}),
   },
   resolve: {
     alias: [
