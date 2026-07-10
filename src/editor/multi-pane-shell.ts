@@ -82,6 +82,7 @@ import {
   setActiveNavPanelResolver,
   attachClickBelowToEnd,
   confirmCloseUnsaved,
+  resolveCoEditedClose,
   runSaveFlow,
   runSaveAsFlow,
   refreshWindowTitle,
@@ -834,21 +835,30 @@ class Slot {
     const idx = this.visibleIndex;
     if (idx < 0) return false;
     const closing = this.stack[idx]!;
-    if (closing.dirty) {
-      // Focus this pane so the save commands (which route via
-      // `activeFile()`) target THIS doc, not whichever pane
-      // happened to be focused before the user clicked X.
-      this.shell.focusSlot(this);
+    const coedited = collabCopresenceFor(closing.uid) != null;
+    // Focus this pane so the confirm dialogs + save commands (which route via
+    // `activeFile()`) target THIS doc, not whichever pane happened to be focused
+    // when the user clicked ×.
+    if (coedited || closing.dirty) this.shell.focusSlot(this);
+    // Unsaved-file prompt (save / save-as / discard / cancel). Returns false to
+    // abort the close.
+    const runDirtyPrompt = async (): Promise<boolean> => {
       const choice = await confirmCloseUnsaved();
       if (choice === 'cancel') return false;
-      if (choice === 'save') {
-        const ok = await runSaveFlow();
-        if (!ok) return false;
-      } else if (choice === 'saveAs') {
-        const ok = await runSaveAsFlow();
-        if (!ok) return false;
-      }
-      // discard: fall through; existing journal-clear path runs.
+      if (choice === 'save') return runSaveFlow();
+      if (choice === 'saveAs') return runSaveAsFlow();
+      return true; // discard: fall through; existing journal-clear path runs.
+    };
+    if (coedited) {
+      // Session-aware close: keep it resumable, or end/leave. Naming the doc.
+      const co = await resolveCoEditedClose(closing.uid, closing.filename);
+      if (co === 'cancel') return false;
+      // 'keep' → the session record holds the content; close without a file
+      // prompt. 'run-normal' → the session was ended/left; still offer to save
+      // the local file if it's dirty.
+      if (co === 'run-normal' && closing.dirty && !(await runDirtyPrompt())) return false;
+    } else if (closing.dirty && !(await runDirtyPrompt())) {
+      return false;
     }
     this.detachVisible();
     if (closing.heavyUpdateTimer !== null) {

@@ -28,6 +28,7 @@ import {
   setCollabTransactionTagger,
   setCollabCopresenceProvider,
   notifyCollabCopresenceChange,
+  setCollabCloseActions,
 } from './collab-hooks.js';
 import { RoomsError } from './room-client.js';
 import { getElectronHost } from '../host/index.js';
@@ -124,12 +125,20 @@ setCollabCopresenceProvider((uid) => {
   const sess = sessionFor(uid);
   if (!sess) return null;
   return {
+    role: sess.session.role,
     // Before the first onStatus, assume connected (start() flushes immediately);
     // the flows also stamp lastStatus so an offline join/resume reads correctly.
     connected: sess.lastStatus?.connected ?? true,
     queued: sess.lastStatus?.queuedUpdates ?? 0,
     peers: sess.cursors.presence().map((p) => ({ name: p.name, color: p.color, self: p.self })),
   };
+});
+
+// Close-time actions for a co-edited doc, called by the always-loaded close
+// paths (multi-pane shell + single-doc) via collab-hooks. Registered once here.
+setCollabCloseActions({
+  keepResumable: (uid) => closeKeepResumableSession(uid),
+  endOrLeave: (uid) => closeEndOrLeaveSession(uid),
 });
 
 /** The session the shared chip / no-deps flows act on: the focused doc's, or —
@@ -295,8 +304,10 @@ function installSeams(session: CollabSession, deps: CollabUiDeps, shareCode: str
 /** Dispose one session's seams + drop it from the registry. Window-level shared
  *  seams (tagger / presence timer / comment-id mode) are retired only when the
  *  LAST session ends. `keepRecord` keeps the resumable persisted record (a
- *  cancelled RESUME); terminal paths clear it. */
-function teardownSession(sess: ActiveSession, keepRecord = false): void {
+ *  cancelled RESUME, or a close-but-keep); terminal paths clear it. Returns the
+ *  record-clear promise so terminal callers can await deletion (so a re-read of
+ *  the Sessions list doesn't flash a stale row); most callers ignore it. */
+function teardownSession(sess: ActiveSession, keepRecord = false): Promise<void> {
   unregisterCollabPluginSource(sess.ownerUid);
   sessions.delete(sess.ownerUid);
   // A session went away — repaint slot footers (this doc's may be visible).
@@ -304,8 +315,9 @@ function teardownSession(sess: ActiveSession, keepRecord = false): void {
   sess.wakeCleanup();
   sess.commentsSync.dispose();
   sess.cursors.dispose();
+  let cleared: Promise<void> = Promise.resolve();
   if (keepRecord) sess.persist.dispose();
-  else void sess.persist.clear();
+  else cleared = sess.persist.clear();
   if (sessions.size === 0) {
     setCollabTransactionTagger(null);
     setCommentIdSessionMode(false);
@@ -314,6 +326,7 @@ function teardownSession(sess: ActiveSession, keepRecord = false): void {
       presenceTimer = null;
     }
   }
+  return cleared;
 }
 
 /** Whether `ownerUid`'s session is the one the shared chip reflects (the focused
@@ -352,7 +365,7 @@ function sessionCallbacks(deps: CollabUiDeps, getSess: () => ActiveSession | nul
       if (!sess || !sessions.has(sess.ownerUid)) return;
       const wasHost = sess.session.role === 'host';
       const wasChip = isChipSession(sess.ownerUid);
-      teardownSession(sess);
+      void teardownSession(sess);
       if (wasChip) updateChip(null);
       deps.refreshPlugins();
       showToast(
@@ -404,6 +417,15 @@ export async function startSessionFlow(deps: CollabUiDeps): Promise<void> {
     showToast('This document already has a session — end or leave it first');
     return;
   }
+  // Confirm, naming the doc the session will be created for — removes any
+  // ambiguity about which doc is being shared (multi-pane: the focused one).
+  const startName = sessionDocTitle(ownerUid);
+  const startConfirm = await promptForChoice({
+    message: `Start a co-editing session for ${startName ? `"${startName}"` : 'this document'}?`,
+    detail: 'Anyone you share the code with can edit this document with you in real time.',
+    choices: [{ value: 'start', label: 'Start Session' }],
+  });
+  if (startConfirm !== 'start') return;
   await ensureBakedRelay();
   const client = relayClient();
   if (!client) {
@@ -542,7 +564,7 @@ export async function joinSessionWithCode(deps: CollabUiDeps, code: string): Pro
     );
     deps.getView()?.focus();
   } catch (err) {
-    if (sessRef) teardownSession(sessRef);
+    if (sessRef) void teardownSession(sessRef);
     showToast(relayFailureMessage(err, { initiating: false, verb: 'join' }));
   }
 }
@@ -612,7 +634,7 @@ export async function resumeSessionFlow(deps: CollabUiDeps, roomId: string): Pro
     showToast('Session resumed — syncing');
     deps.getView()?.focus();
   } catch (err) {
-    if (sessRef) teardownSession(sessRef);
+    if (sessRef) void teardownSession(sessRef);
     showToast(relayFailureMessage(err, { initiating: false, verb: 'resume' }));
   }
 }
@@ -731,6 +753,48 @@ export async function inviteTargetFlow(
   await sendInviteTo(target, sess.shareCode, sess.ownerUid);
 }
 
+/** Terminate/leave a session and clear its resumable record — the shared core
+ *  of the explicit End command and the close dialog's End/Leave choice (no
+ *  prompt; the caller already confirmed). Host ends for everyone (tombstones the
+ *  room); a participant just disconnects. */
+async function endOrLeaveSession(sess: ActiveSession): Promise<void> {
+  const isHost = sess.session.role === 'host';
+  const wasChip = isChipSession(sess.ownerUid);
+  // Drop it from the registry first, so the session's own onEnded no-ops.
+  const cleared = teardownSession(sess);
+  try {
+    if (isHost) await sess.session.end();
+    else await sess.session.stop();
+  } finally {
+    if (wasChip) updateChip(null);
+  }
+  await cleared; // record actually gone before we return
+}
+
+/** Close a co-edited doc but KEEP its session resumable: disconnect (a final
+ *  drain attempt), persist the CRDT — including edits that never reached the
+ *  relay — then drop the live binding while leaving the stored record behind.
+ *  The home-screen Sessions list resumes it; unsynced edits flush on rejoin.
+ *  Called from the always-loaded close paths via collab-hooks. */
+async function closeKeepResumableSession(uid: string): Promise<void> {
+  const sess = sessionFor(uid);
+  if (!sess) return;
+  const wasChip = isChipSession(sess.ownerUid);
+  await sess.session.stop(); // disconnect only — the room + record survive
+  // Capture the final state (incl. any still-unsynced edits) AFTER the drain so
+  // sentVersion is accurate, THEN stop persisting while keeping the record.
+  await sess.persist.flush();
+  void teardownSession(sess, /* keepRecord */ true);
+  if (wasChip) updateChip(null);
+}
+
+/** Close a co-edited doc by ending/leaving its session (clears the record). */
+async function closeEndOrLeaveSession(uid: string): Promise<void> {
+  const sess = sessionFor(uid);
+  if (!sess) return;
+  await endOrLeaveSession(sess);
+}
+
 export async function endSessionFlow(deps: CollabUiDeps): Promise<void> {
   // Ends the FOCUSED doc's session (the one the user is looking at).
   const sess = sessionFor(deps.getOwnerUid?.());
@@ -750,19 +814,10 @@ export async function endSessionFlow(deps: CollabUiDeps): Promise<void> {
     choices: [{ value: 'confirm', label: isHost ? 'End Session' : 'Leave Session' }],
   });
   if (choice !== 'confirm') return;
-  const { session } = sess;
-  const wasChip = isChipSession(sess.ownerUid);
-  // Drop it from the registry first, so the session's own onEnded no-ops.
-  teardownSession(sess);
-  try {
-    if (isHost) await session.end();
-    else await session.stop();
-  } finally {
-    if (wasChip) updateChip(null);
-    deps.refreshPlugins();
-    showToast(isHost ? 'Session ended' : 'Left the session');
-    deps.getView()?.focus();
-  }
+  await endOrLeaveSession(sess);
+  deps.refreshPlugins();
+  showToast(isHost ? 'Session ended' : 'Left the session');
+  deps.getView()?.focus();
 }
 
 /** Test seam: the session the user is looking at (focused doc's, or the sole

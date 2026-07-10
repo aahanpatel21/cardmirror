@@ -39,7 +39,7 @@ import {
   buildDeleteStructureTr,
   installIncomingSpeechSliceHandler,
 } from './speech-doc-send.js';
-import { promptForText } from './text-prompt.js';
+import { promptForText, promptForChoice } from './text-prompt.js';
 import { openDocMenu } from './doc-menu-ui.js';
 import { createReference } from './create-reference.js';
 import { showToast } from './toast.js';
@@ -146,7 +146,16 @@ import {
 import { flattenSelfRefs, flattenSelfRefsInSlice, fragmentHasSelfRef } from './self-transclusion.js';
 import { rememberLinkedCopy, clearLinkedCopy } from './clipboard-link-cache.js';
 import { makeTransclusionDivergencePlugin, transclusionDivergenceKey } from './transclusion-divergence-plugin.js';
-import { tagCollabTransaction, collabPluginSourceFor, collabPluginsFor, setCollabInviteJoiner, setCollabInviter } from './collab/collab-hooks.js';
+import {
+  tagCollabTransaction,
+  collabPluginSourceFor,
+  collabPluginsFor,
+  setCollabInviteJoiner,
+  setCollabInviter,
+  collabCopresenceFor,
+  collabCloseKeepResumable,
+  collabEndOrLeaveSession,
+} from './collab/collab-hooks.js';
 import { learnHighlightPlugin, flashcardRangeAt } from './learn-highlight-plugin.js';
 import { repairHighlightPlugin } from './repair-highlight-plugin.js';
 import { aiWorkingPlugin } from './ai/ai-working-plugin.js';
@@ -5568,6 +5577,18 @@ async function handleCloseDocToHome(): Promise<void> {
     mountFreshBlankDoc();
     homeScreen.show();
   };
+  // A co-edited doc gets the session-aware close first (keep resumable vs
+  // end/leave), naming the doc.
+  const co = await resolveCoEditedClose(currentDocUid, currentDocFilename ?? '');
+  if (co === 'cancel') return;
+  if (co === 'keep') {
+    // Session kept resumable — its record holds the content, so drop the
+    // recovery journal and return home without the file save prompt.
+    await clearCurrentJournal().catch(() => {});
+    finish();
+    return;
+  }
+  // co === 'run-normal': not co-edited, or the session was ended/left.
   if (!currentDocDirty) {
     finish();
     return;
@@ -6901,6 +6922,18 @@ function pushNativeMenuBindings(): void {
 async function handleUserCloseRequest(): Promise<void> {
   const electronHost = getElectronHost();
   if (!electronHost) return;
+  // Single-doc: a co-edited doc gets the session-aware close (keep resumable vs
+  // end/leave), naming the doc. Multi-pane sessions persist automatically on
+  // window close (pagehide) and stay resumable, so we don't confirm each one.
+  if (!multiDocActive) {
+    const co = await resolveCoEditedClose(currentDocUid, currentDocFilename ?? '');
+    if (co === 'cancel') return;
+    if (co === 'keep') {
+      await electronHost.closeSelf();
+      return;
+    }
+    // 'run-normal' → fall through to the dirty/save flow below.
+  }
   if (!currentDocDirty) {
     await electronHost.closeSelf();
     return;
@@ -7039,6 +7072,57 @@ export function confirmCloseUnsaved(): Promise<'save' | 'saveAs' | 'discard' | '
     document.addEventListener('keydown', onKey);
     document.body.appendChild(overlay);
   });
+}
+
+/** Session-aware close confirm for a co-edited doc. "Close" keeps the session
+ *  resumable — the record stays and unsynced edits sync when the user rejoins
+ *  from the home-screen Sessions list; "End/Leave" clears it. Naming the doc
+ *  removes ambiguity about which one is closing (multi-pane). */
+function confirmCloseCoEditedDoc(
+  docName: string,
+  info: { role: 'host' | 'participant'; unsynced: number },
+): Promise<'keep' | 'end' | 'cancel'> {
+  const name = docName ? `"${docName}"` : 'this document';
+  const leaveLabel = info.role === 'host' ? 'End session' : 'Leave session';
+  const syncing =
+    info.unsynced > 0
+      ? ` ${info.unsynced} change${info.unsynced === 1 ? '' : 's'} still syncing will sync when you rejoin.`
+      : '';
+  return promptForChoice<'keep' | 'end'>({
+    message: `Close ${name}?`,
+    detail:
+      "You're in a co-editing session. Closing keeps the session — rejoin it from the " +
+      `home-screen Sessions list to keep editing.${syncing} ` +
+      `${leaveLabel} instead to ${info.role === 'host' ? 'end it for everyone' : 'leave it'}.`,
+    choices: [
+      { value: 'keep', label: 'Close', primary: true },
+      { value: 'end', label: leaveLabel },
+    ],
+  }).then((c) => c ?? 'cancel');
+}
+
+/** For a doc that MAY be co-edited, run the session-aware close confirm and the
+ *  chosen collab action. Returns:
+ *   - `'cancel'`     → abort the close (leave the doc open)
+ *   - `'keep'`       → session kept resumable; the caller should close WITHOUT
+ *                      a file save prompt (the session record holds the content)
+ *   - `'run-normal'` → not co-edited, OR the session was ended/left; the caller
+ *                      runs its usual dirty → save/discard close flow
+ *  Exported for the multi-pane shell's per-pane close handler. */
+export async function resolveCoEditedClose(
+  uid: string,
+  docName: string,
+): Promise<'cancel' | 'keep' | 'run-normal'> {
+  const cp = collabCopresenceFor(uid);
+  if (!cp) return 'run-normal';
+  const choice = await confirmCloseCoEditedDoc(docName, { role: cp.role, unsynced: cp.queued });
+  if (choice === 'cancel') return 'cancel';
+  if (choice === 'keep') {
+    await collabCloseKeepResumable(uid);
+    return 'keep';
+  }
+  await collabEndOrLeaveSession(uid);
+  return 'run-normal';
 }
 
 function countSummary(doc: PMNode): string {

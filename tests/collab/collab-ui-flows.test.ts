@@ -8,6 +8,7 @@
  * runs.
  */
 
+import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { EditorState, type Plugin } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
@@ -19,7 +20,10 @@ import {
   tagCollabTransaction,
   collabCopresenceFor,
   onCollabCopresenceChange,
+  collabCloseKeepResumable,
+  collabEndOrLeaveSession,
 } from '../../src/editor/collab/collab-hooks.js';
+import { loadSessionRecord } from '../../src/editor/collab/collab-store.js';
 
 // Sessions are keyed by the owning doc's uid; this test window's one doc.
 const OWNER = 'ui-flows-doc';
@@ -59,6 +63,15 @@ function clickPromptButton(label: string): void {
   ) as HTMLButtonElement | undefined;
   if (!btn) throw new Error(`no prompt button labeled "${label}"`);
   btn.click();
+}
+
+/** Start a session, clicking through the confirm-on-start dialog (names the
+ *  doc; "Start Session" / Cancel). Mirrors how the end flow is driven below. */
+async function startSession(deps: Parameters<typeof collabUi.startSessionFlow>[0]): Promise<void> {
+  const p = collabUi.startSessionFlow(deps);
+  await settle();
+  clickPromptButton('Start Session');
+  await p;
 }
 afterAll(async () => {
   await mock.close();
@@ -113,7 +126,7 @@ describe('collab UI flows through the editor seams', () => {
     // Start a session on the host's current doc (window titled like a
     // real host: the flow publishes the doc name to the room's meta map).
     document.title = 'Aff Updates — CardMirror';
-    await collabUi.startSessionFlow(deps);
+    await startSession(deps);
     expect(collabUi.activeSession()).not.toBeNull();
     // Joiners name their unsaved copy from this (field bug: windows and
     // Sessions-list rows just said "collaboration session").
@@ -277,8 +290,8 @@ describe('collab UI flows through the editor seams', () => {
     });
 
     // Host a session on doc A, then a SEPARATE session on doc B — same window.
-    await collabUi.startSessionFlow(depsFor('doc-A', viewA));
-    await collabUi.startSessionFlow(depsFor('doc-B', viewB));
+    await startSession(depsFor('doc-A', viewA));
+    await startSession(depsFor('doc-B', viewB));
     await settle();
 
     // Two independent sessions coexist, each bound to its OWN doc's view.
@@ -333,8 +346,8 @@ describe('collab UI flows through the editor seams', () => {
     // No session yet → no copresence for either doc.
     expect(collabCopresenceFor('cp-A')).toBeNull();
 
-    await collabUi.startSessionFlow(depsFor('cp-A', viewA));
-    await collabUi.startSessionFlow(depsFor('cp-B', viewB));
+    await startSession(depsFor('cp-A', viewA));
+    await startSession(depsFor('cp-B', viewB));
     await settle();
     expect(notifications).toBeGreaterThan(0);
 
@@ -364,5 +377,46 @@ describe('collab UI flows through the editor seams', () => {
     unsub();
     viewA.destroy();
     viewB.destroy();
+  }, 20_000);
+
+  it('closing a co-edited doc keeps the session resumable; end/leave clears it', async () => {
+    const viewK = mkIndexStyleView('close-keep');
+    const viewE = mkIndexStyleView('close-end');
+    const viewForUid = (u: string): EditorView | null =>
+      u === 'close-keep' ? viewK : u === 'close-end' ? viewE : null;
+    const depsFor = (uid: string, view: EditorView) => ({
+      getView: () => view,
+      getOwnerUid: () => uid,
+      getViewForUid: viewForUid,
+      refreshPlugins: () =>
+        view.updateState(view.state.reconfigure({ plugins: buildMiniPlugins(uid) })),
+      newSessionDoc: () => true,
+    });
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: () => Promise.resolve() },
+    });
+
+    // Close-but-keep: the live session tears down, but its persisted record
+    // stays so the Sessions list can resume it (unsynced edits sync on rejoin).
+    await startSession(depsFor('close-keep', viewK));
+    const keepRoom = collabUi.activeSession()!.roomId;
+    await collabCloseKeepResumable('close-keep');
+    await settle();
+    expect(collabPluginSourceFor('close-keep')).toBeNull();
+    expect(collabCopresenceFor('close-keep')).toBeNull();
+    expect(await loadSessionRecord(keepRoom)).not.toBeNull();
+
+    // End/leave: the session AND its resumable record are gone.
+    await startSession(depsFor('close-end', viewE));
+    const endRoom = collabUi.activeSession()!.roomId;
+    await collabEndOrLeaveSession('close-end');
+    await settle();
+    expect(collabPluginSourceFor('close-end')).toBeNull();
+    expect(collabCopresenceFor('close-end')).toBeNull();
+    expect(await loadSessionRecord(endRoom)).toBeNull();
+
+    viewK.destroy();
+    viewE.destroy();
   }, 20_000);
 });

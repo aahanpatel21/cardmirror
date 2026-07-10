@@ -122,6 +122,9 @@ export function collabInviter(): ((target: CollabInviteTarget) => void) | null {
  *  null before then (footers stay blank). Kept here (the zero-dependency seam)
  *  so the always-loaded shell never imports the heavy collab module. */
 export interface CollabCopresence {
+  /** This peer's role in the session — drives the close dialog's End-vs-Leave
+   *  wording (a host ends for everyone; a participant leaves). */
+  role: 'host' | 'participant';
   connected: boolean;
   queued: number;
   peers: { name: string; color: string; self: boolean }[];
@@ -157,4 +160,35 @@ export function onCollabCopresenceChange(fn: () => void): () => void {
  *  status/presence changes or a session starts/ends. No-op with no listeners. */
 export function notifyCollabCopresenceChange(): void {
   for (const fn of copresenceListeners) fn();
+}
+
+/** Close-time session actions, provided by collab-ui. When a co-edited doc
+ *  closes, it either KEEPS its session resumable (persist the CRDT — including
+ *  unsynced edits — drop the live binding, disconnect; the user rejoins from the
+ *  home-screen Sessions list and their changes sync then) or ENDS/LEAVES it
+ *  (host ends for everyone / guest leaves, clearing the resumable record). The
+ *  always-loaded close paths (multi-pane shell + single-doc) call these; both
+ *  no-op when collab isn't loaded — a doc with no session never reaches them. */
+let closeActions: {
+  keepResumable: (uid: string) => Promise<void>;
+  endOrLeave: (uid: string) => Promise<void>;
+} | null = null;
+
+export function setCollabCloseActions(
+  a: {
+    keepResumable: (uid: string) => Promise<void>;
+    endOrLeave: (uid: string) => Promise<void>;
+  } | null,
+): void {
+  closeActions = a;
+}
+
+/** Close `uid`'s doc but keep its session resumable (persist + disconnect). */
+export function collabCloseKeepResumable(uid: string): Promise<void> {
+  return closeActions?.keepResumable(uid) ?? Promise.resolve();
+}
+
+/** End (host) or leave (guest) `uid`'s session, clearing the resumable record. */
+export function collabEndOrLeaveSession(uid: string): Promise<void> {
+  return closeActions?.endOrLeave(uid) ?? Promise.resolve();
 }
