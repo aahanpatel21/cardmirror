@@ -155,6 +155,7 @@ import {
   collabCopresenceFor,
   collabCloseKeepResumable,
   collabEndOrLeaveSession,
+  collabCaptureSessionHandoff,
 } from './collab/collab-hooks.js';
 import { learnHighlightPlugin, flashcardRangeAt } from './learn-highlight-plugin.js';
 import { repairHighlightPlugin } from './repair-highlight-plugin.js';
@@ -7631,6 +7632,11 @@ settings.subscribe((s, meta) => {
 });
 
 const MODE_SWITCH_MARKER_KEY = 'cardmirror:mode-switch-recovery';
+// Sibling of the recovery marker: {uid, roomId}[] for docs that were in a live
+// co-editing session when the toggle fired, so the post-reload recovery can
+// auto-resume each into the doc that reopens under its uid. Separate key so it's
+// only ever consumed by the mode-switch path (never a crash-recovery reload).
+const MODE_SWITCH_SESSIONS_KEY = 'cardmirror:mode-switch-sessions';
 
 async function handleModeSwitch(newValue: boolean): Promise<void> {
   modeSwitchInFlight = true;
@@ -7685,6 +7691,18 @@ async function handleModeSwitch(newValue: boolean): Promise<void> {
       }
     }
     const docs = await journalAllForModeSwitch();
+    // Capture live co-editing sessions (uid→roomId) and flush their records so
+    // this window's sessions auto-resume into the reopened docs after the
+    // reload. (Cross-window electron sessions in the windows we just closed
+    // aren't carried here — they stay resumable from the Sessions list.)
+    try {
+      const handoff = await collabCaptureSessionHandoff();
+      if (handoff.length > 0) {
+        sessionStorage.setItem(MODE_SWITCH_SESSIONS_KEY, JSON.stringify(handoff));
+      }
+    } catch (err) {
+      console.warn('Mode-switch session hand-off capture failed:', err);
+    }
     // The marker carries exactly which journals belong to this
     // switch (plus each doc's pre-switch dirty state) — this
     // window's docs AND any collected from the windows we just
@@ -7783,6 +7801,9 @@ async function runStartupRecovery(): Promise<void> {
         `${markerDocs.length} local + ${remoteDocs.length} remote in marker, ${matched.length} matched`,
     );
     await autoRecoverAll(matched, dirtyByUid);
+    // The docs are mounted under their original uids — auto-resume any session
+    // that was live before the toggle back into the doc that reopened.
+    await resumePreservedSessions();
     return;
   }
   if (entries.length === 0) return;
@@ -7824,6 +7845,52 @@ async function runStartupRecovery(): Promise<void> {
       }
     },
   });
+}
+
+/** Mode-switch hand-off (post-reload): auto-resume each co-editing session that
+ *  was live before the toggle INTO the doc that reopened under its uid. Docs
+ *  that didn't reopen in THIS window (multi→single non-kept docs, or docs the
+ *  electron split sent to other windows) are skipped — they stay resumable from
+ *  the home-screen Sessions list. Consumes the sessions marker so it never fires
+ *  on an ordinary crash-recovery reload. */
+async function resumePreservedSessions(): Promise<void> {
+  const raw = sessionStorage.getItem(MODE_SWITCH_SESSIONS_KEY);
+  if (raw === null) return;
+  sessionStorage.removeItem(MODE_SWITCH_SESSIONS_KEY);
+  let handoff: { uid: string; roomId: string }[];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    handoff = Array.isArray(parsed) ? (parsed as { uid: string; roomId: string }[]) : [];
+  } catch {
+    return;
+  }
+  const resolver = getSpeechDocResolver();
+  // Only resume sessions whose doc actually reopened in this renderer.
+  const pending = handoff.filter((h) => h && h.uid && h.roomId && resolver.viewForUid(h.uid));
+  if (pending.length === 0) return;
+  console.log(`[cardmirror] modeswitch: auto-resuming ${pending.length} session(s)`);
+  const m = await loadCollabUi();
+  for (const { uid, roomId } of pending) {
+    // Deps scoped to the reopened doc's uid (not the focused view) so the
+    // session binds into THAT pane / doc, and its plugins reconfigure that view.
+    const deps = {
+      getView: () => resolver.viewForUid(uid),
+      getOwnerUid: () => uid,
+      getViewForUid: (u: string) => resolver.viewForUid(u),
+      refreshPlugins: () => {
+        const v = resolver.viewForUid(uid);
+        if (v) v.updateState(v.state.reconfigure({ plugins: buildEditorPlugins(uid) }));
+      },
+      // Unused with `existingDoc` (the doc is already open) but required by the
+      // deps shape; never invoked on this path.
+      newSessionDoc: () => true,
+    };
+    try {
+      await m.resumeSessionFlow(deps, roomId, { existingDoc: true });
+    } catch (err) {
+      console.warn(`Mode-switch auto-resume failed for ${uid}:`, err);
+    }
+  }
 }
 
 /** Persist a recovery journal entry to disk without opening it in

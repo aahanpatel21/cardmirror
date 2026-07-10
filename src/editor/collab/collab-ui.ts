@@ -29,6 +29,7 @@ import {
   setCollabCopresenceProvider,
   notifyCollabCopresenceChange,
   setCollabCloseActions,
+  setCollabHandoffProvider,
 } from './collab-hooks.js';
 import { RoomsError } from './room-client.js';
 import { getElectronHost } from '../host/index.js';
@@ -139,6 +140,15 @@ setCollabCopresenceProvider((uid) => {
 setCollabCloseActions({
   keepResumable: (uid) => closeKeepResumableSession(uid),
   endOrLeave: (uid) => closeEndOrLeaveSession(uid),
+});
+
+// Mode-switch hand-off: flush every live session's record (so unsynced edits
+// survive the toggle's reload) and report {uid, roomId} so the post-reload flow
+// can auto-resume each into the doc that reopens under its uid.
+setCollabHandoffProvider(async () => {
+  const list = [...sessions.values()].map((s) => ({ uid: s.ownerUid, roomId: s.session.roomId }));
+  await Promise.all([...sessions.values()].map((s) => s.persist.flush()));
+  return list;
 });
 
 /** The session the shared chip / no-deps flows act on: the focused doc's, or —
@@ -577,7 +587,11 @@ export async function joinSessionWithCode(deps: CollabUiDeps, code: string): Pro
  *  first flush sends exactly the unsent diff and catch-up resumes from
  *  the stored cursor. A tombstoned room degrades through the normal
  *  onEnded path ("this copy is now yours alone") and clears the record. */
-export async function resumeSessionFlow(deps: CollabUiDeps, roomId: string): Promise<void> {
+export async function resumeSessionFlow(
+  deps: CollabUiDeps,
+  roomId: string,
+  opts?: { existingDoc?: boolean },
+): Promise<void> {
   if (!collabEnabled()) return; // desktop-only; inert on the web edition
   if (!guardReady(deps)) return;
   if (sessionFor(deps.getOwnerUid?.())) {
@@ -621,7 +635,11 @@ export async function resumeSessionFlow(deps: CollabUiDeps, roomId: string): Pro
     });
     // Fresh doc first — its uid owns the session. A false return keeps the
     // record (still resumable) — no seams installed yet, so nothing to unwind.
-    if (!(await deps.newSessionDoc())) {
+    // EXCEPT the mode-switch hand-off (`existingDoc`): the doc was already
+    // reopened from its journal under the same uid, so bind into THAT view
+    // instead of swapping in a new one (which would duplicate the pane). The
+    // Loro binding replaces the reopened content with the CRDT's — same doc.
+    if (!opts?.existingDoc && !(await deps.newSessionDoc())) {
       await session.stop();
       showToast('Resume cancelled');
       return;

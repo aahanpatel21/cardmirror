@@ -192,3 +192,20 @@ export function collabCloseKeepResumable(uid: string): Promise<void> {
 export function collabEndOrLeaveSession(uid: string): Promise<void> {
   return closeActions?.endOrLeave(uid) ?? Promise.resolve();
 }
+
+/** Mode-switch hand-off: the single↔three-pane toggle is a full page reload, so
+ *  a live session is torn down by it. Before reloading, capture each live
+ *  session's {uid, roomId} (and flush its record so unsynced edits persist); the
+ *  post-reload flow auto-resumes each into the doc that reopens under that uid.
+ *  Provided by collab-ui; resolves [] when collab isn't loaded (no sessions). */
+let handoffProvider: (() => Promise<{ uid: string; roomId: string }[]>) | null = null;
+
+export function setCollabHandoffProvider(
+  fn: (() => Promise<{ uid: string; roomId: string }[]>) | null,
+): void {
+  handoffProvider = fn;
+}
+
+export function collabCaptureSessionHandoff(): Promise<{ uid: string; roomId: string }[]> {
+  return handoffProvider?.() ?? Promise.resolve([]);
+}

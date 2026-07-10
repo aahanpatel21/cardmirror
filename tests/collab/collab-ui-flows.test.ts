@@ -22,6 +22,7 @@ import {
   onCollabCopresenceChange,
   collabCloseKeepResumable,
   collabEndOrLeaveSession,
+  collabCaptureSessionHandoff,
 } from '../../src/editor/collab/collab-hooks.js';
 import { loadSessionRecord } from '../../src/editor/collab/collab-store.js';
 
@@ -418,5 +419,58 @@ describe('collab UI flows through the editor seams', () => {
 
     viewK.destroy();
     viewE.destroy();
+  }, 20_000);
+
+  it('mode-switch hand-off: captures {uid,roomId}+flushes, resumes into the reopened doc', async () => {
+    const view = mkIndexStyleView('ho-doc');
+    const depsFor = (uid: string, v: EditorView, onNewDoc?: () => void) => ({
+      getView: () => v,
+      getOwnerUid: () => uid,
+      getViewForUid: (u: string) => (u === uid ? v : null),
+      refreshPlugins: () => v.updateState(v.state.reconfigure({ plugins: buildMiniPlugins(uid) })),
+      newSessionDoc: () => {
+        onNewDoc?.();
+        return true;
+      },
+    });
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: () => Promise.resolve() },
+    });
+
+    await startSession(depsFor('ho-doc', view));
+    const room = collabUi.activeSession()!.roomId;
+
+    // Capture reports the live session and flushes its record (so unsynced
+    // edits survive the toggle's reload).
+    const handoff = await collabCaptureSessionHandoff();
+    expect(handoff).toContainEqual({ uid: 'ho-doc', roomId: room });
+    expect(await loadSessionRecord(room)).not.toBeNull();
+
+    // Simulate the pre-reload teardown that keeps the record resumable.
+    await collabCloseKeepResumable('ho-doc');
+    expect(collabPluginSourceFor('ho-doc')).toBeNull();
+    expect(await loadSessionRecord(room)).not.toBeNull();
+
+    // Resume INTO the still-open doc (existingDoc): must NOT mint a new doc, and
+    // the session rebinds to that view.
+    let newDocCalled = false;
+    await collabUi.resumeSessionFlow(
+      depsFor('ho-doc', view, () => {
+        newDocCalled = true;
+      }),
+      room,
+      { existingDoc: true },
+    );
+    await settle();
+    expect(newDocCalled).toBe(false);
+    expect(collabPluginSourceFor('ho-doc')).not.toBeNull();
+
+    const end = collabUi.endSessionFlow(depsFor('ho-doc', view));
+    await settle();
+    // Resumed from a host record → host role → "End Session".
+    clickPromptButton('End Session');
+    await end;
+    view.destroy();
   }, 20_000);
 });

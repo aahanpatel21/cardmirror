@@ -831,11 +831,15 @@ class Slot {
   /** Close the currently-visible doc. Reveals the next stack member
    *  (or empties the slot). Prompts for save / discard / cancel if
    *  the doc has unsaved changes; clean docs close immediately. */
-  async closeVisible(): Promise<boolean> {
+  async closeVisible(opts?: { modeSwitch?: boolean }): Promise<boolean> {
     const idx = this.visibleIndex;
     if (idx < 0) return false;
     const closing = this.stack[idx]!;
-    const coedited = collabCopresenceFor(closing.uid) != null;
+    // During a mode-switch reduce we suppress the session-aware close: the
+    // toggle is a full reload that persists every session (resumable, and the
+    // kept doc auto-resumes), so prompting per co-edited pane would be noise —
+    // but a DIRTY non-focused doc still gets its normal save prompt below.
+    const coedited = !opts?.modeSwitch && collabCopresenceFor(closing.uid) != null;
     // Focus this pane so the confirm dialogs + save commands (which route via
     // `activeFile()`) target THIS doc, not whichever pane happened to be focused
     // when the user clicked ×.
@@ -919,12 +923,12 @@ class Slot {
    *  the user cancels a prompt (leaving the remaining docs open), true
    *  when the slot is reduced to `keep` (or empty). Used by the web
    *  mode-switch to collapse three-pane down to the focused doc. */
-  async closeAllExcept(keep: DocRecord | null): Promise<boolean> {
+  async closeAllExcept(keep: DocRecord | null, opts?: { modeSwitch?: boolean }): Promise<boolean> {
     // Snapshot: closeVisible mutates the stack + visibleIndex as it goes.
     for (const rec of this.stack.filter((r) => r !== keep)) {
       if (!this.stack.includes(rec)) continue; // already closed (defensive)
       this.showRecord(rec); // make it visible so its save prompt is in context
-      if (!(await this.closeVisible())) return false; // user cancelled
+      if (!(await this.closeVisible(opts))) return false; // user cancelled
     }
     return true;
   }
@@ -1789,7 +1793,7 @@ class MultiPaneShell {
       }
     }
     for (const id of SLOT_IDS) {
-      if (!(await this.slots[id].closeAllExcept(keep))) return false;
+      if (!(await this.slots[id].closeAllExcept(keep, { modeSwitch: true }))) return false;
     }
     return true;
   }
