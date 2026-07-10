@@ -264,6 +264,32 @@ export type EnterAfterStyle =
   | 'analytic'
   | 'undertag';
 
+/** Separator glyph that trails a card-numbering number/letter (display-only).
+ *  `period` = ".", `paren` = ")", `dash` = " -", `colon` = ":", `emdash` = "—",
+ *  `endash` = "–", `doublehyphen` = "--", `triplehyphen` = "---". */
+export type NumberingSeparator =
+  | 'period'
+  | 'paren'
+  | 'dash'
+  | 'colon'
+  | 'emdash'
+  | 'endash'
+  | 'doublehyphen'
+  | 'triplehyphen';
+
+/** Runtime list of every valid `NumberingSeparator` (persistence validation +
+ *  the settings-UI option lists read from this). */
+export const NUMBERING_SEPARATORS: readonly NumberingSeparator[] = [
+  'period',
+  'paren',
+  'dash',
+  'colon',
+  'emdash',
+  'endash',
+  'doublehyphen',
+  'triplehyphen',
+];
+
 /** Schema for all editor settings. Add new fields here with sensible defaults. */
 export interface Settings {
   /** Width of the navigation pane in pixels. */
@@ -578,13 +604,25 @@ export interface Settings {
    *  are display-only; turning this off hides them without touching the doc.
    *  Authoring a role auto-enables it. See NUMBERING_PLAN.md §6. */
   showCardNumbering: boolean;
-  /** Glyph format for card numbers (display-only, does NOT round-trip — the
-   *  `.docx` carries a canonical `1.`/`a)`). `period` = "1."/"a.", `paren` =
-   *  "1)"/"a)", `dash` = "1 -"/"a -". */
-  cardNumberingFormat: 'period' | 'paren' | 'dash';
-  /** Whether/where numbered cards indent by level (display-only). `off` = none;
-   *  `tag` = indent just the tag line; `card` = indent the whole card. */
+  /** Whether the ribbon's numbering button cluster (number / substructure /
+   *  restart / visibility) is shown. On by default; this only hides the buttons,
+   *  never the numbers themselves (that's `showCardNumbering`). */
+  showNumberingButtons: boolean;
+  /** Separator after the NUMBER glyph (display-only, does NOT round-trip — the
+   *  `.docx` carries a canonical `1.`). One of `NumberingSeparator`. */
+  cardNumberingFormat: NumberingSeparator;
+  /** Separator after the SUBSTRUCTURE letter (display-only). Configured
+   *  independently of the number separator. */
+  cardNumberingSubFormat: NumberingSeparator;
+  /** Whether substructure letters render uppercase (`A)`) instead of lowercase
+   *  (`a)`). Display-only. */
+  cardNumberingSubCapitalized: boolean;
+  /** Whether/where NUMBER cards indent (display-only). `off` = none; `tag` =
+   *  indent just the tag line; `card` = indent the whole card. */
   cardNumberingIndent: 'off' | 'tag' | 'card';
+  /** Whether/where SUBSTRUCTURE cards indent (display-only), configured
+   *  independently of the number indent. Same values as `cardNumberingIndent`. */
+  cardNumberingSubIndent: 'off' | 'tag' | 'card';
   /** Show a red dot on the ribbon's Manage Flashcards button when one or
    *  more flashcards are due for review today. On by default. */
   flashcardDueDot: boolean;
@@ -1348,8 +1386,12 @@ const DEFAULTS: Settings = {
   includeSpeechDocPocket: true,
   showCitePreview: true,
   showCardNumbering: true,
+  showNumberingButtons: true,
   cardNumberingFormat: 'period',
+  cardNumberingSubFormat: 'paren',
+  cardNumberingSubCapitalized: false,
   cardNumberingIndent: 'off',
+  cardNumberingSubIndent: 'off',
   flashcardDueDot: true,
   editorSpellcheck: false,
   smartQuotes: false,
@@ -1551,7 +1593,9 @@ export interface SettingMeta {
     | 'uiFont'
     | 'ribbonTooltipMode'
     | 'cardNumberFormat'
+    | 'cardNumberSubFormat'
     | 'cardNumberIndent'
+    | 'cardNumberSubIndent'
     | 'lineHeights'
     | 'formattingPanelMode'
     | 'headingMode'
@@ -2316,28 +2360,67 @@ export const SETTING_METADATA: SettingMeta[] = [
       'Render the computed numbers/letters for cards you have marked as numbered or substructure. Display-only — turning this off hides the numbers but keeps the structure; authoring a role turns it back on.',
     kind: 'toggle',
     category: 'appearance',
-    section: 'Nav pane & indicators',
+    section: 'Card numbering',
     aliases: ['numbering', 'card numbers', 'auto number'],
   },
   {
-    key: 'cardNumberingFormat',
-    label: 'Card number format',
+    key: 'showNumberingButtons',
+    label: 'Show numbering buttons in the ribbon',
     description:
-      'How the number/letter reads: “1.” / “a.”, “1)” / “a)”, or “1 -” / “a -”. Display-only — the .docx carries a canonical format each reader can override.',
+      'Show the ribbon cluster for numbering (number, substructure, restart, and show/hide). On by default; turning it off hides only the buttons — your numbering and its display are untouched.',
+    kind: 'toggle',
+    category: 'appearance',
+    section: 'Card numbering',
+    aliases: ['numbering buttons', 'numbering ribbon', 'numbering cluster'],
+  },
+  {
+    key: 'cardNumberingFormat',
+    label: 'Number separator',
+    description:
+      'The glyph after a number — “1.”, “1)”, “1:”, “1 -”, and dash/hyphen variants. Display-only — the .docx carries a canonical format each reader can override.',
     kind: 'cardNumberFormat',
     category: 'appearance',
-    section: 'Nav pane & indicators',
-    aliases: ['numbering format', 'number style'],
+    section: 'Card numbering',
+    aliases: ['numbering format', 'number style', 'number separator'],
+  },
+  {
+    key: 'cardNumberingSubFormat',
+    label: 'Substructure separator',
+    description:
+      'The glyph after a substructure letter — configured independently of the number separator. Display-only.',
+    kind: 'cardNumberSubFormat',
+    category: 'appearance',
+    section: 'Card numbering',
+    aliases: ['substructure format', 'sub separator', 'letter separator'],
+  },
+  {
+    key: 'cardNumberingSubCapitalized',
+    label: 'Capitalize substructure letters',
+    description: 'Render substructure as “A)”, “B)”… instead of “a)”, “b)”…. Display-only.',
+    kind: 'toggle',
+    category: 'appearance',
+    section: 'Card numbering',
+    aliases: ['uppercase substructure', 'capital letters', 'sub capitalization'],
   },
   {
     key: 'cardNumberingIndent',
-    label: 'Card number indent',
+    label: 'Number indent',
     description:
-      'Whether numbered cards indent by level — none, the tag line only, or the whole card.',
+      'Whether numbered cards indent — none, the tag line only, or the whole card.',
     kind: 'cardNumberIndent',
     category: 'appearance',
-    section: 'Nav pane & indicators',
-    aliases: ['numbering indent'],
+    section: 'Card numbering',
+    aliases: ['numbering indent', 'number indent'],
+  },
+  {
+    key: 'cardNumberingSubIndent',
+    label: 'Substructure indent',
+    description:
+      'Whether substructure cards indent — configured independently of the number indent.',
+    kind: 'cardNumberSubIndent',
+    category: 'appearance',
+    section: 'Card numbering',
+    aliases: ['substructure indent', 'sub indent'],
   },
   {
     key: 'flashcardDueDot',
@@ -3445,13 +3528,25 @@ function sanitize(s: Settings): Settings {
       s.includeSpeechDocPocket === false ? false : true,
     showCitePreview: !!s.showCitePreview,
     showCardNumbering: s.showCardNumbering === false ? false : true,
-    cardNumberingFormat:
-      s.cardNumberingFormat === 'paren' || s.cardNumberingFormat === 'dash'
-        ? s.cardNumberingFormat
-        : 'period',
+    showNumberingButtons: s.showNumberingButtons === false ? false : true,
+    cardNumberingFormat: NUMBERING_SEPARATORS.includes(
+      s.cardNumberingFormat as NumberingSeparator,
+    )
+      ? (s.cardNumberingFormat as NumberingSeparator)
+      : 'period',
+    cardNumberingSubFormat: NUMBERING_SEPARATORS.includes(
+      s.cardNumberingSubFormat as NumberingSeparator,
+    )
+      ? (s.cardNumberingSubFormat as NumberingSeparator)
+      : 'paren',
+    cardNumberingSubCapitalized: !!s.cardNumberingSubCapitalized,
     cardNumberingIndent:
       s.cardNumberingIndent === 'tag' || s.cardNumberingIndent === 'card'
         ? s.cardNumberingIndent
+        : 'off',
+    cardNumberingSubIndent:
+      s.cardNumberingSubIndent === 'tag' || s.cardNumberingSubIndent === 'card'
+        ? s.cardNumberingSubIndent
         : 'off',
     flashcardDueDot: s.flashcardDueDot === false ? false : true,
     editorSpellcheck: !!s.editorSpellcheck,

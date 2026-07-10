@@ -97,3 +97,36 @@ export const toggleNumRestart: Command = (state, dispatch) => {
   }
   return true;
 };
+
+/**
+ * The current numbering state at the selection, for the ribbon buttons'
+ * pressed indicators. `number`/`sub` are true when EVERY in-scope card carries
+ * that role (the same set `makeRoleToggle` acts on); `restart` mirrors
+ * `toggleNumRestart`'s target — the cursor's enclosing block (which restarts by
+ * default, so it's "on" unless flagged continue) or card/analytic (on only when
+ * explicitly flagged to restart).
+ */
+export function numberingSelectionState(state: EditorState): {
+  number: boolean;
+  sub: boolean;
+  restart: boolean;
+} {
+  const units = inScopeCardUnits(state);
+  const allRole = (role: NumRole): boolean =>
+    units.length > 0 && units.every((u) => u.node.attrs['numRole'] === role);
+  const $pos = state.selection.$from;
+  let restart = false;
+  for (let d = $pos.depth; d >= 0; d--) {
+    const n = $pos.node(d);
+    const t = n.type.name;
+    if (t === 'block') {
+      restart = n.attrs['numRestart'] !== false;
+      break;
+    }
+    if (t === 'card' || t === 'analytic_unit') {
+      restart = n.attrs['numRestart'] === true;
+      break;
+    }
+  }
+  return { number: allRole('number'), sub: allRole('sub'), restart };
+}

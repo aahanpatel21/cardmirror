@@ -19,7 +19,7 @@ import { Plugin, PluginKey } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
 import type { Node as PMNode } from 'prosemirror-model';
 import { computeNumbering, type NumberLabel } from './numbering.js';
-import { settings } from './settings.js';
+import { settings, type NumberingSeparator } from './settings.js';
 
 interface NumberingState {
   decorations: DecorationSet;
@@ -32,10 +32,35 @@ export const numberingPluginKey = new PluginKey<NumberingState>('cardNumbering')
  *  change (they bake into the decorations, unlike the on/off gate). */
 export const NUMBERING_REFRESH = 'pmd-numbering-refresh';
 
-/** Per-user glyph separator (display-only; the .docx carries a canonical form). */
-const FORMAT_SEP: Record<string, string> = { period: '.', paren: ')', dash: ' -' };
+/** Per-user glyph separators (display-only; the .docx carries a canonical form).
+ *  Number and substructure each pick their own separator independently. */
+const FORMAT_SEP: Record<NumberingSeparator, string> = {
+  period: '.',
+  paren: ')',
+  dash: ' -',
+  colon: ':',
+  emdash: '—',
+  endash: '–',
+  doublehyphen: '--',
+  triplehyphen: '---',
+};
 function glyphText(label: NumberLabel): string {
-  return `${label.text}${FORMAT_SEP[settings.get('cardNumberingFormat')] ?? '.'}`;
+  if (label.kind === 'sub') {
+    const core = settings.get('cardNumberingSubCapitalized')
+      ? label.text.toUpperCase()
+      : label.text;
+    return `${core}${FORMAT_SEP[settings.get('cardNumberingSubFormat')]}`;
+  }
+  return `${label.text}${FORMAT_SEP[settings.get('cardNumberingFormat')]}`;
+}
+
+/** The glyph a first-position number / substructure letter renders as under the
+ *  current format settings — used by the ribbon's numbering buttons so their
+ *  faces mirror the configured style. */
+export function numberingSampleGlyph(kind: 'number' | 'sub'): string {
+  return kind === 'number'
+    ? glyphText({ kind: 'number', value: 1, text: '1' })
+    : glyphText({ kind: 'sub', value: 1, text: 'a' });
 }
 
 /** The read-only number glyph element. Shared by the widget decorations (host
@@ -55,8 +80,10 @@ function build(doc: PMNode): NumberingState {
   const { cards } = computeNumbering(doc);
   const decos: Decoration[] = [];
 
-  // Computed number / letter glyphs on host cards, plus optional per-level indent.
-  const indentMode = settings.get('cardNumberingIndent');
+  // Computed number / letter glyphs on host cards, plus optional per-level
+  // indent. Number and substructure cards indent per their OWN setting.
+  const numberIndent = settings.get('cardNumberingIndent');
+  const subIndent = settings.get('cardNumberingSubIndent');
   for (const [cardPos, label] of cards) {
     // card at cardPos → its `tag`/`analytic` heading at +1 → the heading's inline
     // content starts at +2. Sit the number at the very start of that line.
@@ -69,8 +96,9 @@ function build(doc: PMNode): NumberingState {
         ignoreSelection: true,
       }),
     );
-    // Indent by level (display-only): number = 1 step, sub = 2. Applied to the
-    // tag line or the whole card per the setting.
+    // Indent by level (display-only): number = 1 step, sub = 2. Each level is
+    // gated on its own setting, applied to the tag line or the whole card.
+    const indentMode = label.kind === 'sub' ? subIndent : numberIndent;
     if (indentMode !== 'off') {
       const cardNode = doc.nodeAt(cardPos);
       if (cardNode) {

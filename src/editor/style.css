@@ -1688,6 +1688,36 @@ body:not(.pmd-inplace-save) #autosave-btn { display: none; }
   display: none;
 }
 
+/* Numbering cluster — 2×2: number-role / sub-role on top, restart / show-hide
+   below. Mirrors the doc-ops panel's height + left separator, with a second
+   column (like the comments 2-col variant). */
+.ribbon-numbering-panel {
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-rows: 1.45rem 1.45rem;
+  align-content: center;
+  gap: 2px 3px;
+  padding-left: 0.5rem;
+  margin-left: 0.25rem;
+  border-left: 1px solid var(--pmd-c-border-soft);
+}
+/* The number / substructure faces re-render to the configured format (e.g.
+   "1—", "a)", "1---"), so let them grow to their glyph instead of the fixed
+   doc-ops width; `auto` columns then keep each column aligned to its widest
+   button so nothing clips. */
+#ribbon .ribbon-numbering-btn {
+  width: auto;
+  min-width: 1.5rem;
+  padding: 0 0.25rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* Setting-driven hide (default on). `!important` so it wins over the shrink
+   waterfall, which toggles inline `display` on the same panel. */
+html.pmd-numbering-hidden #numbering-panel {
+  display: none !important;
+}
+
 /* Editable font-size control inside the color panel — sits in the
    4th cell of the 2×2 grid alongside the three color controls.
    Numeric input on the left, dropdown arrow on the right (split-

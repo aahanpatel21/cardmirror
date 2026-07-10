@@ -34,6 +34,8 @@ import {
   type RibbonCustomButton,
   MAX_RIBBON_CUSTOM_BUTTONS,
   condenseWarningCloseFor,
+  NUMBERING_SEPARATORS,
+  type NumberingSeparator,
 } from './settings.js';
 import { CATEGORY_TABS, visibleCategoryTabs, type SettingsTarget } from './settings-categories.js';
 import { generateGroupId, normalizePairingCode } from './pairing/pairing-ids.js';
@@ -694,8 +696,12 @@ class SettingsModal {
       label.appendChild(buildRibbonTooltipModeEditor());
     } else if (meta.kind === 'cardNumberFormat') {
       label.appendChild(buildCardNumberFormatEditor());
+    } else if (meta.kind === 'cardNumberSubFormat') {
+      label.appendChild(buildCardNumberSubFormatEditor());
     } else if (meta.kind === 'cardNumberIndent') {
       label.appendChild(buildCardNumberIndentEditor());
+    } else if (meta.kind === 'cardNumberSubIndent') {
+      label.appendChild(buildCardNumberSubIndentEditor());
     } else if (meta.kind === 'multiDocLayoutMode') {
       row.appendChild(text);
       row.appendChild(buildMultiDocLayoutModeEditor());
@@ -2808,28 +2814,51 @@ function buildPairingReceiveFlashEditor(): HTMLElement {
   return wrap;
 }
 
-function buildCardNumberFormatEditor(): HTMLElement {
+/** The trailing glyph each separator renders — mirrors `FORMAT_SEP` in the
+ *  numbering plugin, so the dropdown labels read exactly as the numbers will. */
+const NUMBERING_SEP_GLYPH: Record<NumberingSeparator, string> = {
+  period: '.',
+  paren: ')',
+  dash: ' -',
+  colon: ':',
+  emdash: '—',
+  endash: '–',
+  doublehyphen: '--',
+  triplehyphen: '---',
+};
+
+/** A separator picker for one numbering level. `sample` is the leading glyph the
+ *  options preview against ("1" for numbers, "a" for substructure). */
+function buildSeparatorSelect(
+  key: 'cardNumberingFormat' | 'cardNumberingSubFormat',
+  sample: string,
+): HTMLElement {
   const select = document.createElement('select');
   select.className = 'pmd-formatting-panel-mode-select';
-  const options: { value: 'period' | 'paren' | 'dash'; label: string }[] = [
-    { value: 'period', label: '1.  ·  a.' },
-    { value: 'paren', label: '1)  ·  a)' },
-    { value: 'dash', label: '1 -  ·  a -' },
-  ];
-  for (const o of options) {
+  for (const sep of NUMBERING_SEPARATORS) {
     const opt = document.createElement('option');
-    opt.value = o.value;
-    opt.textContent = o.label;
-    if (o.value === settings.get('cardNumberingFormat')) opt.selected = true;
+    opt.value = sep;
+    opt.textContent = `${sample}${NUMBERING_SEP_GLYPH[sep]}`;
+    if (sep === settings.get(key)) opt.selected = true;
     select.appendChild(opt);
   }
   select.addEventListener('change', () => {
-    settings.set('cardNumberingFormat', select.value as 'period' | 'paren' | 'dash');
+    settings.set(key as 'cardNumberingFormat', select.value as never);
   });
   return select;
 }
 
-function buildCardNumberIndentEditor(): HTMLElement {
+function buildCardNumberFormatEditor(): HTMLElement {
+  return buildSeparatorSelect('cardNumberingFormat', '1');
+}
+
+function buildCardNumberSubFormatEditor(): HTMLElement {
+  return buildSeparatorSelect('cardNumberingSubFormat', 'a');
+}
+
+function buildIndentSelect(
+  key: 'cardNumberingIndent' | 'cardNumberingSubIndent',
+): HTMLElement {
   const select = document.createElement('select');
   select.className = 'pmd-formatting-panel-mode-select';
   const options: { value: 'off' | 'tag' | 'card'; label: string }[] = [
@@ -2841,13 +2870,21 @@ function buildCardNumberIndentEditor(): HTMLElement {
     const opt = document.createElement('option');
     opt.value = o.value;
     opt.textContent = o.label;
-    if (o.value === settings.get('cardNumberingIndent')) opt.selected = true;
+    if (o.value === settings.get(key)) opt.selected = true;
     select.appendChild(opt);
   }
   select.addEventListener('change', () => {
-    settings.set('cardNumberingIndent', select.value as 'off' | 'tag' | 'card');
+    settings.set(key as 'cardNumberingIndent', select.value as never);
   });
   return select;
+}
+
+function buildCardNumberIndentEditor(): HTMLElement {
+  return buildIndentSelect('cardNumberingIndent');
+}
+
+function buildCardNumberSubIndentEditor(): HTMLElement {
+  return buildIndentSelect('cardNumberingSubIndent');
 }
 
 function buildRibbonTooltipModeEditor(): HTMLElement {

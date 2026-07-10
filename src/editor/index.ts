@@ -157,7 +157,8 @@ import { absorbPlugin } from './absorb-plugin.js';
 import { citeClassifierPlugin } from './cite-classifier-plugin.js';
 import { namedStyleNormalizerPlugin } from './named-style-normalizer-plugin.js';
 import { fontSizeClassPlugin } from './font-size-class-plugin.js';
-import { cardNumberingPlugin, NUMBERING_REFRESH } from './numbering-plugin.js';
+import { cardNumberingPlugin, NUMBERING_REFRESH, numberingSampleGlyph } from './numbering-plugin.js';
+import { numberingSelectionState } from './numbering-commands.js';
 import {
   buildSimilarSelectionPlugin,
   selectAllOfStyle,
@@ -944,6 +945,7 @@ export function setActiveView(v: EditorView | null): void {
   refreshFontSizeDisplay();
   refreshCursorColorDisplay();
   refreshFormattingPanelButtonStates();
+  syncNumberingButtons();
   refreshWordCount();
   refreshReadModeBtn();
   refreshSpeechMarkBtn();
@@ -980,6 +982,7 @@ export function endBenchmark(snapshot: EditorState | null): void {
     refreshFontSizeDisplay();
     refreshCursorColorDisplay();
     refreshFormattingPanelButtonStates();
+    syncNumberingButtons();
   }
 }
 
@@ -2972,7 +2975,14 @@ let lastReadMode = settings.get('readMode');
 let lastReadModeBorders = settings.get('hideEmphasisBordersInReadMode');
 let lastMarkUnread = settings.get('markUnreadAfterMarker');
 const numberingDisplaySig = (): string =>
-  `${settings.get('showCardNumbering')}|${settings.get('cardNumberingFormat')}|${settings.get('cardNumberingIndent')}`;
+  [
+    settings.get('showCardNumbering'),
+    settings.get('cardNumberingFormat'),
+    settings.get('cardNumberingSubFormat'),
+    settings.get('cardNumberingSubCapitalized'),
+    settings.get('cardNumberingIndent'),
+    settings.get('cardNumberingSubIndent'),
+  ].join('|');
 let lastNumberingDisplay = numberingDisplaySig();
 
 /** Show/hide the chrome's optional clusters per their (default-off) settings:
@@ -2992,6 +3002,12 @@ function applyPillVisibility(): void {
   document.documentElement.classList.toggle(
     'pmd-undoredo-hidden',
     !settings.get('showUndoRedoButtons'),
+  );
+  // Numbering cluster is on by default; hide it when the setting is off. The
+  // class carries `!important` so it wins over the shrink waterfall.
+  document.documentElement.classList.toggle(
+    'pmd-numbering-hidden',
+    !settings.get('showNumberingButtons'),
   );
   // The bottom scroll runway is gated on the WHOLE tray, not just the dropzone:
   // the send/receive pills (shown when pairing is enabled) occupy the same
@@ -3072,6 +3088,7 @@ settings.subscribe((s) => {
   applyParagraphSpacing();
   applyFormattingPanel(s.formattingPanelMode, s.formattingPanelPreview, s.showCharacterStyles);
   syncParagraphIntegrityBtn();
+  syncNumberingButtons();
   // A settings change never edits the document, so the whole-doc word
   // count can't have changed — reuse the cached count (re-formatting the
   // read-time strings with the current readers) instead of re-walking the
@@ -3122,7 +3139,8 @@ function initRibbonResizer(): void {
   const panelIds: string[][] = [
     ['cite-panel'],              // (a) Character styles
     ['formatting-panel'],        // (b) Structural styles
-    ['custom-ribbon-panel'],     // (c) User custom buttons — hide THIRD
+    ['numbering-panel'],         // (c) Card numbering cluster — hide THIRD
+    ['custom-ribbon-panel'],     // (d) User custom buttons
     ['doc-name-chip'],           // (d) Active-doc filename pill (opt-in)
     ['format-menu-panel'],       // (d) Table / image / sub / sup / strike
     ['doc-ops-panel'],           // (e) Paragraph integrity
@@ -3233,7 +3251,7 @@ function initRibbonResizer(): void {
   // ribbon-only observer never fires. Observing these specific
   // elements catches the show / hide → 0 ↔ N transition and
   // re-runs the cascade.
-  for (const id of ['timer-panel', 'doc-name-chip', 'custom-ribbon-panel']) {
+  for (const id of ['timer-panel', 'doc-name-chip', 'custom-ribbon-panel', 'numbering-panel']) {
     const el = document.getElementById(id);
     if (el) observer.observe(el);
   }
@@ -3336,6 +3354,11 @@ if (timerToggleBtn) {
   button('subscript-btn', 'toggleSubscript');
   button('strikethrough-btn', 'toggleStrikethrough');
   button('paragraph-integrity-btn', 'toggleParagraphIntegrity');
+  button('num-role-btn', 'toggleNumberRole');
+  button('num-sub-role-btn', 'toggleSubRole');
+  button('num-restart-btn', 'toggleNumRestart');
+  const numVisEl = byId('num-visibility-btn');
+  if (numVisEl) registerRibbonTooltip({ el: numVisEl, label: 'Show or hide card numbering' });
   button(
     'plain-paste-toggle-btn',
     'pasteAsText',
@@ -3615,6 +3638,54 @@ function syncParagraphIntegrityBtn(): void {
   paragraphIntegrityBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
 }
 syncParagraphIntegrityBtn();
+
+// Numbering ribbon cluster: number / substructure / restart run the shared
+// ribbon commands (skeleton edits); the fourth button toggles the numbers'
+// visibility (`showCardNumbering`). `syncNumberingButtons` keeps the 1./a) faces
+// matching the configured format and every button's pressed state matching the
+// selection / setting — it's called from the same per-transaction + settings
+// hooks as the formatting-panel and paragraph-integrity indicators.
+const numRoleBtn = document.getElementById('num-role-btn') as HTMLButtonElement | null;
+const numSubRoleBtn = document.getElementById('num-sub-role-btn') as HTMLButtonElement | null;
+const numRestartBtn = document.getElementById('num-restart-btn') as HTMLButtonElement | null;
+const numVisibilityBtn = document.getElementById('num-visibility-btn') as HTMLButtonElement | null;
+for (const [btn, cmd] of [
+  [numRoleBtn, 'toggleNumberRole'],
+  [numSubRoleBtn, 'toggleSubRole'],
+  [numRestartBtn, 'toggleNumRestart'],
+] as const) {
+  if (!btn) continue;
+  btn.addEventListener('mousedown', (e) => e.preventDefault());
+  btn.addEventListener('click', () => runRibbon(cmd));
+}
+if (numVisibilityBtn) {
+  numVisibilityBtn.addEventListener('mousedown', (e) => e.preventDefault());
+  numVisibilityBtn.addEventListener('click', () => {
+    settings.set('showCardNumbering', !settings.get('showCardNumbering'));
+  });
+}
+function syncNumberingButtons(): void {
+  // Faces mirror the configured number / substructure format.
+  if (numRoleBtn) numRoleBtn.textContent = numberingSampleGlyph('number');
+  if (numSubRoleBtn) numSubRoleBtn.textContent = numberingSampleGlyph('sub');
+  // The show/hide button reflects the numbering-visibility setting.
+  numVisibilityBtn?.setAttribute(
+    'aria-pressed',
+    settings.get('showCardNumbering') ? 'true' : 'false',
+  );
+  // Role / restart reflect the current selection's numbering state.
+  if (!view) {
+    for (const b of [numRoleBtn, numSubRoleBtn, numRestartBtn]) {
+      b?.setAttribute('aria-pressed', 'false');
+    }
+    return;
+  }
+  const st = numberingSelectionState(view.state);
+  numRoleBtn?.setAttribute('aria-pressed', st.number ? 'true' : 'false');
+  numSubRoleBtn?.setAttribute('aria-pressed', st.sub ? 'true' : 'false');
+  numRestartBtn?.setAttribute('aria-pressed', st.restart ? 'true' : 'false');
+}
+syncNumberingButtons();
 
 // Paste Text button — routes through `runRibbon('pasteAsText')`, the same path
 // as the F2 keymap: read the clipboard and paste it unformatted (Electron via
@@ -4638,6 +4709,7 @@ function mountView(doc: PMNode, threads: Thread[] = []): void {
       refreshFontSizeDisplay();
       refreshCursorColorDisplay();
       refreshFormattingPanelButtonStates();
+      syncNumberingButtons();
       // Doc-walking work (nav rebuild, word count, comments column
       // refresh, comments-plugin orphan GC) is all O(doc) and the
       // dominant per-keystroke cost on big docs. Debounce it, and run
@@ -4739,6 +4811,7 @@ function mountView(doc: PMNode, threads: Thread[] = []): void {
   refreshWordCount();
   refreshFontSizeDisplay();
   refreshFormattingPanelButtonStates();
+  syncNumberingButtons();
   // Push the current `settings.readMode` value through the full
   // apply path now that `view` exists — `applyReadMode` ran at
   // module init time before this view was constructed (so its
