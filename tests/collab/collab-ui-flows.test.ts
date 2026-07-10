@@ -66,14 +66,14 @@ afterAll(async () => {
 
 /** index.ts's plugin assembly in miniature: read mode + whatever the
  *  collab plugin source supplies, with the dispatch tagger applied. */
-function buildMiniPlugins(): Plugin[] {
-  return [readModePlugin, ...collabPluginsFor(OWNER)];
+function buildMiniPlugins(ownerUid = OWNER): Plugin[] {
+  return [readModePlugin, ...collabPluginsFor(ownerUid)];
 }
 
-function mkIndexStyleView(): EditorView {
+function mkIndexStyleView(ownerUid = OWNER): EditorView {
   const el = document.createElement('div');
   document.body.appendChild(el);
-  const state = EditorState.create({ doc: simpleDoc('shared prep doc contents'), plugins: buildMiniPlugins() });
+  const state = EditorState.create({ doc: simpleDoc('shared prep doc contents'), plugins: buildMiniPlugins(ownerUid) });
   const view: EditorView = new EditorView(el, {
     state,
     dispatchTransaction(tx) {
@@ -254,5 +254,52 @@ describe('collab UI flows through the editor seams', () => {
     expect(newSessionDocCalled).toBe(false);
     await host.end();
     v.destroy();
+  }, 20_000);
+
+  it('two docs each run an INDEPENDENT session in one window (no fusion)', async () => {
+    const viewA = mkIndexStyleView('doc-A');
+    const viewB = mkIndexStyleView('doc-B');
+    const viewForUid = (u: string): EditorView | null =>
+      u === 'doc-A' ? viewA : u === 'doc-B' ? viewB : null;
+    const depsFor = (uid: string, view: EditorView) => ({
+      getView: () => view,
+      getOwnerUid: () => uid,
+      getViewForUid: viewForUid,
+      refreshPlugins: () =>
+        view.updateState(view.state.reconfigure({ plugins: buildMiniPlugins(uid) })),
+      newSessionDoc: () => true,
+    });
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: () => Promise.resolve() },
+    });
+
+    // Host a session on doc A, then a SEPARATE session on doc B — same window.
+    await collabUi.startSessionFlow(depsFor('doc-A', viewA));
+    await collabUi.startSessionFlow(depsFor('doc-B', viewB));
+    await settle();
+
+    // Two independent sessions coexist, each bound to its OWN doc's view.
+    const srcA = collabPluginSourceFor('doc-A');
+    const srcB = collabPluginSourceFor('doc-B');
+    expect(srcA).not.toBeNull();
+    expect(srcB).not.toBeNull();
+    expect(srcA).not.toBe(srcB);
+
+    // Ending A leaves B live (per-doc lifecycle — not window-global).
+    const endA = collabUi.endSessionFlow(depsFor('doc-A', viewA));
+    await settle();
+    clickPromptButton('End Session');
+    await endA;
+    expect(collabPluginSourceFor('doc-A')).toBeNull();
+    expect(collabPluginSourceFor('doc-B')).not.toBeNull();
+
+    const endB = collabUi.endSessionFlow(depsFor('doc-B', viewB));
+    await settle();
+    clickPromptButton('End Session');
+    await endB;
+    expect(collabPluginSourceFor('doc-B')).toBeNull();
+    viewA.destroy();
+    viewB.destroy();
   }, 20_000);
 });

@@ -995,7 +995,13 @@ export function endBenchmark(snapshot: EditorState | null): void {
 // collab gate is open (see collab/collab-gate.ts).
 let collabUiModule: Promise<typeof import('./collab/collab-ui.js')> | null = null;
 function loadCollabUi(): Promise<typeof import('./collab/collab-ui.js')> {
-  return (collabUiModule ??= import('./collab/collab-ui.js'));
+  return (collabUiModule ??= import('./collab/collab-ui.js').then((m) => {
+    // Tell collab-ui which doc is focused so its shared chip / no-deps flows
+    // (copy-code, invite) act on the session the user is looking at when a
+    // window holds more than one.
+    m.setCollabFocusResolver(() => activeDocIdentity().sessionUid);
+    return m;
+  }));
 }
 // Receive-pill invites: hand the share code from a `room-invite` inbox
 // row to the lazy collab module. Registered unconditionally (cheap

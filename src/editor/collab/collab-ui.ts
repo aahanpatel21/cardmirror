@@ -77,12 +77,42 @@ export interface CollabUiDeps {
   spawnJoinWindow?(shareCode: string): boolean;
 }
 
-interface ActiveState {
+/** One live co-editing session, owned by a single open doc (the map key). A
+ *  multi-pane window can hold several — one per doc. */
+interface ActiveSession {
   session: CollabSession;
   shareCode: string;
+  ownerUid: string;
+  cursors: CursorsHandle;
+  commentsSync: CommentsSyncHandle;
+  persist: PersistHandle;
+  wakeCleanup: () => void;
 }
 
-let active: ActiveState | null = null;
+const sessions = new Map<string, ActiveSession>();
+
+/** Focused doc's uid — set by the editor host so no-deps UI helpers (chip,
+ *  presence, copy-code, invite) can find the session the user is looking at. */
+let focusedUidResolver: (() => string | null) | null = null;
+export function setCollabFocusResolver(fn: (() => string | null) | null): void {
+  focusedUidResolver = fn;
+}
+
+/** The session owned by `uid`, or null. */
+function sessionFor(uid: string | null | undefined): ActiveSession | null {
+  return uid != null ? sessions.get(uid) ?? null : null;
+}
+
+/** The session the shared chip / no-deps flows act on: the focused doc's, or —
+ *  when focus isn't resolvable (or that doc has no session) — the sole session
+ *  if there's exactly one. (A later step adds a per-slot footer so every
+ *  session's status shows at once; until then the single chip follows focus.) */
+function chipSession(): ActiveSession | null {
+  return (
+    sessionFor(focusedUidResolver?.() ?? null) ??
+    (sessions.size === 1 ? [...sessions.values()][0]! : null)
+  );
+}
 
 function chipEl(): HTMLElement | null {
   return document.getElementById('collab-chip');
@@ -123,7 +153,7 @@ function updateChip(status: { connected: boolean; queuedUpdates: number } | null
 
 /** One colored dot per person in the room, hover for the name. */
 function renderPresenceDots(container: HTMLElement): void {
-  const peers = cursors?.presence() ?? [];
+  const peers = chipSession()?.cursors.presence() ?? [];
   container.replaceChildren();
   for (const p of peers) {
     const dot = document.createElement('span');
@@ -153,56 +183,54 @@ function collabTagger(tr: Parameters<typeof markSyncOrigin>[0]): void {
   }
 }
 
-let commentsSync: CommentsSyncHandle | null = null;
-let persist: PersistHandle | null = null;
-let cursors: CursorsHandle | null = null;
-let wakeCleanup: (() => void) | null = null;
-// The owning doc uid of the (currently single) live session — the plugin-source
-// registry key. Stored so clearSeams can unregister the right entry after
-// `active` has already been nulled. (Becomes per-entry when `active` → a Map.)
-let sessionOwnerUid: string | null = null;
 
 /** Wake-from-sleep / network-return hooks (M3): a resumed laptop's
  *  stream socket is silently dead until timeouts notice — restart it
  *  the moment the OS tells us. Desktop: powerMonitor via the host
  *  seam; both editions: the browser 'online' event. */
-function installWakeHooks(session: CollabSession): void {
+function installWakeHooks(session: CollabSession): () => void {
   const onOnline = (): void => session.restart();
   window.addEventListener('online', onOnline);
   const offResume = getElectronHost()?.onPowerResumed?.(() => session.restart()) ?? null;
-  wakeCleanup = () => {
+  return () => {
     window.removeEventListener('online', onOnline);
     offResume?.();
   };
 }
 
-function installSeams(session: CollabSession, deps: CollabUiDeps): void {
-  // The doc this session owns, captured now (the session's doc is focused at
-  // install time for host / join / resume). Only this uid's view gets the
-  // binding plugins — see CollabPluginSource.ownerUid.
-  const ownerUid = deps.getOwnerUid?.() ?? null;
-  // Bind this session's cursors + comments to its OWNER's view, not whatever is
-  // focused — so in multi-pane each doc's presence/comments render in ITS pane.
-  // Single-doc: the owner IS the focused view, so this is behavior-preserving.
+/** Build a session's seams, register it, and return the ActiveSession. The
+ *  cursors/comments bind to the OWNER's view (not focus) so each doc's presence
+ *  renders in its own pane. Window-level seams (tagger, presence timer, comment-
+ *  id mode) are shared across every live session and retired in `teardownSession`
+ *  when the last one ends. `ownerUid` is the map key (the focused doc at start). */
+function installSeams(session: CollabSession, deps: CollabUiDeps, shareCode: string): ActiveSession {
+  const ownerUid = deps.getOwnerUid?.() ?? '';
   const ownerView = (): EditorView | null =>
-    (ownerUid != null ? deps.getViewForUid?.(ownerUid) ?? null : null) ?? deps.getView();
+    (ownerUid ? deps.getViewForUid?.(ownerUid) ?? null : null) ?? deps.getView();
+  // One shared tagger stamps ANY binding transaction (keyed off the Loro plugin
+  // meta), so it serves every session; installed while ≥1 is live.
   setCollabTransactionTagger(collabTagger);
-  installWakeHooks(session);
-  commentsSync = installCommentsSync(session.loroDoc, ownerView);
-  // M3: crash-surviving session record (the home screen's Sessions
-  // list resumes from it). Cleared only on explicit end/leave or a
-  // remote tombstone — a crash leaving it behind is the feature.
-  persist = attachSessionPersistence(session, active!.shareCode, () =>
+  const wakeCleanup = installWakeHooks(session);
+  const commentsSync = installCommentsSync(session.loroDoc, ownerView);
+  // M3: crash-surviving session record (home-screen Sessions list resumes it).
+  const persist = attachSessionPersistence(session, shareCode, () =>
     sessionDocTitle() || sharedDocTitle(session),
   );
-  cursors = installCursorPresence(session, ownerView);
-  // Keep the presence dots current as peers join / leave / time out — the
-  // chip text only updates on connection-status changes, not presence ones.
+  const cursors = installCursorPresence(session, ownerView);
+  // One shared timer refreshes the focused session's presence dots.
   if (presenceTimer === null) presenceTimer = setInterval(refreshPresenceDots, 3000);
-  // Concurrent new comments must not collide on the shared map key —
-  // both peers advance the same small-int counter otherwise.
+  // Concurrent new comments must not collide on the shared map key.
   setCommentIdSessionMode(true);
-  sessionOwnerUid = ownerUid;
+  const sess: ActiveSession = {
+    session,
+    shareCode,
+    ownerUid,
+    cursors,
+    commentsSync,
+    persist,
+    wakeCleanup,
+  };
+  sessions.set(ownerUid, sess);
   registerCollabPluginSource({
     ownerUid,
     plugins: () => [
@@ -210,53 +238,63 @@ function installSeams(session: CollabSession, deps: CollabUiDeps): void {
       LoroUndoPlugin({ doc: session.loroDoc }),
       collabInvariantHealPlugin(),
       collabRepairPlugin(() =>
-        lowestPeerIsLeader(session.loroDoc.peerIdStr, cursors?.visiblePeers() ?? []),
+        lowestPeerIsLeader(session.loroDoc.peerIdStr, cursors.visiblePeers()),
       ),
-      commentsSync!.plugin,
-      ...(cursors?.plugins() ?? []),
+      commentsSync.plugin,
+      ...cursors.plugins(),
     ],
     ownsUndo: () => true,
-    // Read-mode clamp (M4): swallow undo/redo entirely while reading.
-    // The Loro undo manager can't be depth-bounded the way
-    // prosemirror-history is (readModeAwareUndo's baseUndoDepth trick),
-    // and its transactions carry the binding meta → sync-origin →
-    // they'd sail through the read-mode lock and revert real edits
-    // from under a "reading" user. Reading-marker drops lose keyboard
-    // undo in sessions; markers remain removable by click.
+    // Read-mode clamp (M4): swallow undo/redo entirely while reading — the Loro
+    // undo transactions carry the binding meta (→ sync-origin) and would
+    // otherwise sail through the read-mode lock and revert real edits.
     undo: (state, dispatch, view) =>
       readModePlugin.getState(state)?.on ? true : loroUndo(state, dispatch, view),
     redo: (state, dispatch, view) =>
       readModePlugin.getState(state)?.on ? true : loroRedo(state, dispatch, view),
   });
+  return sess;
 }
 
-function clearSeams(keepRecord = false): void {
-  setCollabTransactionTagger(null);
-  unregisterCollabPluginSource(sessionOwnerUid);
-  sessionOwnerUid = null;
-  wakeCleanup?.();
-  wakeCleanup = null;
-  commentsSync?.dispose();
-  commentsSync = null;
-  cursors?.dispose();
-  cursors = null;
-  if (presenceTimer !== null) {
-    clearInterval(presenceTimer);
-    presenceTimer = null;
+/** Dispose one session's seams + drop it from the registry. Window-level shared
+ *  seams (tagger / presence timer / comment-id mode) are retired only when the
+ *  LAST session ends. `keepRecord` keeps the resumable persisted record (a
+ *  cancelled RESUME); terminal paths clear it. */
+function teardownSession(sess: ActiveSession, keepRecord = false): void {
+  unregisterCollabPluginSource(sess.ownerUid);
+  sessions.delete(sess.ownerUid);
+  sess.wakeCleanup();
+  sess.commentsSync.dispose();
+  sess.cursors.dispose();
+  if (keepRecord) sess.persist.dispose();
+  else void sess.persist.clear();
+  if (sessions.size === 0) {
+    setCollabTransactionTagger(null);
+    setCommentIdSessionMode(false);
+    if (presenceTimer !== null) {
+      clearInterval(presenceTimer);
+      presenceTimer = null;
+    }
   }
-  setCommentIdSessionMode(false);
-  // Terminal paths (explicit end/leave, remote tombstone, failed join)
-  // drop the persisted record; a cancelled RESUME keeps it — the user
-  // only declined the doc swap, the session is still theirs to resume.
-  if (keepRecord) persist?.dispose();
-  else void persist?.clear();
-  persist = null;
 }
 
-function sessionCallbacks(deps: CollabUiDeps) {
+/** Whether `ownerUid`'s session is the one the shared chip reflects (the focused
+ *  doc's, or — with no focus resolver — the sole session). */
+function isChipSession(ownerUid: string): boolean {
+  const focused = focusedUidResolver?.() ?? null;
+  return focused != null ? ownerUid === focused : sessions.size <= 1;
+}
+
+// `getSess` resolves THIS session's ActiveSession lazily — for join/resume the
+// entry isn't created (and its owning uid isn't known) until after newSessionDoc
+// creates the fresh doc, which is after the CollabSession (and these callbacks)
+// exist. Returns null before install / after teardown; callbacks then no-op.
+function sessionCallbacks(deps: CollabUiDeps, getSess: () => ActiveSession | null) {
   return {
-    onStatus: (s: { connected: boolean; queuedUpdates: number }) => updateChip(s),
-    onPresence: (bytes: Uint8Array) => cursors?.applyRemote(bytes),
+    onStatus: (s: { connected: boolean; queuedUpdates: number }) => {
+      const sess = getSess();
+      if (sess && isChipSession(sess.ownerUid)) updateChip(s);
+    },
+    onPresence: (bytes: Uint8Array) => getSess()?.cursors.applyRemote(bytes),
     onBacklogMerged: (count: number) => {
       // Merge-visibility (M3): a travel-day backlog just landed — say
       // so, instead of the doc silently reshaping under the user.
@@ -266,11 +304,12 @@ function sessionCallbacks(deps: CollabUiDeps) {
       // The explicit end/leave flows clean up themselves before the
       // session's onEnded fires; only a REMOTELY ended session (host
       // ended it, room GC'd) reaches past this guard.
-      if (!active) return;
-      const wasHost = active.session.role === 'host';
-      active = null;
-      clearSeams();
-      updateChip(null);
+      const sess = getSess();
+      if (!sess || !sessions.has(sess.ownerUid)) return;
+      const wasHost = sess.session.role === 'host';
+      const wasChip = isChipSession(sess.ownerUid);
+      teardownSession(sess);
+      if (wasChip) updateChip(null);
       deps.refreshPlugins();
       showToast(
         wasHost
@@ -316,8 +355,9 @@ export async function startSessionFlow(deps: CollabUiDeps): Promise<void> {
   if (!collabEnabled()) return; // desktop-only; inert on the web edition
   const view = guardReady(deps);
   if (!view) return;
-  if (active) {
-    showToast('Already in a session — end or leave it first');
+  const ownerUid = deps.getOwnerUid?.() ?? '';
+  if (sessionFor(ownerUid)) {
+    showToast('This document already has a session — end or leave it first');
     return;
   }
   await ensureBakedRelay();
@@ -327,17 +367,19 @@ export async function startSessionFlow(deps: CollabUiDeps): Promise<void> {
     return;
   }
   try {
+    // Host on the CURRENT (focused) doc — no doc swap, so its uid is the owner.
+    let sessRef: ActiveSession | null = null;
     const { session, shareCode } = await CollabSession.host({
       pmDoc: view.state.doc,
       client,
-      callbacks: sessionCallbacks(deps),
+      callbacks: sessionCallbacks(deps, () => sessRef),
     });
-    active = { session, shareCode };
-    installSeams(session, deps);
+    const sess = installSeams(session, deps, shareCode);
+    sessRef = sess;
     // Seed before start(): the first flush then carries the host's
     // existing comment threads alongside the seeded doc — and the doc
     // title, so joiners can name their unsaved copy.
-    commentsSync!.seedFromView(view);
+    sess.commentsSync.seedFromView(view);
     session.loroDoc.getMap('meta').set('title', sessionDocTitle());
     session.loroDoc.commit();
     deps.refreshPlugins();
@@ -379,8 +421,10 @@ export async function joinSessionWithCode(deps: CollabUiDeps, code: string): Pro
   // so an active-session window opens the new join elsewhere instead of
   // refusing, and the session + binding are born in the window that keeps them.
   if (deps.spawnJoinWindow?.(code.trim())) return;
-  if (active) {
-    showToast('Already in a session — end or leave it first');
+  // Don't overwrite a doc that's ITSELF in a session (spawnJoinWindow already
+  // redirected windows holding a real doc; this guards the edge case).
+  if (sessionFor(deps.getOwnerUid?.())) {
+    showToast('This document is in a session — end or leave it before joining here');
     return;
   }
   await ensureBakedRelay();
@@ -394,6 +438,8 @@ export async function joinSessionWithCode(deps: CollabUiDeps, code: string): Pro
     showToast('That does not look like a share code');
     return;
   }
+  // Resolved after newSessionDoc/installSeams; callbacks read it lazily.
+  let sessRef: ActiveSession | null = null;
   try {
     let session: CollabSession;
     let joinedOffline = false;
@@ -401,7 +447,7 @@ export async function joinSessionWithCode(deps: CollabUiDeps, code: string): Pro
       session = await CollabSession.join({
         ...decoded,
         client,
-        callbacks: sessionCallbacks(deps),
+        callbacks: sessionCallbacks(deps, () => sessRef),
       });
     } catch (err) {
       // Offline (or relay unreachable): fall back to the invite's
@@ -420,28 +466,26 @@ export async function joinSessionWithCode(deps: CollabUiDeps, code: string): Pro
         increments: blobs.slice(1),
         lastSeq: pre.lastSeq,
         client,
-        callbacks: sessionCallbacks(deps),
+        callbacks: sessionCallbacks(deps, () => sessRef),
       });
       joinedOffline = true;
     }
     void deletePrefetch(decoded.roomId);
-    active = { session, shareCode: code.trim() };
-    installSeams(session, deps);
-    // Fresh unsaved doc IN THIS WINDOW; buildEditorPlugins now includes
-    // the binding, which replaces the empty content from the session
-    // state. A false return = the user balked at overwriting unsaved
-    // edits — unwind without touching the room.
+    // Create the fresh unsaved session doc FIRST — its uid is the session owner.
+    // A false return = the user balked at overwriting unsaved edits — unwind
+    // without touching the room.
     if (!(await deps.newSessionDoc())) {
-      active = null;
-      clearSeams();
       await session.stop();
-      updateChip(null);
       showToast('Join cancelled');
       return;
     }
+    sessRef = installSeams(session, deps, code.trim());
+    // Add the binding to the fresh doc's view — its init replaces the empty
+    // content with the session's CRDT state.
+    deps.refreshPlugins();
     // The join snapshot already carries the host's thread map — land it
     // in the fresh pane's plugin state; same for the published title.
-    commentsSync!.pull();
+    sessRef.commentsSync.pull();
     adoptSharedTitle(deps, session);
     session.start();
     updateChip({ connected: !joinedOffline, queuedUpdates: 0 });
@@ -452,8 +496,7 @@ export async function joinSessionWithCode(deps: CollabUiDeps, code: string): Pro
     );
     deps.getView()?.focus();
   } catch (err) {
-    active = null;
-    clearSeams();
+    if (sessRef) teardownSession(sessRef);
     showToast(relayFailureMessage(err, { initiating: false, verb: 'join' }));
   }
 }
@@ -467,13 +510,15 @@ export async function joinSessionWithCode(deps: CollabUiDeps, code: string): Pro
 export async function resumeSessionFlow(deps: CollabUiDeps, roomId: string): Promise<void> {
   if (!collabEnabled()) return; // desktop-only; inert on the web edition
   if (!guardReady(deps)) return;
-  if (active) {
-    showToast(
-      active.session.roomId === roomId
-        ? 'That session is already active in this window'
-        : 'Already in a session — end or leave it first',
-    );
+  if (sessionFor(deps.getOwnerUid?.())) {
+    showToast('This document is in a session — end or leave it first');
     return;
+  }
+  for (const s of sessions.values()) {
+    if (s.session.roomId === roomId) {
+      showToast('That session is already active in this window');
+      return;
+    }
   }
   const record = await loadSessionRecord(roomId);
   if (!record) {
@@ -491,6 +536,7 @@ export async function resumeSessionFlow(deps: CollabUiDeps, roomId: string): Pro
     showToast('Saved session record is unreadable');
     return;
   }
+  let sessRef: ActiveSession | null = null;
   try {
     const session = await CollabSession.resume({
       roomId: record.roomId,
@@ -501,37 +547,36 @@ export async function resumeSessionFlow(deps: CollabUiDeps, roomId: string): Pro
       lastSeq: record.lastSeq,
       sentVersion: record.sentVersion,
       client,
-      callbacks: sessionCallbacks(deps),
+      callbacks: sessionCallbacks(deps, () => sessRef),
     });
-    active = { session, shareCode: record.shareCode };
-    installSeams(session, deps);
+    // Fresh doc first — its uid owns the session. A false return keeps the
+    // record (still resumable) — no seams installed yet, so nothing to unwind.
     if (!(await deps.newSessionDoc())) {
-      active = null;
-      clearSeams(true); // keep the record — still resumable later
       await session.stop();
-      updateChip(null);
       showToast('Resume cancelled');
       return;
     }
-    commentsSync!.pull();
+    sessRef = installSeams(session, deps, record.shareCode);
+    deps.refreshPlugins();
+    sessRef.commentsSync.pull();
     adoptSharedTitle(deps, session);
     session.start();
     updateChip({ connected: false, queuedUpdates: session.queuedUpdates });
     showToast('Session resumed — syncing');
     deps.getView()?.focus();
   } catch (err) {
-    active = null;
-    clearSeams();
+    if (sessRef) teardownSession(sessRef);
     showToast(relayFailureMessage(err, { initiating: false, verb: 'resume' }));
   }
 }
 
 export async function copyShareCodeFlow(): Promise<void> {
-  if (!active) {
+  const sess = chipSession();
+  if (!sess) {
     showToast('No active session');
     return;
   }
-  const ok = await navigator.clipboard?.writeText(active.shareCode).then(
+  const ok = await navigator.clipboard?.writeText(sess.shareCode).then(
     () => true,
     () => false,
   );
@@ -564,9 +609,12 @@ function sessionDocTitle(): string {
 /** Shared invite-send tail: sealed pairing message, version-floored so
  *  pre-invite clients get the update-required toast instead of a dead
  *  card row. Assumes an active session. */
-async function sendInviteTo(target: { codes: string[]; label: string; via?: string }): Promise<void> {
+async function sendInviteTo(
+  target: { codes: string[]; label: string; via?: string },
+  shareCode: string,
+): Promise<void> {
   const item = buildRoomInviteItem({
-    shareCode: active!.shareCode,
+    shareCode,
     title: sessionDocTitle(),
   });
   const res = await pairingRelayClient.send(target.codes, item, {
@@ -581,7 +629,8 @@ async function sendInviteTo(target: { codes: string[]; label: string; via?: stri
 /** Send a session invite to the starred partner/group. */
 export async function inviteStarredFlow(): Promise<void> {
   if (!collabEnabled()) return;
-  if (!active) {
+  const sess = chipSession();
+  if (!sess) {
     showToast('No active session — start one first');
     return;
   }
@@ -602,7 +651,7 @@ export async function inviteStarredFlow(): Promise<void> {
     showToast('The starred group has no recipients yet');
     return;
   }
-  await sendInviteTo(target);
+  await sendInviteTo(target, sess.shareCode);
 }
 
 /** The Send pill's click-to-invite (§6 picker-first flow): with no
@@ -621,19 +670,23 @@ export async function inviteTargetFlow(
     showToast('That group has no recipients yet');
     return;
   }
-  if (!active) {
+  let sess = sessionFor(deps.getOwnerUid?.());
+  if (!sess) {
     await startSessionFlow(deps);
-    if (!active) return; // start failed/cancelled — its toast explains
+    sess = sessionFor(deps.getOwnerUid?.());
+    if (!sess) return; // start failed/cancelled — its toast explains
   }
-  await sendInviteTo(target);
+  await sendInviteTo(target, sess.shareCode);
 }
 
 export async function endSessionFlow(deps: CollabUiDeps): Promise<void> {
-  if (!active) {
+  // Ends the FOCUSED doc's session (the one the user is looking at).
+  const sess = sessionFor(deps.getOwnerUid?.());
+  if (!sess) {
     showToast('No active session');
     return;
   }
-  const isHost = active.session.role === 'host';
+  const isHost = sess.session.role === 'host';
   // In-app overlay, NOT window.confirm: Electron's native confirm on
   // Windows/Linux never hands keyboard focus back to the renderer —
   // the editor was untypeable until a reload (field bug, 2026-07-03).
@@ -645,21 +698,23 @@ export async function endSessionFlow(deps: CollabUiDeps): Promise<void> {
     choices: [{ value: 'confirm', label: isHost ? 'End Session' : 'Leave Session' }],
   });
   if (choice !== 'confirm') return;
-  const { session } = active;
-  active = null;
+  const { session } = sess;
+  const wasChip = isChipSession(sess.ownerUid);
+  // Drop it from the registry first, so the session's own onEnded no-ops.
+  teardownSession(sess);
   try {
     if (isHost) await session.end();
     else await session.stop();
   } finally {
-    clearSeams();
-    updateChip(null);
+    if (wasChip) updateChip(null);
     deps.refreshPlugins();
     showToast(isHost ? 'Session ended' : 'Left the session');
     deps.getView()?.focus();
   }
 }
 
-/** Test seam: current session state. */
+/** Test seam: the session the user is looking at (focused doc's, or the sole
+ *  session), or null. */
 export function activeSession(): CollabSession | null {
-  return active?.session ?? null;
+  return chipSession()?.session ?? null;
 }
