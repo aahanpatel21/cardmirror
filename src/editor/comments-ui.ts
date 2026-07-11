@@ -1381,7 +1381,7 @@ export class CommentsColumn {
     }
     const apiKey = activeApiKey();
     if (!apiKey) {
-      showToast('Set an Anthropic API key in Settings to use AI features.');
+      showToast('Set an API key in Settings to use AI features.');
       return;
     }
     const item = kind === 'ai' ? learnStore.getAiThread(id) : learnStore.getNote(id);
@@ -1493,7 +1493,7 @@ export class CommentsColumn {
     }
     const apiKey = activeApiKey();
     if (!apiKey) {
-      showToast('Set an Anthropic API key in Settings to use AI features.');
+      showToast('Set an API key in Settings to use AI features.');
       return;
     }
     const thread = learnStore.getAiThread(threadId);
@@ -2228,7 +2228,7 @@ export class CommentsColumn {
     }
     const apiKey = activeApiKey();
     if (!apiKey) {
-      showToast('Set an Anthropic API key in Settings to use AI features.');
+      showToast('Set an API key in Settings to use AI features.');
       return;
     }
     const thread = getCommentsState(view.state).threads.get(threadId);

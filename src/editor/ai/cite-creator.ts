@@ -366,7 +366,7 @@ export function runAiCreateCite(view: EditorView): void {
   }
   const apiKey = activeApiKey();
   if (!apiKey) {
-    showToast('Set an Anthropic API key in Settings to use AI features.');
+    showToast('Set an API key in Settings to use AI features.');
     return;
   }
   const { state } = view;

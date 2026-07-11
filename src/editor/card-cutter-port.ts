@@ -493,7 +493,7 @@ export async function cutFocusedCard(
   }
   const api = engine!;
   if (!activeApiKey()) {
-    showToast('Set an Anthropic API key in Settings to use the card cutter.');
+    showToast('Set an API key in Settings to use the card cutter.');
     return null;
   }
   const focused = focusedPlainCard(view);
@@ -742,7 +742,7 @@ export async function refineHighlightFocusedCard(
     return;
   }
   if (!activeApiKey()) {
-    showToast('Set an Anthropic API key in Settings to use the card cutter.');
+    showToast('Set an API key in Settings to use the card cutter.');
     return;
   }
   const feedback = inv.feedback?.trim() || undefined;
@@ -849,7 +849,7 @@ export async function addHighlightFocusedCard(view: EditorView): Promise<void> {
     return;
   }
   if (!activeApiKey()) {
-    showToast('Set an Anthropic API key in Settings to use the card cutter.');
+    showToast('Set an API key in Settings to use the card cutter.');
     return;
   }
   const focused = focusedPlainCard(view);

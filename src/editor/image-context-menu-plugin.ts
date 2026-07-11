@@ -80,7 +80,7 @@ function showImageContextMenu(
   const hasKey = activeApiKey() !== '';
   const aiBlockedReason =
     !aiOn ? 'AI features are disabled — enable them in Settings.'
-    : !hasKey ? 'Set an Anthropic API key in Settings to use AI features.'
+    : !hasKey ? 'Set an API key in Settings to use AI features.'
     : null;
 
   const items: MenuItem[] = [

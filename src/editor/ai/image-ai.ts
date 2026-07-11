@@ -63,7 +63,7 @@ function preflight(): string | null {
   }
   const apiKey = activeApiKey();
   if (!apiKey) {
-    showToast('Set an Anthropic API key in Settings to use AI features.');
+    showToast('Set an API key in Settings to use AI features.');
     return null;
   }
   return apiKey;

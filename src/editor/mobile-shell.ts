@@ -543,7 +543,7 @@ function showRepairSheet(unit: UnitRange): void {
   if (!aiReady()) {
     const note = document.createElement('div');
     note.className = 'pmd-mobile-movesheet-label';
-    note.textContent = 'AI repair needs AI features enabled and an Anthropic API key.';
+    note.textContent = 'AI repair needs AI features enabled and an API key.';
     body.appendChild(note);
     const open = document.createElement('button');
     open.type = 'button';
