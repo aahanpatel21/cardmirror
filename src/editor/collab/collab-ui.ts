@@ -31,10 +31,12 @@ import {
   setCollabCloseActions,
   setCollabHandoffProvider,
   setCollabSessionCountProvider,
+  setCollabLiveRoomProbe,
+  collabRoomClaimKey,
 } from './collab-hooks.js';
 import { RoomsError } from './room-client.js';
 import { getElectronHost } from '../host/index.js';
-import { ensureBakedRelay, relayClient } from './collab-relay.js';
+import { ensureBakedRelay, relayClient, endRoomOnRelay } from './collab-relay.js';
 import { relayClient as pairingRelayClient } from '../pairing/relay-client.js';
 import { resolveStarredTarget } from '../pairing/send-to-starred.js';
 import { buildRoomInviteItem, ROOM_INVITE_MIN_VERSION } from '../pairing/room-invite.js';
@@ -152,6 +154,34 @@ setCollabHandoffProvider(async () => {
   return list;
 });
 setCollabSessionCountProvider(() => sessions.size);
+setCollabLiveRoomProbe((roomId) =>
+  [...sessions.values()].some((s) => s.session.roomId === roomId),
+);
+
+// Cross-window live-session claims ride the duplicate-open path registry.
+// All three are best-effort and swallow everything: an old preload (or a
+// test harness) without the openPath API must not break session flows.
+function claimRoom(roomId: string): void {
+  try {
+    void getElectronHost()?.openPathRegister(collabRoomClaimKey(roomId)).catch(() => {});
+  } catch {
+    /* API absent — no cross-window guard, sessions still work */
+  }
+}
+function releaseRoomClaim(roomId: string): void {
+  try {
+    void getElectronHost()?.openPathRelease(collabRoomClaimKey(roomId)).catch(() => {});
+  } catch {
+    /* API absent */
+  }
+}
+async function roomLiveElsewhere(roomId: string): Promise<boolean> {
+  try {
+    return (await getElectronHost()?.openPathCheck(collabRoomClaimKey(roomId)))?.takenByOther ?? false;
+  } catch {
+    return false;
+  }
+}
 
 /** The session the shared chip / no-deps flows act on: the focused doc's, or —
  *  when focus isn't resolvable (or that doc has no session) — the sole session
@@ -299,6 +329,12 @@ function installSeams(
     lastStatus: null,
   };
   sessions.set(ownerUid, sess);
+  // Cross-window live-session claim: while this session is live, other
+  // windows' Sessions rows (and join-by-code) refuse the same room and focus
+  // this window instead — same registry as the duplicate-file-open guard.
+  // Best-effort; released in teardownSession (and by main when this window
+  // dies).
+  claimRoom(session.roomId);
   // A session just appeared — repaint slot footers (this doc's may be visible).
   notifyCollabCopresenceChange();
   registerCollabPluginSource({
@@ -334,6 +370,8 @@ function installSeams(
 function teardownSession(sess: ActiveSession, keepRecord = false): Promise<void> {
   unregisterCollabPluginSource(sess.ownerUid);
   sessions.delete(sess.ownerUid);
+  // Release the cross-window live-session claim (registered in installSeams).
+  releaseRoomClaim(sess.session.roomId);
   // A session went away — repaint slot footers (this doc's may be visible).
   notifyCollabCopresenceChange();
   sess.wakeCleanup();
@@ -555,6 +593,14 @@ export async function joinSessionWithCode(deps: CollabUiDeps, code: string): Pro
     showToast('That does not look like a share code');
     return false;
   }
+  // A resumable record for this room means WE'VE been in it before — resume
+  // instead of fresh-joining, so the record's unsynced local edits flush to
+  // the room. A fresh join minted a second copy from the relay state, and a
+  // later Leave deleted the old record, making those edits unrecoverable
+  // (audit find, 2026-07-10).
+  if (await loadSessionRecord(decoded.roomId)) {
+    return resumeSessionFlow(deps, decoded.roomId);
+  }
   // Resolved after newSessionDoc/installSeams; callbacks read it lazily.
   let sessRef: ActiveSession | null = null;
   try {
@@ -641,42 +687,54 @@ export async function joinSessionWithCode(deps: CollabUiDeps, code: string): Pro
  *  that never reached the relay before the app died — so start()'s
  *  first flush sends exactly the unsent diff and catch-up resumes from
  *  the stored cursor. A tombstoned room degrades through the normal
- *  onEnded path ("this copy is now yours alone") and clears the record. */
+ *  onEnded path ("this copy is now yours alone") and clears the record.
+ *  Returns true when the session is live in this window afterwards (also
+ *  when it already was) — joinSessionWithCode delegates here for rooms
+ *  with a resumable record, and the Receive pill consumes the invite on
+ *  true. */
 export async function resumeSessionFlow(
   deps: CollabUiDeps,
   roomId: string,
   opts?: { existingDoc?: boolean },
-): Promise<void> {
-  if (!collabEnabled()) return; // desktop-only; inert on the web edition
+): Promise<boolean> {
+  if (!collabEnabled()) return false; // desktop-only; inert on the web edition
   // No up-front view requirement: unless resuming into an existing doc, the
   // flow creates its own via deps.newSessionDoc (multi-pane may be an empty
   // workspace reached from the home screen's Sessions list).
-  if (opts?.existingDoc && !deps.getView()) return;
+  if (opts?.existingDoc && !deps.getView()) return false;
   if (sessionFor(deps.getOwnerUid?.())) {
     showToast('This document is in a session — end or leave it first');
-    return;
+    return false;
   }
   for (const s of sessions.values()) {
     if (s.session.roomId === roomId) {
       showToast('That session is already active in this window');
-      return;
+      // Already live here — an invite for it is redundant, so report success.
+      return true;
     }
+  }
+  // Cross-WINDOW guard: another window holding this room live claims its
+  // synthetic key in the duplicate-open registry; probing it also focuses
+  // that window (so the user lands on the live session, not an error).
+  if (await roomLiveElsewhere(roomId)) {
+    showToast('That session is already open in another CardMirror window.');
+    return true; // live elsewhere — an invite/row for it is redundant here
   }
   const record = await loadSessionRecord(roomId);
   if (!record) {
     showToast('No saved session to resume');
-    return;
+    return false;
   }
   await ensureBakedRelay();
   const client = relayClient();
   if (!client) {
     showToast('Set the relay URL and token in Settings → Collaboration first');
-    return;
+    return false;
   }
   const decoded = decodeShareCode(record.shareCode);
   if (!decoded) {
     showToast('Saved session record is unreadable');
-    return;
+    return false;
   }
   let sessRef: ActiveSession | null = null;
   try {
@@ -699,7 +757,7 @@ export async function resumeSessionFlow(
     if (!opts?.existingDoc && !(await deps.newSessionDoc())) {
       await session.stop();
       showToast('Resume cancelled');
-      return;
+      return false;
     }
     // Owner = the doc that will hold the session: for existingDoc it is the
     // already-open doc under its uid; otherwise the fresh doc newSessionDoc()
@@ -714,9 +772,14 @@ export async function resumeSessionFlow(
     updateChip({ connected: false, queuedUpdates: session.queuedUpdates });
     showToast('Session resumed — syncing');
     deps.getView()?.focus();
+    return true;
   } catch (err) {
-    if (sessRef) void teardownSession(sessRef);
+    // KEEP the record on a failed resume: it existed before this attempt and
+    // may hold unsynced edits — the default teardown would delete it (audit
+    // find, 2026-07-10). Still resumable from the Sessions list.
+    if (sessRef) void teardownSession(sessRef, /* keepRecord */ true);
     showToast(relayFailureMessage(err, { initiating: false, verb: 'resume' }));
+    return false;
   }
 }
 
@@ -838,18 +901,40 @@ export async function inviteTargetFlow(
  *  of the explicit End command and the close dialog's End/Leave choice (no
  *  prompt; the caller already confirmed). Host ends for everyone (tombstones the
  *  room); a participant just disconnects. */
-async function endOrLeaveSession(sess: ActiveSession): Promise<void> {
+/** End (host) or leave (guest) a session. Returns false when a host End
+ *  couldn't tombstone the room (offline / filtered network) — the session is
+ *  left LIVE and nothing is torn down, so the caller must abort whatever
+ *  close it was driving. Reporting success without the tombstone let invited
+ *  peers keep editing a room the host believed was over, with the local
+ *  record (the host's only handle for ending it) already deleted (audit +
+ *  field find, 2026-07-10). A guest Leave has no server side and always
+ *  succeeds. */
+async function endOrLeaveSession(sess: ActiveSession): Promise<boolean> {
   const isHost = sess.session.role === 'host';
   const wasChip = isChipSession(sess.ownerUid);
-  // Drop it from the registry first, so the session's own onEnded no-ops.
-  const cleared = teardownSession(sess);
-  try {
-    if (isHost) await sess.session.end();
-    else await sess.session.stop();
-  } finally {
-    if (wasChip) updateChip(null);
+  // Disconnect first (final drain attempt), THEN tombstone for a host end —
+  // and only tear down once the room is actually gone. endRoomOnRelay treats
+  // an already-ended/expired room (410/404) as success.
+  await sess.session.stop();
+  if (isHost) {
+    try {
+      await endRoomOnRelay(sess.session.roomId);
+    } catch (err) {
+      // Reconnect and keep the session (and its record) intact — the user
+      // retries once the relay is reachable.
+      sess.session.start();
+      showToast(
+        `Couldn't end the session — check your connection and try again. (${err instanceof Error ? err.message : err})`,
+      );
+      return false;
+    }
   }
+  // Registry drop before the record delete, so a late stream frame's
+  // onEnded no-ops.
+  const cleared = teardownSession(sess);
+  if (wasChip) updateChip(null);
   await cleared; // record actually gone before we return
+  return true;
 }
 
 /** Close a co-edited doc but KEEP its session resumable: disconnect (a final
@@ -857,23 +942,31 @@ async function endOrLeaveSession(sess: ActiveSession): Promise<void> {
  *  relay — then drop the live binding while leaving the stored record behind.
  *  The home-screen Sessions list resumes it; unsynced edits flush on rejoin.
  *  Called from the always-loaded close paths via collab-hooks. */
-async function closeKeepResumableSession(uid: string): Promise<void> {
+async function closeKeepResumableSession(uid: string): Promise<boolean> {
   const sess = sessionFor(uid);
-  if (!sess) return;
+  if (!sess) return true;
   const wasChip = isChipSession(sess.ownerUid);
   await sess.session.stop(); // disconnect only — the room + record survive
   // Capture the final state (incl. any still-unsynced edits) AFTER the drain so
-  // sentVersion is accurate, THEN stop persisting while keeping the record.
-  await sess.persist.flush();
+  // sentVersion is accurate — VERIFIED: the close path drops the recovery
+  // journal, so this record is about to be the doc's only copy. A silent
+  // storage failure must abort the close, not lose the doc (audit find,
+  // 2026-07-10).
+  if (!(await sess.persist.verifiedFlush())) {
+    sess.session.start(); // reconnect; the session stays live, caller aborts
+    return false;
+  }
   void teardownSession(sess, /* keepRecord */ true);
   if (wasChip) updateChip(null);
+  return true;
 }
 
-/** Close a co-edited doc by ending/leaving its session (clears the record). */
-async function closeEndOrLeaveSession(uid: string): Promise<void> {
+/** Close a co-edited doc by ending/leaving its session (clears the record).
+ *  False = a host End failed to tombstone; nothing was torn down. */
+async function closeEndOrLeaveSession(uid: string): Promise<boolean> {
   const sess = sessionFor(uid);
-  if (!sess) return;
-  await endOrLeaveSession(sess);
+  if (!sess) return true;
+  return endOrLeaveSession(sess);
 }
 
 export async function endSessionFlow(deps: CollabUiDeps): Promise<void> {
@@ -898,7 +991,9 @@ export async function endSessionFlow(deps: CollabUiDeps): Promise<void> {
     ],
   });
   if (choice !== 'confirm') return;
-  await endOrLeaveSession(sess);
+  // A failed host End (relay unreachable) already toasted and left the
+  // session live — don't repaint plugins or claim success.
+  if (!(await endOrLeaveSession(sess))) return;
   deps.refreshPlugins();
   showToast(isHost ? 'Session ended' : 'Left the session');
   deps.getView()?.focus();

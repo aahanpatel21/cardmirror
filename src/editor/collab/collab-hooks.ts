@@ -173,27 +173,32 @@ export function notifyCollabCopresenceChange(): void {
  *  always-loaded close paths (multi-pane shell + single-doc) call these; both
  *  no-op when collab isn't loaded — a doc with no session never reaches them. */
 let closeActions: {
-  keepResumable: (uid: string) => Promise<void>;
-  endOrLeave: (uid: string) => Promise<void>;
+  keepResumable: (uid: string) => Promise<boolean>;
+  endOrLeave: (uid: string) => Promise<boolean>;
 } | null = null;
 
 export function setCollabCloseActions(
   a: {
-    keepResumable: (uid: string) => Promise<void>;
-    endOrLeave: (uid: string) => Promise<void>;
+    keepResumable: (uid: string) => Promise<boolean>;
+    endOrLeave: (uid: string) => Promise<boolean>;
   } | null,
 ): void {
   closeActions = a;
 }
 
-/** Close `uid`'s doc but keep its session resumable (persist + disconnect). */
-export function collabCloseKeepResumable(uid: string): Promise<void> {
-  return closeActions?.keepResumable(uid) ?? Promise.resolve();
+/** Close `uid`'s doc but keep its session resumable (persist + disconnect).
+ *  False = the record write could not be verified — the session stays LIVE
+ *  and the caller must abort the close (the record would have been the doc's
+ *  only copy). */
+export function collabCloseKeepResumable(uid: string): Promise<boolean> {
+  return closeActions?.keepResumable(uid) ?? Promise.resolve(true);
 }
 
-/** End (host) or leave (guest) `uid`'s session, clearing the resumable record. */
-export function collabEndOrLeaveSession(uid: string): Promise<void> {
-  return closeActions?.endOrLeave(uid) ?? Promise.resolve();
+/** End (host) or leave (guest) `uid`'s session, clearing the resumable record.
+ *  False = a host End couldn't tombstone the room (relay unreachable); the
+ *  session stays live and the caller must abort the close. */
+export function collabEndOrLeaveSession(uid: string): Promise<boolean> {
+  return closeActions?.endOrLeave(uid) ?? Promise.resolve(true);
 }
 
 /** Mode-switch flush: the single↔three-pane toggle is a full page reload, so a
@@ -226,4 +231,26 @@ export function setCollabSessionCountProvider(fn: (() => number) | null): void {
 
 export function collabLiveSessionCount(): number {
   return sessionCountProvider?.() ?? 0;
+}
+
+/** Is a session for `roomId` live in THIS window? Synchronous probe for the
+ *  always-loaded paths (home-screen Sessions rows) that must refuse before
+ *  spawning a window. Provided by collab-ui; false when collab isn't loaded. */
+let liveRoomProbe: ((roomId: string) => boolean) | null = null;
+
+export function setCollabLiveRoomProbe(fn: ((roomId: string) => boolean) | null): void {
+  liveRoomProbe = fn;
+}
+
+export function collabRoomIsLive(roomId: string): boolean {
+  return liveRoomProbe?.(roomId) ?? false;
+}
+
+/** Cross-WINDOW live-session guard: while a session is live, its window holds
+ *  a claim on this synthetic key in the same main-process registry the
+ *  duplicate-file-open guard uses (`openPathRegister`/`openPathCheck`) — so
+ *  probing it focuses the owning window and cleans up stale claims for free.
+ *  The prefix keeps the keys disjoint from every real file path. */
+export function collabRoomClaimKey(roomId: string): string {
+  return `cardmirror-collab-room://${roomId}`;
 }

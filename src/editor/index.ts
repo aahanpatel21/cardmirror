@@ -161,6 +161,8 @@ import {
   collabEndOrLeaveSession,
   collabCaptureSessionHandoff,
   collabLiveSessionCount,
+  collabRoomIsLive,
+  collabRoomClaimKey,
 } from './collab/collab-hooks.js';
 import { learnHighlightPlugin, flashcardRangeAt } from './learn-highlight-plugin.js';
 import { repairHighlightPlugin } from './repair-highlight-plugin.js';
@@ -5612,33 +5614,56 @@ const homeCallbacks: HomeScreenCallbacks = {
     void openRecentInPlace(recent);
   },
   resumeSession: (roomId: string) => {
-    homeScreen.hide();
-    // Single-pane with a real doc behind the home screen: resume in a NEW
-    // window (the session doc would otherwise evict this one) — the spawned
-    // window opens a blank starter and runs the full resume, mirroring the
-    // spawn-to-join flow.
-    if (!multiDocActive && !isPristineStarter && getHost().canSpawnWindow) {
-      void getHost()
-        .spawnWindow({
-          filename: '',
-          bytes: new Uint8Array(),
-          handle: null,
-          format: null,
-          uid: null,
-          resumeRoomId: roomId,
-        })
-        .catch((err) => {
-          console.error('Spawn-to-resume failed:', err);
-          showToast('Could not open a new window for the session.');
-        });
-      return;
-    }
-    // Multi-pane resumes into a user-picked slot (the home screen is
-    // reachable there via the Home button); a pristine single-pane
-    // starter resumes in place.
-    void loadCollabUi().then((m) =>
-      m.resumeSessionFlow(multiDocActive ? makeMultiPaneSessionDeps() : collabDeps, roomId),
-    );
+    void (async (): Promise<void> => {
+      // Duplicate guards BEFORE any spawn, so a redundant click never mints
+      // a stray window. This-window: the synchronous live-room probe.
+      // Other-window: the session's claim in the duplicate-open registry —
+      // probing it also focuses the owning window.
+      if (collabRoomIsLive(roomId)) {
+        homeScreen.hide(); // the live doc is somewhere in this window
+        showToast('That session is already open in this window.');
+        return;
+      }
+      let liveElsewhere = false;
+      try {
+        liveElsewhere =
+          (await getElectronHost()?.openPathCheck(collabRoomClaimKey(roomId)))?.takenByOther ??
+          false;
+      } catch {
+        /* openPath API absent (old preload / web) — skip the cross-window guard */
+      }
+      if (liveElsewhere) {
+        showToast('That session is already open in another CardMirror window.');
+        return;
+      }
+      homeScreen.hide();
+      // Single-pane with a real doc behind the home screen: resume in a NEW
+      // window (the session doc would otherwise evict this one) — the spawned
+      // window opens a blank starter and runs the full resume, mirroring the
+      // spawn-to-join flow.
+      if (!multiDocActive && !isPristineStarter && getHost().canSpawnWindow) {
+        void getHost()
+          .spawnWindow({
+            filename: '',
+            bytes: new Uint8Array(),
+            handle: null,
+            format: null,
+            uid: null,
+            resumeRoomId: roomId,
+          })
+          .catch((err) => {
+            console.error('Spawn-to-resume failed:', err);
+            showToast('Could not open a new window for the session.');
+          });
+        return;
+      }
+      // Multi-pane resumes into a user-picked slot (the home screen is
+      // reachable there via the Home button); a pristine single-pane
+      // starter resumes in place.
+      void loadCollabUi().then((m) =>
+        m.resumeSessionFlow(multiDocActive ? makeMultiPaneSessionDeps() : collabDeps, roomId),
+      );
+    })();
   },
   manageQuickCards: () => {
     void quickCardsManageUI.open();
@@ -6040,6 +6065,14 @@ async function openRecentInPlace(recent: RecentFile): Promise<void> {
   // one-doc-per-window convention everywhere else on desktop. The
   // pristine starter (home at launch) still loads in place below.
   if (!isPristineStarter && electron.canSpawnWindow) {
+    // Already open in THIS window? (openPathCheck above treats own claims
+    // as free, so without this a recent pointing at the doc behind the
+    // home screen would mint a duplicate window.) Hiding home lands the
+    // user on the doc they asked for.
+    if (currentDocHandle != null && (await isSameOpenHandle(currentDocHandle, file.handle))) {
+      homeScreen.hide();
+      return;
+    }
     homeScreen.hide();
     try {
       await electron.spawnWindow({
@@ -7086,8 +7119,19 @@ async function handleUserCloseRequest(): Promise<void> {
   // app in the dock on macOS.
   if (multiDocActive) {
     const ok = multiDocPromptSaveAllForQuit ? await multiDocPromptSaveAllForQuit() : true;
-    if (ok) await electronHost.closeSelf();
-    else await electronHost.cancelClose?.();
+    if (ok) {
+      // Explicitly flush every live session's record before the window dies —
+      // "sessions persist on quit" otherwise rides only the fire-and-forget
+      // pagehide write, which a fast teardown can cut off mid-write (audit
+      // find, 2026-07-10). Best-effort: a flush failure must not block the
+      // quit the user just confirmed.
+      try {
+        await collabCaptureSessionHandoff();
+      } catch (err) {
+        console.warn('Session flush on quit failed:', err);
+      }
+      await electronHost.closeSelf();
+    } else await electronHost.cancelClose?.();
     return;
   }
   // Single-doc: a co-edited doc gets the session-aware close (keep resumable vs
@@ -7305,10 +7349,22 @@ export async function resolveCoEditedClose(
   const choice = await confirmCloseCoEditedDoc(docName, { role: cp.role, unsynced: cp.queued });
   if (choice === 'cancel') return 'cancel';
   if (choice === 'keep') {
-    await collabCloseKeepResumable(uid);
+    // False = the resumable record couldn't be verified on disk — it would
+    // have been the doc's only copy (the close path drops the journal), so
+    // the close must abort. The session was left live.
+    if (!(await collabCloseKeepResumable(uid))) {
+      showToast(
+        "Couldn't save the session for resuming — the document stays open. " +
+          'Check disk space and try again.',
+      );
+      return 'cancel';
+    }
     return 'keep';
   }
-  await collabEndOrLeaveSession(uid);
+  // False = a host End couldn't tombstone the room (relay unreachable); it
+  // already toasted, and the session stays live — abort the close so the
+  // user isn't left thinking the session ended.
+  if (!(await collabEndOrLeaveSession(uid))) return 'cancel';
   return 'run-normal';
 }
 

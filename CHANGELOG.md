@@ -70,6 +70,34 @@ remains **experimental** — keep your own saved copies.)
   editing a session you thought was over. A guest's ✕ still just forgets
   their copy.
 
+- **Ending a session while offline no longer pretends to succeed.** The
+  in-session **End Session** now checks that the session was actually ended
+  on the relay; if you're offline it says so and leaves the session running,
+  instead of reporting success while everyone else keeps editing.
+
+- **Closing a co-edited document from a pane's stack list now asks.** In
+  three-pane, closing a co-edited document from the stacked-documents
+  dropdown skipped the keep / end / leave question entirely when the doc had
+  no unsaved file changes. It now gets the same session-aware close as
+  clicking ✕ on the pane.
+
+- **"Keep session" closes verify the save.** Choosing to keep a session
+  resumable when closing its document now confirms the session record
+  actually landed on disk before the document closes — if it can't be
+  confirmed (disk full, storage denied), the document stays open with the
+  session live instead of silently risking your work. Quitting the app with
+  live sessions saves them the same way.
+
+- **Rejoining a session you've been in picks up your copy.** Clicking Join
+  (or pasting a share code) for a session you already have saved now resumes
+  your saved copy — including unsynced changes — instead of downloading a
+  fresh copy and stranding the old one. And a resume that fails no longer
+  deletes your saved session.
+
+- **No more duplicate copies from the home screen.** Recents and Sessions
+  refuse to open a document or session that's already open — in this window
+  or another one (the other window is brought to the front instead).
+
 - A couple of messages still pointed at the old "Card Sharing" settings name;
   they now say **Collaboration**.
 

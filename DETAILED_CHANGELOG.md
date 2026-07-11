@@ -93,6 +93,48 @@ single-pane module state that is stale garbage in the workspace.
   multi-pane boot also handles a stray `resumeRoomId` payload via the
   slot-picker deps instead of the empty-file dead end.
 
+- **Batch A session-lifecycle hardening (audit follow-through)**
+  (`multi-pane-shell.ts`, `collab-persist.ts`, `collab-ui.ts`,
+  `collab-hooks.ts`, `index.ts`). Five confirmed audit findings:
+  (1) `closeRecord` (stack-dropdown close) routed CLEAN non-visible co-edited
+  docs down the raw teardown — no keep/end/leave dialog, view destroyed under
+  a live session; they now surface + run `closeVisible` like dirty docs.
+  (2) The keep-resumable close awaited `persist.flush()`, but `writeInner`
+  swallows storage errors by design — the record could silently fail while
+  the close path dropped the recovery journal (the doc's only other copy).
+  New `PersistHandle.verifiedFlush()` re-reads the record and checks it
+  covers the session's current version; on false the close ABORTS, the
+  session reconnects, and the user is told to check disk space. The close
+  actions (`collabCloseKeepResumable`/`collabEndOrLeaveSession`) now return
+  booleans and `resolveCoEditedClose` maps failures to 'cancel'.
+  (3) In-session host End (`endOrLeaveSession`) tore down + deleted the
+  record BEFORE tombstoning, and `CollabSession.end()` swallowed the delete
+  failure — an offline End reported success while the room lived on.
+  Restructured: stop → `endRoomOnRelay` (410/404 = already gone) → teardown;
+  on failure the session restarts and the End aborts with a toast (matches
+  the home-screen ✕ fix).
+  (4) `joinSessionWithCode` now resumes when a persisted record exists for
+  the decoded room (unsynced local edits flush to the room) instead of
+  minting a second copy whose later Leave deleted the old record;
+  `resumeSessionFlow` returns Promise<boolean> and its failure unwind keeps
+  the record (`teardownSession(sess, true)`).
+  (5) Multi-pane quit explicitly awaits `collabCaptureSessionHandoff()` (the
+  all-sessions flush) before `closeSelf` — persistence rode a
+  fire-and-forget pagehide write.
+- **Cross-window + same-window duplicate guards for home-screen rows**
+  (`collab-hooks.ts`, `collab-ui.ts`, `index.ts`). The new-window
+  Recents/Sessions flows re-check for duplicates before spawning: recents
+  compare against THIS window's open handle (`isSameOpenHandle`; the
+  cross-window case was already covered by `openPathCheck`), and sessions
+  get a live-room probe (new `collabRoomIsLive` bridge) plus a NEW
+  cross-window guard: while a session is live, its window claims
+  `cardmirror-collab-room://<roomId>` in the same main-process registry the
+  duplicate-file-open guard uses (`openPathRegister` in `installSeams`,
+  released in `teardownSession`, stale-cleaned by main on window death), so
+  probing focuses the owning window. `resumeSessionFlow` also refuses (and
+  reports redundant-success so invite rows clear) when the room is live in
+  this or another window. All claim calls are best-effort and tolerate an
+  absent openPath API.
 - **Host ✕ on the home-screen Sessions list actually ends the session**
   (`home-screen.ts`, `collab-relay.ts` `endRoomOnRelay`). The ✕ only called
   `deleteSessionRecord` — a local IndexedDB delete — for host and participant

@@ -1147,6 +1147,16 @@ class Slot {
       await this.closeVisible();
       return;
     }
+    // A CLEAN co-edited doc still needs the session-aware close (keep /
+    // end / leave) — the raw teardown below would destroy the view out from
+    // under a live session with no dialog and nothing persisted. Same
+    // surface-first treatment as dirty (audit find, 2026-07-10).
+    if (collabCopresenceFor(rec.uid) != null) {
+      this.showRecord(rec);
+      this.shell.focusSlot(this);
+      await this.closeVisible();
+      return;
+    }
     if (rec.heavyUpdateTimer !== null) {
       cancelIdle(rec.heavyUpdateTimer);
       rec.heavyUpdateTimer = null;

@@ -32,6 +32,10 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 export interface PersistHandle {
   /** Force a write now (used at attach and before teardown). */
   flush(): Promise<void>;
+  /** Force a write now AND verify the stored record covers the session's
+   *  current version (read-back check — writeInner swallows storage errors
+   *  by design). Use when the record is about to become the doc's only copy. */
+  verifiedFlush(): Promise<boolean>;
   /** Stop persisting AND delete the record (Leave/End/tombstone). */
   clear(): Promise<void>;
   /** Stop persisting, keep the record (app-driven teardown paths that
@@ -132,6 +136,21 @@ export function attachSessionPersistence(
 
   return {
     flush: () => write(),
+    verifiedFlush: async () => {
+      // writeInner deliberately swallows storage errors (steady-state ticks
+      // must not break a working session) — so an explicit flush whose record
+      // is about to become the doc's ONLY copy (keep-resumable close drops
+      // the journal) verifies end-to-end instead: read the record back and
+      // check it covers the session's current version. Callers abort the
+      // close when this returns false (audit find, 2026-07-10).
+      await write();
+      try {
+        const stored = await loadSessionRecord(session.roomId);
+        return stored != null && bytesEqual(stored.persistedVersion, session.encodedVersion());
+      } catch {
+        return false;
+      }
+    },
     clear: async () => {
       stop();
       // Serialize the delete AFTER any in-flight write: a write() that was
