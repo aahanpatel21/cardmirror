@@ -328,6 +328,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     markAsSpeech?: boolean;
     focusAnchor?: { quote: string; prefix: string; suffix: string; approxPos: number };
     joinShareCode?: string;
+    resumeRoomId?: string;
   } | null) => ipcRenderer.invoke('host:spawn-window', payload),
 
   /** Called once at renderer boot to retrieve any initial-doc

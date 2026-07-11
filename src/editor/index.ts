@@ -5613,8 +5613,29 @@ const homeCallbacks: HomeScreenCallbacks = {
   },
   resumeSession: (roomId: string) => {
     homeScreen.hide();
+    // Single-pane with a real doc behind the home screen: resume in a NEW
+    // window (the session doc would otherwise evict this one) — the spawned
+    // window opens a blank starter and runs the full resume, mirroring the
+    // spawn-to-join flow.
+    if (!multiDocActive && !isPristineStarter && getHost().canSpawnWindow) {
+      void getHost()
+        .spawnWindow({
+          filename: '',
+          bytes: new Uint8Array(),
+          handle: null,
+          format: null,
+          uid: null,
+          resumeRoomId: roomId,
+        })
+        .catch((err) => {
+          console.error('Spawn-to-resume failed:', err);
+          showToast('Could not open a new window for the session.');
+        });
+      return;
+    }
     // Multi-pane resumes into a user-picked slot (the home screen is
-    // reachable there via the Home button); single-pane resumes in place.
+    // reachable there via the Home button); a pristine single-pane
+    // starter resumes in place.
     void loadCollabUi().then((m) =>
       m.resumeSessionFlow(multiDocActive ? makeMultiPaneSessionDeps() : collabDeps, roomId),
     );
@@ -5967,6 +5988,13 @@ async function routeInitialDocIntoWorkspace(): Promise<boolean> {
     await m.joinSessionWithCode(makeMultiPaneSessionDeps(), payload.joinShareCode);
     return true;
   }
+  // Same for a spawn-to-resume payload: run the resume through the
+  // slot-picker deps rather than dead-ending the empty-bytes payload.
+  if (payload.resumeRoomId) {
+    const m = await loadCollabUi();
+    await m.resumeSessionFlow(makeMultiPaneSessionDeps(), payload.resumeRoomId);
+    return true;
+  }
   await routeOpenedFile({
     name: payload.filename,
     bytes: payload.bytes,
@@ -6004,6 +6032,25 @@ async function openRecentInPlace(recent: RecentFile): Promise<void> {
       });
     } catch (err) {
       alert(`Failed to open: ${err instanceof Error ? err.message : err}`);
+    }
+    return;
+  }
+  // Single-pane with a real doc behind the home screen (Home button):
+  // don't evict it — open the recent in a NEW window, matching the
+  // one-doc-per-window convention everywhere else on desktop. The
+  // pristine starter (home at launch) still loads in place below.
+  if (!isPristineStarter && electron.canSpawnWindow) {
+    homeScreen.hide();
+    try {
+      await electron.spawnWindow({
+        filename: file.name,
+        bytes: file.bytes,
+        handle: file.handle,
+        format: file.format,
+        uid: null,
+      });
+    } catch (err) {
+      alert(`Failed to open new window: ${err instanceof Error ? err.message : err}`);
     }
     return;
   }
@@ -7576,6 +7623,10 @@ async function initSingleDocBoot(): Promise<void> {
       await mountJoinedSession(payload.joinShareCode);
       return;
     }
+    if (payload.resumeRoomId) {
+      await mountResumedSession(payload.resumeRoomId);
+      return;
+    }
     await mountFromSpawnPayload(payload);
     return;
   }
@@ -7663,6 +7714,21 @@ async function mountJoinedSession(shareCode: string): Promise<void> {
     await loadCollabUi().then((m) => m.joinSessionWithCode(collabDeps, shareCode));
   } catch (err) {
     console.error('Join in spawned window failed:', err);
+  }
+}
+
+/** A window spawned to resume a persisted session (home-screen Sessions list
+ *  clicked while a real doc was open): mount a fresh pristine starter, then
+ *  run the full resume here — the pristine starter means resumeSessionFlow's
+ *  newSessionDoc swaps it in without a save prompt, and the session + binding
+ *  land together in this window (mirrors mountJoinedSession). */
+async function mountResumedSession(roomId: string): Promise<void> {
+  mountView(currentDoc);
+  syncSingleDocSpeechRegistration();
+  try {
+    await loadCollabUi().then((m) => m.resumeSessionFlow(collabDeps, roomId));
+  } catch (err) {
+    console.error('Resume in spawned window failed:', err);
   }
 }
 

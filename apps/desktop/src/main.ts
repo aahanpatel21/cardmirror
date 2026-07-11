@@ -140,6 +140,9 @@ interface InitialDocPayload {
    *  through opaquely (stored + returned via get-initial-doc); the renderer
    *  runs the join. */
   joinShareCode?: string;
+  /** Resume a persisted collaboration session instead of mounting a doc.
+   *  Passed through opaquely, like joinShareCode. */
+  resumeRoomId?: string;
 }
 const pendingInitialDocs = new Map<number, InitialDocPayload>();
 

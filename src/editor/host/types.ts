@@ -252,4 +252,10 @@ export interface SpawnWindowPayload {
    *  accepting an invite while a real doc is open doesn't overwrite it. The
    *  doc fields above are placeholders in this case. */
   joinShareCode?: string;
+  /** When set, the spawned window RESUMES this persisted collaboration
+   *  session (home-screen Sessions list) instead of mounting a doc — same
+   *  shape as joinShareCode: blank starter, then the full resume runs in the
+   *  new window. Used so resuming while a real doc is open doesn't overwrite
+   *  it. The doc fields above are placeholders in this case. */
+  resumeRoomId?: string;
 }

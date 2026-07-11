@@ -56,6 +56,13 @@ remains **experimental** — keep your own saved copies.)
   session now binds to the document you started it from even if you click
   into another pane while it connects.
 
+- **Home-screen Recents and Sessions no longer collide with your open
+  document.** In one-doc-per-window mode, clicking a recent file — or resuming
+  a session — while a document is already open now opens it in a **new
+  window** instead of trying (and failing) to load over the one you're in.
+  The home screen at launch still opens into the window you're looking at,
+  and three-pane still asks which pane to use.
+
 - **The host's ✕ on a home-screen session now really ends it.** Clicking ✕ on
   a session you host asks whether to **End Session** (for everyone — nobody
   can rejoin) or just **Forget My Copy**. Before, it only removed the session

@@ -80,6 +80,19 @@ single-pane module state that is stale garbage in the workspace.
   sessions) — now "Open and focus a document to start a co-editing session,"
   and join/resume no longer require an up-front view at all (an empty
   workspace can join straight into a slot).
+- **Home-screen Recents/Sessions spawn a new window over an open doc**
+  (`index.ts` openRecentInPlace + homeCallbacks.resumeSession,
+  `host/types.ts` + `apps/desktop/src/{main,preload}.ts`). Reaching the home
+  screen via the Home button and clicking a recent (or a session) loaded
+  in-place — which fails/evicts when this window already holds a real doc.
+  Single-pane now spawns: recents ship the read file as a normal spawn
+  payload; sessions use a new `resumeRoomId` spawn field mirroring
+  `joinShareCode` (blank starter in the new window, then the full resume runs
+  there — `mountResumedSession`). The pristine starter (home at launch) still
+  loads in place, and multi-pane keeps its slot-picker routing; the
+  multi-pane boot also handles a stray `resumeRoomId` payload via the
+  slot-picker deps instead of the empty-file dead end.
+
 - **Host ✕ on the home-screen Sessions list actually ends the session**
   (`home-screen.ts`, `collab-relay.ts` `endRoomOnRelay`). The ✕ only called
   `deleteSessionRecord` — a local IndexedDB delete — for host and participant
