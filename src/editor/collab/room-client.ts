@@ -250,6 +250,15 @@ export class RoomStream {
   restart(): void {
     if (this.stopped) return;
     this.backoffMs = this.opts.minBackoffMs ?? 1000;
+    if (this.retryTimer !== null) {
+      // Sitting out a backoff wait — wake-from-sleep must not serve the
+      // remainder of a pre-sleep delay before reconnecting (audit find,
+      // 2026-07-10). Connect now.
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+      void this.connectLoop();
+      return;
+    }
     this.controller?.abort();
   }
 

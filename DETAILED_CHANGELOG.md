@@ -93,6 +93,35 @@ single-pane module state that is stale garbage in the workspace.
   multi-pane boot also handles a stray `resumeRoomId` payload via the
   slot-picker deps instead of the empty-file dead end.
 
+- **Round 3 audit follow-through: transport taxonomy + polish**
+  (`collab-session.ts`, `room-client.ts`, `collab-ui.ts`,
+  `collab-persist.ts`, `comments-plugin.ts`, `home-screen.ts`, `index.ts`).
+  TRANSPORT: mid-session 401/403 now fires a once-per-session
+  `onAuthRejected` callback (toast names Settings → Collaboration) and backs
+  send-retry off to the 30s ceiling — the silent hot-retry loop was
+  indistinguishable from being offline; REST 404 is now terminal-ended like
+  the stream already treated it (relay idle-GC deletes rooms outright — 404
+  on a known room means expired, and `relayFailureMessage`/join-flow
+  consumption handle 404 like 410); a stream 409 (room full) after the REST
+  join half-succeeded now tears the session down keep-record with an honest
+  toast instead of leaving a dead "offline" doc mounted;
+  `RoomStream.restart()` clears a pending backoff timer and reconnects
+  immediately (wake-from-sleep served out pre-sleep delays); `catchUp`'s
+  `pendingLeft` accumulates across pages (a clean later page cancelled the
+  full resync a dirty earlier page requested); both snapshot decrypts are
+  guarded like update decrypts (one undecryptable server snapshot wedged
+  every subsequent catch-up permanently).
+  POLISH: `startSessionFlow` has an in-flight guard per owner uid
+  (double-click minted two rooms); a mid-session rename republishes the doc
+  title to the room's meta map (excluded `cm-meta` origin) and defeats the
+  persist skip-write, so the Sessions list and new joiners see the new name;
+  the mode-switch confirm is a route-style dialog (native `window.confirm`
+  never returns keyboard focus on Windows/Linux — same class as the
+  2026-07-03 field bug); session random comment ids no longer bump the
+  window-global sequential counter (the ranges are disjoint below 1,000,000
+  by design); the home-screen Sessions row says "saved …" (the timestamp is
+  the local persist-write time, not a sync time). Manual §9 documents the
+  host-✕ End/Forget choice.
 - **Round 2 audit follow-through: comments correctness + chip truthfulness**
   (`collab-comments.ts`, `collab-ui.ts`, `comments-plugin.ts`,
   `comments-ui.ts`, `collab-hooks.ts`, `index.ts`).

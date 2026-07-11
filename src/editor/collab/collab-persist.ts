@@ -64,14 +64,33 @@ export function attachSessionPersistence(
         record = (await loadSessionRecord(session.roomId)) ?? null;
       }
       const meta = session.persistMeta();
+      // A rename mid-session: republish the doc title to the room's meta map
+      // (new joiners + invite labels see it) — it was published once at start
+      // and never again (audit find, 2026-07-10). The excluded 'cm-meta'
+      // origin keeps it out of the undo stack; the write itself rides the
+      // session's normal flush.
+      const title = getDocTitle();
+      if (record && title && title !== record.docTitle) {
+        try {
+          session.loroDoc.getMap('meta').set('title', title);
+          session.loroDoc.commit({ origin: 'cm-meta' });
+        } catch {
+          /* best-effort */
+        }
+      }
       if (
         record &&
         record.increments.length < COMPACT_EVERY &&
         bytesEqual(record.persistedVersion, session.encodedVersion())
       ) {
-        // Doc unchanged — refresh the cursor/sent metadata only when
-        // they moved (otherwise skip the write entirely).
-        if (record.lastSeq === meta.lastSeq && bytesEqual(record.sentVersion, meta.sentVersion)) {
+        // Doc unchanged — refresh the cursor/sent metadata AND the title
+        // when they moved (a rename with no edits previously never reached
+        // the Sessions list); otherwise skip the write entirely.
+        if (
+          record.lastSeq === meta.lastSeq &&
+          bytesEqual(record.sentVersion, meta.sentVersion) &&
+          record.docTitle === getDocTitle()
+        ) {
           return;
         }
         record = {

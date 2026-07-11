@@ -465,6 +465,16 @@ function sessionCallbacks(deps: CollabUiDeps, getSess: () => ActiveSession | nul
       notifyCollabCopresenceChange();
     },
     onPresence: (bytes: Uint8Array) => getSess()?.cursors.applyRemote(bytes),
+    onAuthRejected: () => {
+      // Mid-session 401/403 — without this the endless retry loop reads
+      // exactly like being offline (audit find, 2026-07-10). Fired once
+      // per session by CollabSession.
+      showToast(
+        'The session relay rejected your credentials — reconnect your Debate ' +
+          'Decoded account or check your relay settings (Settings → Collaboration). ' +
+          'Your edits are saved locally and keep retrying.',
+      );
+    },
     onBacklogMerged: (count: number) => {
       // Merge-visibility (M3): a travel-day backlog just landed — say
       // so, instead of the doc silently reshaping under the user.
@@ -492,7 +502,25 @@ function sessionCallbacks(deps: CollabUiDeps, getSess: () => ActiveSession | nul
       );
     },
     onFull: () => {
-      showToast('That session is full (10 participants)');
+      const sess = getSess();
+      if (!sess || !sessions.has(sess.ownerUid)) {
+        showToast('That session is full (10 participants)');
+        return;
+      }
+      // The join/resume half-succeeded over REST before the stream's 409:
+      // leaving the session mounted showed "Joined the session" + a dead
+      // offline chip forever (audit find, 2026-07-10). Tear down but KEEP
+      // the record so the user can rejoin from the Sessions list when
+      // someone leaves.
+      const wasChip = isChipSession(sess.ownerUid);
+      void teardownSession(sess, /* keepRecord */ true);
+      if (wasChip) updateChip(null);
+      if (deps.refreshPluginsForUid) deps.refreshPluginsForUid(sess.ownerUid);
+      else deps.refreshPlugins();
+      showToast(
+        'The session is full (10 people) — your copy is saved; rejoin from the ' +
+          'Sessions list when someone leaves.',
+      );
     },
   };
 }
@@ -512,10 +540,10 @@ export function relayFailureMessage(err: unknown, opts: { initiating: boolean; v
       : 'The session relay rejected your credentials. In Settings → Collaboration, ' +
           'connect your Debate Decoded account or set up your own relay.';
   }
-  // 410 = the room was ended (host) or expired (idle GC). Not an error the
-  // user can retry into — tell them the session is over rather than leaking
-  // the raw "rooms request failed: 410".
-  if (err instanceof RoomsError && err.status === 410) {
+  // 410 = the room was ended (host); 404 = the room itself is gone (relay
+  // idle GC). Not errors the user can retry into — tell them the session is
+  // over rather than leaking the raw "rooms request failed: NNN".
+  if (err instanceof RoomsError && (err.status === 410 || err.status === 404)) {
     return 'That co-editing session has ended — ask for a fresh invite to start a new one.';
   }
   return `Could not ${opts.verb}: ${(err as Error).message}`;
@@ -535,6 +563,11 @@ function guardReady(deps: CollabUiDeps): EditorView | null {
   return view;
 }
 
+/** Docs with a Start flow mid-confirm/mid-relay: a double-click (or a second
+ *  Start command racing the first's awaits) minted TWO rooms for one doc
+ *  (audit find, 2026-07-10). */
+const startsInFlight = new Set<string>();
+
 export async function startSessionFlow(deps: CollabUiDeps): Promise<void> {
   if (!collabEnabled()) return; // desktop-only; inert on the web edition
   const view = guardReady(deps);
@@ -544,6 +577,20 @@ export async function startSessionFlow(deps: CollabUiDeps): Promise<void> {
     showToast('This document already has a session — end or leave it first');
     return;
   }
+  if (startsInFlight.has(ownerUid)) return;
+  startsInFlight.add(ownerUid);
+  try {
+    await startSessionFlowInner(deps, view, ownerUid);
+  } finally {
+    startsInFlight.delete(ownerUid);
+  }
+}
+
+async function startSessionFlowInner(
+  deps: CollabUiDeps,
+  view: EditorView,
+  ownerUid: string,
+): Promise<void> {
   // Confirm, naming the doc the session will be created for — removes any
   // ambiguity about which doc is being shared (multi-pane: the focused one).
   const startName = sessionDocTitle(ownerUid);
@@ -667,9 +714,10 @@ export async function joinSessionWithCode(deps: CollabUiDeps, code: string): Pro
         callbacks: sessionCallbacks(deps, () => sessRef),
       });
     } catch (err) {
-      // An ENDED/expired room (410) is not an offline condition — the seed
-      // would resume a session that no longer exists. Surface it as ended.
-      if (err instanceof RoomsError && err.status === 410) throw err;
+      // An ENDED (410) or expired/GC'd (404) room is not an offline
+      // condition — the seed would resume a session that no longer exists.
+      // Surface it as ended.
+      if (err instanceof RoomsError && (err.status === 410 || err.status === 404)) throw err;
       // Offline (or relay unreachable): fall back to the invite's
       // prefetched seed (§4.1). Everything in it came FROM the room,
       // so resume() with no sentVersion is exact; start() syncs at the
@@ -729,7 +777,7 @@ export async function joinSessionWithCode(deps: CollabUiDeps, code: string): Pro
     // A dead room's invite and seed are useless — purge the seed and report
     // consumed so the Receive pill clears the row. Every other failure keeps
     // both, so the user can retry once the network/slot situation changes.
-    const ended = err instanceof RoomsError && err.status === 410;
+    const ended = err instanceof RoomsError && (err.status === 410 || err.status === 404);
     if (ended) void deletePrefetch(decoded.roomId);
     showToast(relayFailureMessage(err, { initiating: false, verb: 'join' }));
     return ended;

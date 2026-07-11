@@ -7919,12 +7919,12 @@ async function handleModeSwitch(newValue: boolean): Promise<void> {
   let message: string;
   if (newValue) {
     message = electron
-      ? 'Switch to three-pane workspace?\n\nAny other open CardMirror windows will close, and every open document will reopen as a pane in this window.'
-      : 'Switch to three-pane workspace?\n\nEvery open document will move into a pane in this window. Your other CardMirror windows will ask you to close them.';
+      ? 'Any other open CardMirror windows will close, and every open document will reopen as a pane in this window.'
+      : 'Every open document will move into a pane in this window. Your other CardMirror windows will ask you to close them.';
   } else {
     message = electron
-      ? 'Switch to one-document-per-window mode?\n\nThe editor will reload and your open documents will each reopen in their own window.'
-      : 'Switch to one-document-per-window mode?\n\nThis window keeps the current document. Your other open documents will be closed — you’ll be prompted to save any with unsaved changes — and stay available in Recent Files.';
+      ? 'The editor will reload and your open documents will each reopen in their own window.'
+      : 'This window keeps the current document. Your other open documents will be closed — you’ll be prompted to save any with unsaved changes — and stay available in Recent Files.';
   }
   // Co-edited docs don't survive the reload as live sessions (they close and
   // stay resumable) — say so before the user commits.
@@ -7932,10 +7932,20 @@ async function handleModeSwitch(newValue: boolean): Promise<void> {
   if (liveSessions > 0) {
     message +=
       liveSessions === 1
-        ? '\n\nYour co-editing session will close. Reopen it from the Sessions list on the home screen to keep editing — your unsynced changes are saved.'
-        : `\n\nYour ${liveSessions} co-editing sessions will close. Reopen them from the Sessions list on the home screen to keep editing — your unsynced changes are saved.`;
+        ? ' Your co-editing session will close — reopen it from the Sessions list on the home screen (your unsynced changes are saved).'
+        : ` Your ${liveSessions} co-editing sessions will close — reopen them from the Sessions list on the home screen (your unsynced changes are saved).`;
   }
-  if (!window.confirm(message)) {
+  // Route-style dialog, NOT window.confirm: Electron's native confirm on
+  // Windows/Linux never hands keyboard focus back to the renderer — the
+  // editor was untypeable until a reload (same field-bug class as the
+  // co-editing End dialog, 2026-07-03; audit find, 2026-07-10).
+  const confirmed = await promptForRouteChoice({
+    message: newValue
+      ? 'Switch to three-pane workspace?'
+      : 'Switch to one-document-per-window mode?',
+    choices: [{ value: 'switch', label: 'Switch', description: message }],
+  });
+  if (confirmed !== 'switch') {
     // Revert. The `modeSwitchInFlight` guard prevents the
     // subscriber from re-running and looping.
     settings.set('multiDocWorkspace', BOOT_MULTI_DOC_WORKSPACE);

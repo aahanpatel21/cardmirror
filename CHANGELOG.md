@@ -131,6 +131,35 @@ remains **experimental** — keep your own saved copies.)
   into it and could behave oddly. The owner pane itself is now refreshed,
   including when you back out of the close dialog afterwards.
 
+- **Honest connection errors mid-session.** If the relay rejects your
+  credentials while you're in a session, CardMirror now says so once (with
+  where to fix it) instead of silently retrying forever in a state that
+  looked exactly like being offline. A session whose room has expired on the
+  relay now ends cleanly ("this copy is now yours alone") instead of retrying
+  into nothing. And joining a **full** session no longer half-succeeds — your
+  copy is saved and you're told to rejoin from the Sessions list when someone
+  leaves, instead of being left with a dead "offline" document.
+
+- **Faster reconnect after sleep.** Waking your laptop mid-session could wait
+  out a leftover reconnect delay from before it slept; it now reconnects
+  immediately. Two rare sync-recovery bugs are also fixed: a multi-page
+  catch-up could cancel a full resync one of its earlier pages had requested,
+  and a single unreadable snapshot on the relay could permanently wedge
+  syncing (it's now skipped like any other unreadable frame).
+
+- **Double-clicking Start Session no longer creates two sessions.**
+
+- **Renaming a co-edited document updates its name everywhere.** The name you
+  see in the Sessions list — and the one new joiners get — now follows a
+  mid-session rename instead of keeping the original title forever.
+
+- **The mode-switch confirmation matches the app's other dialogs** (and no
+  longer uses the system popup that could leave the editor untypeable on
+  Windows/Linux).
+
+- The Sessions list now says "saved …" instead of "last synced …" — the
+  timestamp was always the local save time, which advances even offline.
+
 - A couple of messages still pointed at the old "Card Sharing" settings name;
   they now say **Collaboration**.
 

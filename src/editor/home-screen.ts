@@ -436,7 +436,9 @@ class HomeScreen {
 
     const meta = document.createElement('span');
     meta.className = 'pmd-home-recent-path';
-    meta.textContent = `last synced ${relativeTime(record.updatedAt)}`;
+    // "saved", not "synced": updatedAt is the local persist-write time, which
+    // advances while fully offline.
+    meta.textContent = `saved ${relativeTime(record.updatedAt)}`;
     row.appendChild(meta);
 
     row.addEventListener('click', () => this.callbacks?.resumeSession?.(record.roomId));

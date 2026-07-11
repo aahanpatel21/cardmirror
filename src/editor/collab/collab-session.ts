@@ -66,6 +66,11 @@ function configTextStyle(doc: LoroDoc): void {
 export interface CollabSessionCallbacks {
   /** Connection or queue state changed (drives the sync-status UI). */
   onStatus?: (status: { connected: boolean; queuedUpdates: number }) => void;
+  /** The relay rejected our credentials (401/403) MID-SESSION — fired once
+   *  per session so the UI can say so (otherwise the retry loop is
+   *  indistinguishable from being offline). Retrying continues at the
+   *  backoff ceiling in case the entitlement returns. */
+  onAuthRejected?: () => void;
   /** The session ended (host ended it, or the room was GC'd). Terminal. */
   onEnded?: () => void;
   /** The room is at participant capacity. Terminal for this attempt. */
@@ -548,9 +553,20 @@ export class CollabSession {
             void this.uploadSnapshot();
           }
         } catch (err) {
-          if (err instanceof RoomsError && err.status === 410) {
+          if (err instanceof RoomsError && (err.status === 410 || err.status === 404)) {
+            // 410 = tombstoned (host ended); 404 = the room itself is gone
+            // (relay idle-GC). Both terminal — the stream already treats
+            // them identically.
             this.handleEnded();
             return;
+          }
+          if (err instanceof RoomsError && (err.status === 401 || err.status === 403)) {
+            // Credentials/entitlement died MID-SESSION. Retrying can't fix
+            // it silently and a hot retry loop looked exactly like being
+            // offline (audit find, 2026-07-10): tell the user once and back
+            // off to the ceiling in case the entitlement comes back.
+            this.sendRetryMs = 30_000;
+            this.notifyAuthRejected();
           }
           if (err instanceof RoomsError && err.status === 413 && entry.blob.length > 1024) {
             // Server-side cap disagreement (backstop for the proactive
@@ -638,7 +654,15 @@ export class CollabSession {
         const page = await this.client.fetchUpdates(this.roomId, this.lastSeq);
         const blobs: Uint8Array[] = [];
         if (page.snapshot && page.snapshot.coversThroughSeq > this.lastSeq) {
-          blobs.push(await decryptBlob(this.key, page.snapshot.blob));
+          try {
+            blobs.push(await decryptBlob(this.key, page.snapshot.blob));
+          } catch {
+            // Undecryptable server snapshot (wrong key / corrupt ciphertext):
+            // skip it like a bad update frame instead of throwing — the throw
+            // wedged EVERY subsequent catch-up permanently (audit find,
+            // 2026-07-10). The session degrades to whatever updates decrypt.
+            console.warn('[collab] undecryptable room snapshot — skipped');
+          }
         }
         for (const u of page.updates) {
           if (u.seq <= this.lastSeq) continue;
@@ -654,7 +678,10 @@ export class CollabSession {
           this.flush();
           const status = this.loroDoc.importBatch(blobs);
           this.markImportedSent();
-          pendingLeft = !!status.pending && status.pending.size > 0;
+          // ACCUMULATE across pages — a clean later page must not cancel
+          // the full resync a dirty earlier page requested (audit find,
+          // 2026-07-10).
+          pendingLeft = pendingLeft || (!!status.pending && status.pending.size > 0);
           if (pendingLeft) this.pendingImports = true;
         }
         if (page.lastSeq > this.lastSeq) this.lastSeq = page.lastSeq;
@@ -673,7 +700,11 @@ export class CollabSession {
         for (;;) {
           const page = await this.client.fetchUpdates(this.roomId, after);
           if (page.snapshot && after < page.snapshot.coversThroughSeq) {
-            blobs.push(await decryptBlob(this.key, page.snapshot.blob));
+            try {
+              blobs.push(await decryptBlob(this.key, page.snapshot.blob));
+            } catch {
+              console.warn('[collab] undecryptable room snapshot in resync — skipped');
+            }
           }
           for (const u of page.updates) {
             try {
@@ -701,7 +732,7 @@ export class CollabSession {
       this.connected = this.stream ? this.stream.connected : true;
       this.emitStatus();
     } catch (err) {
-      if (err instanceof RoomsError && err.status === 410) {
+      if (err instanceof RoomsError && (err.status === 410 || err.status === 404)) {
         this.handleEnded();
         // A STRICT initial sync (join/first resume tick) must NOT silently
         // succeed on an ended/expired room — otherwise the caller mounts a
@@ -712,6 +743,9 @@ export class CollabSession {
         // drove the onEnded teardown.
         if (rethrow) throw err;
         return;
+      }
+      if (err instanceof RoomsError && (err.status === 401 || err.status === 403)) {
+        this.notifyAuthRejected();
       }
       this.connected = false;
       this.emitStatus();
@@ -884,6 +918,14 @@ export class CollabSession {
     }));
     this.outQueue.splice(0, 1, ...replacements);
     this.emitStatus();
+  }
+
+  private authNotified = false;
+
+  private notifyAuthRejected(): void {
+    if (this.authNotified) return;
+    this.authNotified = true;
+    this.callbacks.onAuthRejected?.();
   }
 
   private emitStatus(): void {

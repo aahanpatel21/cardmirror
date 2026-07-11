@@ -1124,6 +1124,9 @@ document opens into.
 as the host you can end it for everyone, or as a guest leave it (each person
 keeps their current copy either way). Closing a co-edited document asks whether
 to keep the session — so you can rejoin and sync later — or to end/leave it now.
+The ✕ on a session in the home screen's **Sessions** list works the same way:
+as the host it asks whether to **end the session for everyone** or just forget
+your copy; as a guest it simply forgets your copy (the others are unaffected).
 
 ---
 

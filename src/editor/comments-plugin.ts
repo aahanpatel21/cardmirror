@@ -293,7 +293,10 @@ export function newCommentId(): string {
       const id = String(1_000_000 + Math.floor(Math.random() * 1_999_000_000));
       if (!issuedSessionIds.has(id)) {
         issuedSessionIds.add(id);
-        bumpCommentIdCounter(id);
+        // Deliberately NOT bumping the sequential counter: the random range
+        // starts at 1,000,000 precisely so the two ranges can't collide, and
+        // bumping pushed every later sequential id (in EVERY doc — the
+        // counter is window-global) past a billion (audit find, 2026-07-10).
         return id;
       }
     }
