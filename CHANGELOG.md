@@ -98,6 +98,39 @@ remains **experimental** — keep your own saved copies.)
   refuse to open a document or session that's already open — in this window
   or another one (the other window is brought to the front instead).
 
+- **Undo can no longer delete comments in a session.** While co-editing,
+  Ctrl+Z stepped through comment operations along with your edits — an undo
+  right after someone commented could silently remove comments or replies for
+  everyone. Undo now skips comment operations entirely; comments only change
+  through the comments panel.
+
+- **Parked comments survive sessions.** A comment whose highlighted text you
+  deleted before a session (kept invisibly so undoing the deletion restores
+  it) was silently discarded the first time the session synced comments. It
+  now stays parked, and undoing the deletion still restores it.
+
+- **AI comment replies land where you asked.** In three-pane, an AI reply
+  requested in one pane could land in whichever pane you'd focused by the
+  time the answer arrived. It now always lands in the thread you asked from —
+  and is dropped cleanly if that thread was deleted while it was thinking.
+
+- **The session status chip follows the document you're looking at.** In
+  three-pane the shared status chip could keep showing another document's
+  session — sometimes a *dead* one — until an unrelated event repainted it.
+  It now repaints when you switch panes, and its label and presence dots can
+  no longer disagree.
+
+- **Invite Starred / Copy Share Code act on the focused document.** Both
+  used to fall back to "whatever session exists" — inviting someone into a
+  different document's session than the one you were looking at. They now
+  act on the focused document's session, and say so if it doesn't have one.
+
+- **Ending a session repaints the right pane.** When a session ended (by you
+  or remotely), the cleanup refreshed whichever pane was focused — an
+  unfocused co-edited pane kept dead session internals until you clicked
+  into it and could behave oddly. The owner pane itself is now refreshed,
+  including when you back out of the close dialog afterwards.
+
 - A couple of messages still pointed at the old "Card Sharing" settings name;
   they now say **Collaboration**.
 

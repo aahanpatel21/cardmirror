@@ -163,6 +163,7 @@ import {
   collabLiveSessionCount,
   collabRoomIsLive,
   collabRoomClaimKey,
+  notifyCollabFocusChange,
 } from './collab/collab-hooks.js';
 import { learnHighlightPlugin, flashcardRangeAt } from './learn-highlight-plugin.js';
 import { repairHighlightPlugin } from './repair-highlight-plugin.js';
@@ -983,6 +984,9 @@ export function setActiveView(v: EditorView | null): void {
   if (v) {
     currentDoc = v.state.doc;
   }
+  // The shared collab chip follows the focused doc's session — repaint it
+  // now instead of waiting for that session's next status event.
+  notifyCollabFocusChange();
   // Re-sync the chrome that depends on `view` (font-size chip,
   // word-count display, paragraph integrity indicator,
   // read-mode toggle pressed-state, speech-mark button, etc.).
@@ -1101,6 +1105,12 @@ const collabDeps = {
       );
     }
   },
+  // Rebuild a SPECIFIC doc's plugin stack by uid — session-end paths target
+  // the owner doc's view, which may not be the focused one (multi-pane).
+  refreshPluginsForUid: (uid: string) => {
+    const v = getSpeechDocResolver().viewForUid(uid);
+    if (v) v.updateState(v.state.reconfigure({ plugins: buildEditorPlugins(uid) }));
+  },
   // Name the (unsaved) session doc: window title, filename chip, and
   // the save-as default all follow currentDocFilename. No handle — the
   // first save still prompts for a location, pre-filled with this name.
@@ -1170,6 +1180,10 @@ function makeMultiPaneSessionDeps() {
     refreshPlugins: () => {
       const v = viewFor(uid);
       if (v) v.updateState(v.state.reconfigure({ plugins: buildEditorPlugins(uid) }));
+    },
+    refreshPluginsForUid: (u: string) => {
+      const v = getSpeechDocResolver().viewForUid(u);
+      if (v) v.updateState(v.state.reconfigure({ plugins: buildEditorPlugins(u) }));
     },
     // Adopt the host-published title on the session doc's own record (by
     // uid — focus may have moved during the join round-trip).
@@ -7365,6 +7379,13 @@ export async function resolveCoEditedClose(
   // already toasted, and the session stays live — abort the close so the
   // user isn't left thinking the session ended.
   if (!(await collabEndOrLeaveSession(uid))) return 'cancel';
+  // The session is gone — rebuild the doc's plugin stack NOW. The caller
+  // continues into the dirty-save prompt, and a Cancel there keeps the doc
+  // open; without this it kept dead session plugins (audit find, 2026-07-10).
+  {
+    const v = getSpeechDocResolver().viewForUid(uid);
+    if (v) v.updateState(v.state.reconfigure({ plugins: buildEditorPlugins(uid) }));
+  }
   return 'run-normal';
 }
 

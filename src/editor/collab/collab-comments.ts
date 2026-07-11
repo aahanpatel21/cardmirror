@@ -45,6 +45,13 @@ import { markSyncOrigin } from '../sync-origin.js';
 
 const COMMENTS_ROOT_KEY = 'comments';
 
+/** Commit origin for every comments-map write. The session's UndoManager
+ *  excludes this prefix (see installSeams), so Ctrl+Z steps over comment
+ *  operations instead of silently deleting comments/replies — the undo
+ *  stack otherwise interleaved doc edits with the mirror's map writes
+ *  (audit find, 2026-07-10). */
+export const COMMENTS_COMMIT_ORIGIN = 'cm-comments';
+
 export interface CommentsSyncHandle {
   /** Stable instance for the session plugin set (survives reconfigure). */
   plugin: Plugin;
@@ -136,7 +143,7 @@ export function installCommentsSync(
       default:
         return; // gc / sync-load / set-visible stay local
     }
-    doc.commit();
+    doc.commit({ origin: COMMENTS_COMMIT_ORIGIN });
   };
 
   const pull = (): void => {
@@ -176,7 +183,7 @@ export function installCommentsSync(
     seedFromView(view: EditorView): void {
       const { threads } = getCommentsState(view.state);
       for (const t of threads.values()) writeThread(root, t);
-      doc.commit();
+      doc.commit({ origin: COMMENTS_COMMIT_ORIGIN });
     },
     pull,
     dispose(): void {

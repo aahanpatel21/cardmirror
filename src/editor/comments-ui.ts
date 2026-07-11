@@ -2269,6 +2269,13 @@ export class CommentsColumn {
     // (Word strips an unknown `kind` anyway).
     const aiAuthor = aiPersonaName();
     const aiInitials = 'AI';
+    // Pin the reply's TARGET at initiation: the view the thread lives in,
+    // and the comment id (whose random-vs-sequential mode follows the
+    // ACTIVE doc's session). Resolving either at completion time landed the
+    // reply — with a wrong-mode id — in whichever pane the user had focused
+    // by the time the AI answered (audit find, 2026-07-10).
+    const targetView = this.getView();
+    const replyId = newCommentId();
 
     this.aiInFlight.add(threadId);
     // Force the AI thread to be the active (expanded) one for the
@@ -2290,7 +2297,7 @@ export class CommentsColumn {
           messages,
         });
         const aiComment: Comment = {
-          id: newCommentId(),
+          id: replyId,
           author: aiAuthor,
           initials: aiInitials,
           date: new Date().toISOString(),
@@ -2300,8 +2307,11 @@ export class CommentsColumn {
           kind: 'human',
           parentId: threadId,
         };
-        const v2 = this.getView();
+        const v2 = targetView && !targetView.isDestroyed ? targetView : null;
         if (!v2) return;
+        // The thread may have been deleted (locally or by a partner) while
+        // the request was in flight — don't reply into nothing.
+        if (!getCommentsState(v2.state).threads.has(threadId)) return;
         v2.dispatch(v2.state.tr.setMeta(commentsKey, addReplyMeta(threadId, aiComment)));
       } catch (e) {
         if (e instanceof AnthropicError) {

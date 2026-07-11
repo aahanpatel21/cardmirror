@@ -246,6 +246,20 @@ export function collabRoomIsLive(roomId: string): boolean {
   return liveRoomProbe?.(roomId) ?? false;
 }
 
+/** Focus moved between docs: the lazily-loaded collab UI repaints the shared
+ *  chip from the newly-focused doc's session — it otherwise held the previous
+ *  doc's label until that session's next status event (audit find,
+ *  2026-07-10). No-op until the collab module loads. */
+let focusChangeHandler: (() => void) | null = null;
+
+export function setCollabFocusChangeHandler(fn: (() => void) | null): void {
+  focusChangeHandler = fn;
+}
+
+export function notifyCollabFocusChange(): void {
+  focusChangeHandler?.();
+}
+
 /** Cross-WINDOW live-session guard: while a session is live, its window holds
  *  a claim on this synthetic key in the same main-process registry the
  *  duplicate-file-open guard uses (`openPathRegister`/`openPathCheck`) — so

@@ -32,6 +32,7 @@ import {
   setCollabHandoffProvider,
   setCollabSessionCountProvider,
   setCollabLiveRoomProbe,
+  setCollabFocusChangeHandler,
   collabRoomClaimKey,
 } from './collab-hooks.js';
 import { RoomsError } from './room-client.js';
@@ -41,7 +42,12 @@ import { relayClient as pairingRelayClient } from '../pairing/relay-client.js';
 import { resolveStarredTarget } from '../pairing/send-to-starred.js';
 import { buildRoomInviteItem, ROOM_INVITE_MIN_VERSION } from '../pairing/room-invite.js';
 import { collabInvariantHealPlugin } from './collab-invariants.js';
-import { installCommentsSync, type CommentsSyncHandle } from './collab-comments.js';
+import {
+  installCommentsSync,
+  COMMENTS_COMMIT_ORIGIN,
+  type CommentsSyncHandle,
+} from './collab-comments.js';
+import { UndoManager } from 'loro-crdt';
 import { attachSessionPersistence, type PersistHandle } from './collab-persist.js';
 import { installCursorPresence, type CursorsHandle } from './collab-cursors.js';
 import { collabRepairPlugin, lowestPeerIsLeader } from './collab-repair.js';
@@ -63,6 +69,10 @@ export interface CollabUiDeps {
    *  its OWNER's view via this (not the focused view), so in multi-pane each
    *  doc's presence renders in its own pane. Falls back to the focused view. */
   getViewForUid?(uid: string): EditorView | null;
+  /** Rebuild the plugin stack of the doc with `uid` (its own view — NOT the
+   *  focused one). Session-END paths use this so an unfocused owner pane
+   *  doesn't keep dead collab plugins. Falls back to refreshPlugins(). */
+  refreshPluginsForUid?(uid: string): void;
   /** Swap THIS window's editor to a fresh unsaved doc for a joined
    *  session — must never spawn a window (the binding installs into the
    *  current view; a spawned window would never get it — field bug on
@@ -101,6 +111,11 @@ interface ActiveSession {
 }
 
 const sessions = new Map<string, ActiveSession>();
+
+/** Commit origin for session meta-map writes (title publishing) — excluded
+ *  from the session UndoManager alongside comment writes, so Ctrl+Z never
+ *  un-publishes the shared title. */
+const META_COMMIT_ORIGIN = 'cm-meta';
 
 /** Focused doc's uid — set by the editor host so no-deps UI helpers (chip,
  *  presence, copy-code, invite) can find the session the user is looking at. */
@@ -157,6 +172,7 @@ setCollabSessionCountProvider(() => sessions.size);
 setCollabLiveRoomProbe((roomId) =>
   [...sessions.values()].some((s) => s.session.roomId === roomId),
 );
+setCollabFocusChangeHandler(() => refreshChipForFocus());
 
 // Cross-window live-session claims ride the duplicate-open path registry.
 // All three are best-effort and swallow everything: an old preload (or a
@@ -192,6 +208,18 @@ function chipSession(): ActiveSession | null {
     sessionFor(focusedUidResolver?.() ?? null) ??
     (sessions.size === 1 ? [...sessions.values()][0]! : null)
   );
+}
+
+/** The session UI ACTIONS act on (copy code, invite starred): STRICTLY the
+ *  focused doc's session. The sole-session fallback applies only when focus is
+ *  unresolvable (no resolver registered — bare single-pane); falling back while
+ *  the user is LOOKING at a session-less doc invited partners into a different
+ *  doc's session (audit find, 2026-07-10). Display (chipSession) keeps the
+ *  fallback — showing the one live session is fine; acting on it is not. */
+function actionSession(): ActiveSession | null {
+  const focused = focusedUidResolver?.() ?? null;
+  if (focused != null) return sessionFor(focused);
+  return sessions.size === 1 ? [...sessions.values()][0]! : null;
 }
 
 function chipEl(): HTMLElement | null {
@@ -341,7 +369,18 @@ function installSeams(
     ownerUid,
     plugins: () => [
       ...session.plugins(),
-      LoroUndoPlugin({ doc: session.loroDoc }),
+      // A pre-configured manager (the plugin otherwise builds its own):
+      // comment-mirror and meta writes commit with excluded origins, so the
+      // undo stack holds ONLY document edits — Ctrl+Z was silently deleting
+      // comments/replies session-wide when a comment op sat on top of it
+      // (audit find, 2026-07-10). The plugin still adds 'sys:init' and wires
+      // its own cursor-restore hooks onto this manager.
+      LoroUndoPlugin({
+        doc: session.loroDoc,
+        undoManager: new UndoManager(session.loroDoc, {
+          excludeOriginPrefixes: [COMMENTS_COMMIT_ORIGIN, META_COMMIT_ORIGIN],
+        }),
+      }),
       collabInvariantHealPlugin(),
       collabRepairPlugin(() =>
         lowestPeerIsLeader(session.loroDoc.peerIdStr, cursors.visiblePeers()),
@@ -392,11 +431,22 @@ function teardownSession(sess: ActiveSession, keepRecord = false): Promise<void>
   return cleared;
 }
 
-/** Whether `ownerUid`'s session is the one the shared chip reflects (the focused
- *  doc's, or — with no focus resolver — the sole session). */
+/** Whether `ownerUid`'s session is the one the shared chip reflects. MUST
+ *  match chipSession()'s selection exactly: the two used to disagree on the
+ *  sole-session fallback (chipSession applied it whenever the focused doc had
+ *  no session; this predicate only when focus was unresolvable), so the chip
+ *  label froze — and ghosted after that session ended — while its dots kept
+ *  rendering from chipSession (audit find, 2026-07-10). */
 function isChipSession(ownerUid: string): boolean {
-  const focused = focusedUidResolver?.() ?? null;
-  return focused != null ? ownerUid === focused : sessions.size <= 1;
+  return chipSession()?.ownerUid === ownerUid;
+}
+
+/** Repaint the shared chip from the CURRENT chip session's last status —
+ *  called (via collab-hooks) when focus moves between docs; the chip
+ *  otherwise held the previous doc's label until its next status event. */
+export function refreshChipForFocus(): void {
+  const sess = chipSession();
+  updateChip(sess ? sess.lastStatus ?? { connected: true, queuedUpdates: 0 } : null);
 }
 
 // `getSess` resolves THIS session's ActiveSession lazily — for join/resume the
@@ -430,7 +480,11 @@ function sessionCallbacks(deps: CollabUiDeps, getSess: () => ActiveSession | nul
       const wasChip = isChipSession(sess.ownerUid);
       void teardownSession(sess);
       if (wasChip) updateChip(null);
-      deps.refreshPlugins();
+      // Rebuild the OWNER doc's plugin stack — refreshing the focused view
+      // left an unfocused owner pane holding dead session plugins (audit
+      // find, 2026-07-10).
+      if (deps.refreshPluginsForUid) deps.refreshPluginsForUid(sess.ownerUid);
+      else deps.refreshPlugins();
       showToast(
         wasHost
           ? 'Collaboration session ended'
@@ -528,7 +582,7 @@ export async function startSessionFlow(deps: CollabUiDeps): Promise<void> {
     // title, so joiners can name their unsaved copy.
     sess.commentsSync.seedFromView(view);
     session.loroDoc.getMap('meta').set('title', sessionDocTitle(ownerUid));
-    session.loroDoc.commit();
+    session.loroDoc.commit({ origin: META_COMMIT_ORIGIN });
     deps.refreshPlugins();
     session.start();
     sess.lastStatus = { connected: true, queuedUpdates: 0 };
@@ -784,9 +838,9 @@ export async function resumeSessionFlow(
 }
 
 export async function copyShareCodeFlow(): Promise<void> {
-  const sess = chipSession();
+  const sess = actionSession();
   if (!sess) {
-    showToast('No active session');
+    showToast('This document has no active session');
     return;
   }
   const ok = await navigator.clipboard?.writeText(sess.shareCode).then(
@@ -847,9 +901,9 @@ async function sendInviteTo(
 /** Send a session invite to the starred partner/group. */
 export async function inviteStarredFlow(): Promise<void> {
   if (!collabEnabled()) return;
-  const sess = chipSession();
+  const sess = actionSession();
   if (!sess) {
-    showToast('No active session — start one first');
+    showToast('This document has no active session — start one first');
     return;
   }
   if (!settings.get('pairingEnabled')) {
@@ -994,7 +1048,8 @@ export async function endSessionFlow(deps: CollabUiDeps): Promise<void> {
   // A failed host End (relay unreachable) already toasted and left the
   // session live — don't repaint plugins or claim success.
   if (!(await endOrLeaveSession(sess))) return;
-  deps.refreshPlugins();
+  if (deps.refreshPluginsForUid) deps.refreshPluginsForUid(sess.ownerUid);
+  else deps.refreshPlugins();
   showToast(isHost ? 'Session ended' : 'Left the session');
   deps.getView()?.focus();
 }

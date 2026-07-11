@@ -11,7 +11,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { EditorView } from 'prosemirror-view';
-import { LoroDoc } from 'loro-crdt';
+import { LoroDoc, UndoManager } from 'loro-crdt';
 import { schema } from '../../src/schema/index.js';
 import {
   commentsPlugin,
@@ -29,6 +29,7 @@ import {
   installCommentsSync,
   type CommentsSyncHandle,
 } from '../../src/editor/collab/collab-comments.js';
+import { LoroUndoPlugin, undo as loroUndo } from 'loro-prosemirror';
 import {
   createLoroPeers,
   syncAll,
@@ -36,6 +37,7 @@ import {
   docOf,
   para,
   findText,
+  typeAfter,
   type LoroPeer,
 } from './_loro-helpers.js';
 
@@ -175,5 +177,57 @@ describe('collab comment-thread sync', () => {
     expect(threadsOf(b).get('2')?.comments[0]?.text).toBe('older note');
     a.destroy();
     b.destroy();
+  });
+
+  it("undo steps over comment ops (excluded origin) — Ctrl+Z can't delete comments", async () => {
+    // Session-shaped peer with the SAME undo config installSeams uses: an
+    // UndoManager excluding the comments/meta commit origins. Regression for
+    // the audit find where the undo stack interleaved doc edits with the
+    // mirror's map writes, so an undo after a comment op deleted the comment.
+    const views = new Map<LoroDoc, EditorView>();
+    const handles = new Map<LoroDoc, CommentsSyncHandle>();
+    const peers = await createLoroPeers(docOf(para('some commented text here')), 1, (ldoc) => {
+      const handle = installCommentsSync(ldoc, () => views.get(ldoc) ?? null);
+      handles.set(ldoc, handle);
+      return [
+        commentsPlugin,
+        handle.plugin,
+        LoroUndoPlugin({
+          doc: ldoc as Parameters<typeof LoroUndoPlugin>[0]['doc'],
+          undoManager: new UndoManager(ldoc, {
+            excludeOriginPrefixes: ['cm-comments', 'cm-meta'],
+          }),
+        }),
+      ];
+    });
+    const a = peers[0]! as CommentPeer;
+    views.set(a.ldoc, a.view);
+    a.handle = handles.get(a.ldoc)!;
+
+    // Edit 1 (undoable) → comment op (must be skipped) → edit 2 (undoable).
+    typeAfter(a.view, 'commented', ' ONE');
+    await settle();
+    const r = findText(a.doc(), 'commented');
+    a.view.dispatch(
+      a.view.state.tr
+        .addMark(r.from, r.to, schema.marks['comment_range']!.create({ threadId: 'u1' }))
+        .setMeta(commentsKey, addThreadMeta(thread('u1', 'survives undo'))),
+    );
+    await settle();
+    typeAfter(a.view, 'text', ' TWO');
+    await settle();
+
+    // Undo twice: both text edits unwind; the comment thread survives in
+    // plugin state AND in the shared map.
+    loroUndo(a.view.state, a.view.dispatch);
+    await settle();
+    loroUndo(a.view.state, a.view.dispatch);
+    await settle();
+    expect(a.doc().textContent).not.toContain('TWO');
+    expect(threadsOf(a).get('u1')?.comments[0]?.text).toBe('survives undo');
+    expect(
+      (a.ldoc.getMap('comments').toJSON() as Record<string, Record<string, Comment>>)['u1'],
+    ).toBeTruthy();
+    a.destroy();
   });
 });

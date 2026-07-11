@@ -155,13 +155,18 @@ export const commentsPlugin: Plugin<CommentsState> = new Plugin<CommentsState>({
         }
         case 'sync-load': {
           // Collab-session refresh: the shared thread map is the source
-          // of truth. Unlike `load` this PRESERVES the tombstone parking
-          // — a thread whose mark is locally gone stays parked (with its
-          // content refreshed, so a later undo-resurrect shows partner
-          // replies), and a thread absent from the map was deleted
-          // remotely, which beats parking.
+          // of truth FOR LIVE THREADS — one absent from the map was
+          // deleted remotely, and delete beats local state. Parking is
+          // different: it is local-only by design (seedFromView shares
+          // only live threads, and gc metas are never mirrored), so a
+          // parked thread ABSENT from the map was most likely never
+          // shared at all — dropping it killed the resurrection path for
+          // every pre-session parked thread (audit find, 2026-07-10).
+          // Seed the tombstone from prev so those survive; parked threads
+          // that ARE in the map get their content refreshed (a later
+          // undo-resurrect shows partner replies).
           const threads = new Map<string, Thread>();
-          const tombstone = new Map<string, Thread>();
+          const tombstone = new Map<string, Thread>(prev.tombstone);
           for (const t of meta.threads) {
             if (prev.tombstone.has(t.id)) tombstone.set(t.id, t);
             else threads.set(t.id, t);

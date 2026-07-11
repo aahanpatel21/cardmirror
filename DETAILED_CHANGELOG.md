@@ -93,6 +93,35 @@ single-pane module state that is stale garbage in the workspace.
   multi-pane boot also handles a stray `resumeRoomId` payload via the
   slot-picker deps instead of the empty-file dead end.
 
+- **Round 2 audit follow-through: comments correctness + chip truthfulness**
+  (`collab-comments.ts`, `collab-ui.ts`, `comments-plugin.ts`,
+  `comments-ui.ts`, `collab-hooks.ts`, `index.ts`).
+  COMMENTS: (1) the session UndoManager tracked the comment-mirror's LoroMap
+  writes alongside doc edits, so Ctrl+Z with a comment op on top of the stack
+  deleted comments/replies session-wide — comment (and meta/title) commits
+  now carry excluded origins (`cm-comments`/`cm-meta`) and installSeams
+  passes a pre-configured `UndoManager({excludeOriginPrefixes})` to
+  LoroUndoPlugin (regression test: undo unwinds text edits, thread survives
+  in plugin state AND the shared map). (2) `sync-load` rebuilt the tombstone
+  map exclusively from the shared map, but parking is local-only by design
+  (seedFromView shares live threads only; gc is never mirrored) — every
+  pre-session parked thread lost its resurrection path on the first pull;
+  the tombstone now seeds from prev and refreshes entries present in the
+  map. (3) The async AI reply resolved `this.getView()` and `newCommentId()`
+  at COMPLETION — landing the reply, with a wrong-mode id, in whichever pane
+  had focus when the answer arrived; both are now pinned at initiation, and
+  a reply whose thread vanished mid-flight is dropped.
+  CHIP: `isChipSession` now delegates to `chipSession()` (they disagreed on
+  the sole-session fallback, freezing/ghosting the label while the dots kept
+  rendering); a new `refreshChipForFocus` repaints the chip on focus change
+  (wired from `setActiveView` via `notifyCollabFocusChange`); Copy Share
+  Code / Invite Starred act via a new `actionSession()` — strictly the
+  focused doc's session (sole-session fallback only when focus is
+  unresolvable), so no more inviting partners into a different doc's
+  session. Session-END paths (remote onEnded, endSessionFlow, and
+  resolveCoEditedClose's End/Leave-then-Cancel) rebuild the OWNER doc's
+  plugin stack via the new `refreshPluginsForUid` dep instead of the
+  focused view's.
 - **Batch A session-lifecycle hardening (audit follow-through)**
   (`multi-pane-shell.ts`, `collab-persist.ts`, `collab-ui.ts`,
   `collab-hooks.ts`, `index.ts`). Five confirmed audit findings:
