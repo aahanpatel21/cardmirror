@@ -2353,6 +2353,9 @@ code {
   padding-right: 12px;
   border-radius: 4px;
 }
+/* display:flex above beats the UA's [hidden]{display:none} — restate it, or
+   collapse/filter (which hide rows via the hidden attribute) do nothing. */
+.pmd-selfref-picker-row[hidden] { display: none; }
 .pmd-selfref-picker-row:hover { background: var(--pmd-c-surface); }
 .pmd-selfref-picker-row-active {
   background: var(--pmd-c-surface);
