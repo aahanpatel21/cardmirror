@@ -635,6 +635,12 @@ export interface Settings {
   /** Whether/where SUBSTRUCTURE cards indent (display-only), configured
    *  independently of the number indent. Same values as `cardNumberingIndent`. */
   cardNumberingSubIndent: 'off' | 'tag' | 'card';
+  /** Numbers take their heading's color instead of the numbering-color token:
+   *  the tag/analytic text color settings drive the glyph, and a heading whose
+   *  ENTIRE text carries one manual font color recolors its number to match
+   *  (a partial recolor changes nothing). Overrides the numbering-color swatch
+   *  while on. Display-only. */
+  cardNumberingMatchHeadingColor: boolean;
   /** Show a red dot on the ribbon's Manage Flashcards button when one or
    *  more flashcards are due for review today. On by default. */
   flashcardDueDot: boolean;
@@ -1404,6 +1410,7 @@ const DEFAULTS: Settings = {
   cardNumberingSubCapitalized: false,
   cardNumberingIndent: 'off',
   cardNumberingSubIndent: 'off',
+  cardNumberingMatchHeadingColor: false,
   flashcardDueDot: true,
   editorSpellcheck: false,
   smartQuotes: false,
@@ -2422,7 +2429,7 @@ export const SETTING_METADATA: SettingMeta[] = [
     key: 'customColorOverrides',
     label: 'Numbering color',
     description:
-      'The color of card numbers and substructure letters. Linked with the “Card numbering” swatch under Accessibility → Color overrides — changing one changes the other.',
+      'The color of card numbers and substructure letters. Linked with the “Card numbering” swatch under Accessibility → Color overrides — changing one changes the other. “Match heading” makes each number follow its tag/analytic text color instead (including a manual font color that covers the whole heading).',
     kind: 'cardNumberColor',
     category: 'appearance',
     section: 'Card numbering',
@@ -3576,6 +3583,7 @@ function sanitize(s: Settings): Settings {
       s.cardNumberingSubIndent === 'tag' || s.cardNumberingSubIndent === 'card'
         ? s.cardNumberingSubIndent
         : 'off',
+    cardNumberingMatchHeadingColor: !!s.cardNumberingMatchHeadingColor,
     flashcardDueDot: s.flashcardDueDot === false ? false : true,
     editorSpellcheck: !!s.editorSpellcheck,
     smartQuotes: !!s.smartQuotes,

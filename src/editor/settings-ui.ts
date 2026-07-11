@@ -2946,9 +2946,27 @@ function buildCardNumberColorEditor(): HTMLElement {
       : getComputedStyle(document.documentElement).getPropertyValue('--' + TOKEN).trim();
   };
 
+  // "Match heading": numbers follow their tag/analytic text color instead of
+  // the numbering-color token; the swatch and reset gray out while it's on.
+  const matchWrap = document.createElement('label');
+  matchWrap.className = 'pmd-inline-color-match';
+  const matchBox = document.createElement('input');
+  matchBox.type = 'checkbox';
+  matchBox.setAttribute('aria-label', 'Match heading color');
+  const matchText = document.createElement('span');
+  matchText.textContent = 'Match heading';
+  matchWrap.appendChild(matchBox);
+  matchWrap.appendChild(matchText);
+  matchBox.addEventListener('change', () => {
+    settings.set('cardNumberingMatchHeadingColor', matchBox.checked);
+  });
+
   function refresh(): void {
     input.value = toHex(effective());
-    reset.disabled = !isOverridden();
+    const matching = settings.get('cardNumberingMatchHeadingColor');
+    matchBox.checked = matching;
+    input.disabled = matching;
+    reset.disabled = matching || !isOverridden();
   }
   input.addEventListener('input', () => {
     settings.set('customColorOverrides', {
@@ -2964,6 +2982,7 @@ function buildCardNumberColorEditor(): HTMLElement {
     settings.set('customColorOverrides', next);
   });
 
+  wrap.appendChild(matchWrap);
   wrap.appendChild(input);
   wrap.appendChild(reset);
   refresh();

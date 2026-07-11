@@ -113,6 +113,27 @@ single-pane module state that is stale garbage in the workspace.
   RouteChoice and the select-speech-doc modal) restores it on close, so
   in-DOM overlays no longer drop the caret to `<body>` either. Zero native
   alert/confirm/prompt calls remain under src/.
+- **Numbering: stale-glyph fix + match-heading color**
+  (`numbering-plugin.ts`, `settings.ts`, `settings-ui.ts`, `index.ts`,
+  `style.css`; tests in `tests/editor/numbering-live-update.test.ts`). The
+  widget decoration key used the RAW label (`1`/`a`) while the separator and
+  capitalization bake into the rendered glyph (`1.` vs `1)`), and ProseMirror
+  treats same-key widgets as equal — reusing the stale DOM without re-running
+  the render fn. So the settings subscriber's NUMBERING_REFRESH rebuilt the
+  set, but every widget "matched" and nothing repainted until the visibility
+  toggle destroyed/recreated them (field bug, 2026-07-11). The key now
+  includes `glyphText(label)` plus the color mode. NEW
+  `cardNumberingMatchHeadingColor` setting ("Match heading" checkbox on the
+  numbering-color control, which grays the swatch while on): glyphs get
+  `.pmd-card-number-match { color: inherit }` — the widget sits inside the
+  heading element but outside its text runs' font_color spans, so inherit
+  picks up the block color (Analytic-text option, theme, dark mode) — and
+  `wholeHeadingFontColor()` detects a single manual font color covering the
+  heading's ENTIRE text (000000 = Word "Automatic" never counts; any
+  uncolored or differently-colored run breaks uniformity) and applies it
+  inline per glyph. The heading-color detection re-runs on every doc change,
+  and the color joins the widget key + numberingDisplaySig, so recolors and
+  the checkbox both repaint live.
 - **Send-to-speech: range selections snap like carets**
   (`speech-doc-send.ts`, regression matrix in
   `tests/editor/speech-send-insert.test.ts`). insertSpeechSlice's

@@ -63,12 +63,51 @@ export function numberingSampleGlyph(kind: 'number' | 'sub'): string {
     : glyphText({ kind: 'sub', value: 1, text: 'a' });
 }
 
-/** The read-only number glyph element. Shared by the widget decorations (host
- *  cards) and the live-view NodeView (projected cards). */
-export function createNumberGlyph(label: NumberLabel): HTMLElement {
+/** "Match heading" color resolution: the single manual font color covering the
+ *  heading's ENTIRE text, or null to inherit the heading's block color. Only
+ *  text runs count (images/footnote refs have no font color); `000000` is
+ *  Word's "Automatic" (renders as inherit) so it never counts as an override;
+ *  any uncolored or differently-colored run breaks uniformity — a PARTIAL
+ *  recolor deliberately leaves the number on the heading's base color. */
+function wholeHeadingFontColor(heading: PMNode | null): string | null {
+  if (!heading) return null;
+  let color: string | null = null;
+  let sawText = false;
+  let uniform = true;
+  heading.content.forEach((n) => {
+    if (!uniform || !n.isText || !n.text) return;
+    sawText = true;
+    const mark = n.marks.find((m) => m.type.name === 'font_color');
+    const hex = mark ? String(mark.attrs['color'] ?? '000000') : null;
+    if (!hex || /^0{6}$/.test(hex)) {
+      uniform = false;
+      return;
+    }
+    if (color === null) color = hex;
+    else if (color.toLowerCase() !== hex.toLowerCase()) uniform = false;
+  });
+  return sawText && uniform ? color : null;
+}
+
+/** The read-only number glyph element (rendered by the widget decorations).
+ *  `match` = the "match heading" color mode: the glyph inherits its heading's
+ *  color, or takes `colorHex` when one manual font color covers the whole
+ *  heading. Off → the numbering-color token via CSS. */
+export function createNumberGlyph(
+  label: NumberLabel,
+  opts?: { match?: boolean; colorHex?: string | null },
+): HTMLElement {
   const span = document.createElement('span');
   span.className = 'pmd-card-number';
   if (label.kind === 'sub') span.classList.add('pmd-card-number-sub');
+  if (opts?.match) {
+    // The widget sits inside the heading element but OUTSIDE its text runs'
+    // font_color spans — `inherit` picks up the block color (tag/analytic
+    // color settings, theme, dark mode); the whole-heading manual override
+    // has to be applied explicitly.
+    span.classList.add('pmd-card-number-match');
+    if (opts.colorHex) span.style.color = `#${opts.colorHex}`;
+  }
   span.textContent = glyphText(label);
   // Chrome, not content: never editable, never a selection/caret target.
   span.setAttribute('contenteditable', 'false');
@@ -84,15 +123,27 @@ function build(doc: PMNode): NumberingState {
   // indent. Number and substructure cards indent per their OWN setting.
   const numberIndent = settings.get('cardNumberingIndent');
   const subIndent = settings.get('cardNumberingSubIndent');
+  const matchHeading = settings.get('cardNumberingMatchHeadingColor');
   for (const [cardPos, label] of cards) {
     // card at cardPos → its `tag`/`analytic` heading at +1 → the heading's inline
     // content starts at +2. Sit the number at the very start of that line.
     const at = cardPos + 2;
     if (at > doc.content.size) continue;
+    const headingColor = matchHeading
+      ? wholeHeadingFontColor(doc.nodeAt(cardPos)?.firstChild ?? null)
+      : null;
     decos.push(
-      Decoration.widget(at, () => createNumberGlyph(label), {
+      Decoration.widget(at, () => createNumberGlyph(label, { match: matchHeading, colorHex: headingColor }), {
         side: -1,
-        key: `cnum:${cardPos}:${label.kind}:${label.text}`,
+        // Key includes the RENDERED glyph, not the raw label.text — separator
+        // and capitalization bake into the glyph at render time, so a
+        // format-only change (which doesn't touch position or label.text)
+        // must still bust the key. Same key → ProseMirror reuses the existing
+        // DOM node and never re-runs the render fn, leaving the old glyph on
+        // screen until an unrelated rebuild (the "doesn't update until I
+        // toggle numbering" field bug, 2026-07-11). The color mode/override
+        // is part of the render too, so it joins the key.
+        key: `cnum:${cardPos}:${label.kind}:${glyphText(label)}:${matchHeading ? headingColor ?? 'inh' : 'tok'}`,
         ignoreSelection: true,
       }),
     );

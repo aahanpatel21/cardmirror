@@ -1875,7 +1875,9 @@ How things look. None of these change the file — only your view (see
   hyphen, m-dash, n-dash, colon, or a double / triple hyphen).
 - **Capitalize substructure** — upper- or lower-case the sub-part.
 - **Number color** — the color of the numbers, linked to the Accessibility
-  color overrides.
+  color overrides. Or check **Match heading** to have each number follow its
+  own tag or analytic's text color instead — including a manual font color,
+  when it covers the heading's entire text.
 - **Number indent** and **substructure indent** — how far each is indented.
 
 ### Editing

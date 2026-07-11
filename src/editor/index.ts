@@ -3135,6 +3135,7 @@ const numberingDisplaySig = (): string =>
     settings.get('cardNumberingSubCapitalized'),
     settings.get('cardNumberingIndent'),
     settings.get('cardNumberingSubIndent'),
+    settings.get('cardNumberingMatchHeadingColor'),
   ].join('|');
 let lastNumberingDisplay = numberingDisplaySig();
 

@@ -2305,6 +2305,22 @@ code {
   color: var(--pmd-c-card-number);
   user-select: none;
 }
+/* "Match heading" color mode: the glyph inherits the tag/analytic block color
+   (so the Document-text color settings, theme, and dark mode drive it); a
+   whole-heading manual font color is applied inline per glyph by the plugin. */
+.pmd-card-number-match {
+  color: inherit;
+}
+/* "Match heading" checkbox inline with the numbering-color swatch. */
+.pmd-inline-color-match {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  margin-right: 0.6em;
+  font-size: 0.85em;
+  cursor: pointer;
+  user-select: none;
+}
 .pmd-card-number-sub {
   /* No left margin: indentation is governed solely by the (per-level) indent
      settings, exactly like the number glyph. A baked-in offset here indented

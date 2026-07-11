@@ -21,6 +21,16 @@ remains **experimental** — keep your own saved copies.)
   during the reload, only ever restored some sessions, and left stray copies
   of documents from other windows.
 
+- **Card numbering: appearance changes apply instantly, and numbers can match
+  their heading's color.** Changing the number or substructure separator (or
+  capitalization) now repaints existing numbers immediately instead of waiting
+  for the next numbering toggle. And the numbering-color setting gains a
+  **Match heading** option: each number takes its own tag or analytic's text
+  color — so the Analytic text color option (and the document text color)
+  drive the numbers, and a manual font color recolors a number too, when it
+  covers the heading's entire text (a partially recolored heading leaves its
+  number on the base color).
+
 - **Dialog polish.** Plain yes/no confirmations (starting or ending a
   co-editing session, switching workspace modes) now show two equal buttons
   instead of one large option card with a small cancel link — the big option
