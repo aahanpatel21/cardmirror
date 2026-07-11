@@ -38,6 +38,7 @@ import {
   type UnitRange,
 } from './structural-move.js';
 import { preciseScrollIntoView } from './precise-scroll.js';
+import { aiConfigured } from './ai/llm.js';
 import { showToast } from './toast.js';
 
 const ZOOM_MIN = ZOOM_MIN_PCT;
@@ -525,7 +526,7 @@ function buildRepairSheet(): HTMLElement {
 }
 
 function aiReady(): boolean {
-  return settings.get('aiFeaturesEnabled') && settings.get('anthropicApiKey').trim() !== '';
+  return aiConfigured();
 }
 
 function showRepairSheet(unit: UnitRange): void {

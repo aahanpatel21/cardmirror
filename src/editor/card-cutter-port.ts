@@ -24,7 +24,7 @@ import type { Node as PMNode } from 'prosemirror-model';
 import { schema } from '../schema/index.js';
 import { settings } from './settings.js';
 import { compileShrinkProtections, findProtectedRanges } from './ribbon-commands.js';
-import { callLlm } from './ai/llm.js';
+import { callLlm, activeApiKey } from './ai/llm.js';
 import { resolveAiModel } from './ai/llm.js';
 import { showToast } from './toast.js';
 import { AiActivity } from './ai/ai-activity.js';
@@ -216,7 +216,7 @@ export async function tryLoadCardCutterEngine(): Promise<boolean> {
 function makeLlm(): LlmCaller {
   return async (system, user, model) => {
     const reply = await callLlm({
-      apiKey: settings.get('anthropicApiKey').trim(),
+      apiKey: activeApiKey(),
       model,
       system,
       maxTokens: 8000,
@@ -492,7 +492,7 @@ export async function cutFocusedCard(
     }
   }
   const api = engine!;
-  if (!settings.get('anthropicApiKey').trim()) {
+  if (!activeApiKey()) {
     showToast('Set an Anthropic API key in Settings to use the card cutter.');
     return null;
   }
@@ -741,7 +741,7 @@ export async function refineHighlightFocusedCard(
     showToast('Card-cutter engine not loaded.');
     return;
   }
-  if (!settings.get('anthropicApiKey').trim()) {
+  if (!activeApiKey()) {
     showToast('Set an Anthropic API key in Settings to use the card cutter.');
     return;
   }
@@ -848,7 +848,7 @@ export async function addHighlightFocusedCard(view: EditorView): Promise<void> {
     showToast('Card-cutter engine not loaded.');
     return;
   }
-  if (!settings.get('anthropicApiKey').trim()) {
+  if (!activeApiKey()) {
     showToast('Set an Anthropic API key in Settings to use the card cutter.');
     return;
   }

@@ -20,7 +20,7 @@
 
 import type { EditorView } from 'prosemirror-view';
 import { settings, condenseWarningCloseFor } from './settings.js';
-import { callLlm, LlmError, resolveAiModel } from './ai/llm.js';
+import { callLlm, LlmError, resolveAiModel, activeApiKey, aiConfigured } from './ai/llm.js';
 import { showToast } from './toast.js';
 
 /** Languages offered in the source / target pickers. ISO 639-1 codes —
@@ -77,7 +77,7 @@ type ResolvedProvider = 'mymemory' | 'anthropic' | 'google';
 
 /** True when the Anthropic path is usable (AI master switch on + a key). */
 function anthropicReady(): boolean {
-  return settings.get('aiFeaturesEnabled') && settings.get('anthropicApiKey').trim().length > 0;
+  return aiConfigured();
 }
 
 /** Resolve the configured provider, expanding `'auto'`. */
@@ -218,7 +218,7 @@ async function translateAnthropic(
     throw new Error('Anthropic translation needs AI features — enable them under Comments & AI.');
   }
   const reply = await callLlm({
-    apiKey: settings.get('anthropicApiKey').trim(),
+    apiKey: activeApiKey(),
     system: anthropicTranslatorPrompt(languageName(target)),
     maxTokens: ANTHROPIC_TRANSLATE_MAX_TOKENS,
     messages: [{ role: 'user', content: text }],

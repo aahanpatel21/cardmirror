@@ -17,6 +17,7 @@ import type { EditorView } from 'prosemirror-view';
 import type { Node as PMNode } from 'prosemirror-model';
 import { settings } from './settings.js';
 import { runGenerateAltText, runGenerateTable } from './ai/image-ai.js';
+import { activeApiKey } from './ai/llm.js';
 import { promptForText } from './text-prompt.js';
 
 /** PM plugin. Installed via `buildEditorPlugins` so every editor
@@ -76,7 +77,7 @@ function showImageContextMenu(
   closeImageContextMenu();
 
   const aiOn = settings.get('aiFeaturesEnabled');
-  const hasKey = settings.get('anthropicApiKey').trim().length > 0;
+  const hasKey = activeApiKey() !== '';
   const aiBlockedReason =
     !aiOn ? 'AI features are disabled — enable them in Settings.'
     : !hasKey ? 'Set an Anthropic API key in Settings to use AI features.'

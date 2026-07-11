@@ -20,7 +20,7 @@ import type { EditorView } from 'prosemirror-view';
 import type { Node as PMNode } from 'prosemirror-model';
 import { schema } from '../schema/index.js';
 import { settings } from './settings.js';
-import { callLlm, LlmError, type LlmMessage } from './ai/llm.js';
+import { callLlm, LlmError, type LlmMessage, activeApiKey } from './ai/llm.js';
 import {
   buildExplainContext,
   formatExplainFirstTurn,
@@ -1379,7 +1379,7 @@ export class CommentsColumn {
       showToast('AI features are disabled — enable them in Settings.');
       return;
     }
-    const apiKey = settings.get('anthropicApiKey').trim();
+    const apiKey = activeApiKey();
     if (!apiKey) {
       showToast('Set an Anthropic API key in Settings to use AI features.');
       return;
@@ -1491,7 +1491,7 @@ export class CommentsColumn {
       showToast('AI features are disabled — enable them in Settings.');
       return;
     }
-    const apiKey = settings.get('anthropicApiKey').trim();
+    const apiKey = activeApiKey();
     if (!apiKey) {
       showToast('Set an Anthropic API key in Settings to use AI features.');
       return;
@@ -2226,7 +2226,7 @@ export class CommentsColumn {
       showToast('AI features are disabled — enable them in Settings.');
       return;
     }
-    const apiKey = settings.get('anthropicApiKey').trim();
+    const apiKey = activeApiKey();
     if (!apiKey) {
       showToast('Set an Anthropic API key in Settings to use AI features.');
       return;

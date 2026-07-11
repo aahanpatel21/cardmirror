@@ -34,6 +34,7 @@ import {
   callLlm,
   VISION_MEDIA_TYPES,
   type LlmContentBlock,
+  activeApiKey,
 } from './llm.js';
 import { AiActivity } from './ai-activity.js';
 import { claimRegion } from './edit-coordinator.js';
@@ -60,7 +61,7 @@ function preflight(): string | null {
     showToast('AI features are disabled — enable them in Settings.');
     return null;
   }
-  const apiKey = settings.get('anthropicApiKey').trim();
+  const apiKey = activeApiKey();
   if (!apiKey) {
     showToast('Set an Anthropic API key in Settings to use AI features.');
     return null;

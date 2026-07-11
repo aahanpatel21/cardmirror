@@ -22,7 +22,7 @@ import { Selection } from 'prosemirror-state';
 import type { EditorState, Transaction } from 'prosemirror-state';
 import type { Node as PMNode } from 'prosemirror-model';
 import { settings } from '../settings.js';
-import { callLlm, LlmError } from './llm.js';
+import { callLlm, LlmError, activeApiKey } from './llm.js';
 import { showToast } from '../toast.js';
 import { AiActivity } from './ai-activity.js';
 import { claimRegion, type EditLease } from './edit-coordinator.js';
@@ -702,7 +702,7 @@ export function runRepairText(view: EditorView): void {
     showToast('AI features are disabled — enable them in Settings.');
     return;
   }
-  const apiKey = settings.get('anthropicApiKey').trim();
+  const apiKey = activeApiKey();
   if (!apiKey) {
     showToast('Set an Anthropic API key in Settings to use AI features.');
     return;
