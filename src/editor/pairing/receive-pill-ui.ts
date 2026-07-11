@@ -341,10 +341,14 @@ export class ReceivePillController {
       join.title = 'Join the collaboration session';
       join.addEventListener('click', (e) => {
         e.stopPropagation();
-        joiner(invite.shareCode);
-        // Consumed on use: a share code is a session credential, not a
-        // card to keep around.
-        void inboxStore.remove(item.id);
+        // Consume the invite only when the join actually lands: a cancelled
+        // slot pick, an unreachable/filtered relay, or a balked overwrite
+        // prompt must not burn the share code (the host would have to
+        // re-invite for every retry). A dead room (session ended) reports
+        // true from the flow so the useless row still clears.
+        void joiner(invite.shareCode).then((joined) => {
+          if (joined) void inboxStore.remove(item.id);
+        });
       });
       row.appendChild(join);
     }

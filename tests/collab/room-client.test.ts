@@ -55,6 +55,28 @@ describe('RoomsClient', () => {
     expect(err).toBeInstanceOf(RoomsError);
     expect((err as RoomsError).status).toBe(410);
   });
+
+  it('surfaces a clear RoomsError when an interceptor answers HTML instead of JSON', async () => {
+    // A school content filter (Securly — field bug 2026-07-10), captive
+    // portal, or misconfigured relay URL answers 200 + an HTML page; the
+    // client must say so plainly rather than leak the raw JSON.parse error.
+    const html = '<!DOCTYPE html><html><body>Blocked by your administrator</body></html>';
+    const intercepted = new RoomsClient({
+      baseUrl: () => 'https://relay.example',
+      token: () => 't',
+      fetchImpl: async () =>
+        new Response(html, {
+          status: 200,
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        }),
+    });
+    const err = await intercepted.fetchUpdates('room1', 0).catch((e: RoomsError) => e);
+    expect(err).toBeInstanceOf(RoomsError);
+    expect((err as RoomsError).message).toMatch(/web page instead of session data/);
+    // Names the URL it actually hit — the diagnostic we need from the field.
+    expect((err as RoomsError).message).toContain('https://relay.example/rooms/room1/updates?after=0');
+    expect((err as RoomsError).message).not.toMatch(/Unexpected token/);
+  });
 });
 
 describe('RoomStream', () => {

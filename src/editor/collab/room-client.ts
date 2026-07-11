@@ -82,20 +82,49 @@ export class RoomsClient {
     return res;
   }
 
+  /** Parse a JSON body, but fail LOUDLY and clearly when the relay hands back
+   *  something that isn't JSON. A captive portal, filtering proxy, antivirus
+   *  web-shield, or a misconfigured relay URL that resolves to a web app all
+   *  answer with a 200 HTML page; without this the caller would surface the
+   *  cryptic `Unexpected token '<', "<!DOCTYPE"... is not valid JSON`. We read
+   *  the body as text FIRST (a Response body reads once), then parse, so the
+   *  error message can quote the URL and the page. */
+  private async readJson<T>(res: Response, path: string): Promise<T> {
+    const text = await res.text();
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      const url = `${this.opts.baseUrl()}${path}`;
+      const trimmed = text.trimStart();
+      const looksHtml = /^<(?:!doctype|html|\?xml)/i.test(trimmed);
+      const ctype = res.headers.get('content-type') ?? 'unknown type';
+      throw new RoomsError(
+        res.status,
+        looksHtml
+          ? `the relay returned a web page instead of session data ` +
+              `(HTTP ${res.status}, ${ctype}) from ${url} — a proxy, content ` +
+              `filter, or wrong relay URL is likely intercepting the connection.`
+          : `the relay returned an unreadable (non-JSON) response ` +
+              `(HTTP ${res.status}, ${ctype}) from ${url}.`,
+      );
+    }
+  }
+
   async createRoom(): Promise<string> {
     const res = await this.request('/rooms', { method: 'POST', headers: this.headers() });
-    const body = (await res.json()) as { roomId?: string };
+    const body = await this.readJson<{ roomId?: string }>(res, '/rooms');
     if (!body.roomId) throw new RoomsError(0, 'malformed createRoom response');
     return body.roomId;
   }
 
   async postUpdate(roomId: string, blob: Uint8Array): Promise<number> {
-    const res = await this.request(`/rooms/${roomId}/updates`, {
+    const path = `/rooms/${roomId}/updates`;
+    const res = await this.request(path, {
       method: 'POST',
       headers: this.headers({ 'Content-Type': 'application/octet-stream' }),
       body: blob as unknown as BodyInit,
     });
-    const body = (await res.json()) as { seq?: number };
+    const body = await this.readJson<{ seq?: number }>(res, path);
     if (typeof body.seq !== 'number') throw new RoomsError(0, 'malformed postUpdate response');
     return body.seq;
   }
@@ -103,15 +132,16 @@ export class RoomsClient {
   /** One page; loop while `more` (the session layer drives paging so it
    *  can apply between pages on huge backlogs). */
   async fetchUpdates(roomId: string, after: number): Promise<FetchUpdatesResult> {
-    const res = await this.request(`/rooms/${roomId}/updates?after=${after}`, {
+    const path = `/rooms/${roomId}/updates?after=${after}`;
+    const res = await this.request(path, {
       headers: this.headers(),
     });
-    const body = (await res.json()) as {
+    const body = await this.readJson<{
       snapshot?: { blob: string; coversThroughSeq: number };
       updates?: Array<{ seq: number; blob: string }>;
       lastSeq?: number;
       more?: boolean;
-    };
+    }>(res, path);
     return {
       snapshot: body.snapshot
         ? { blob: base64ToBytes(body.snapshot.blob), coversThroughSeq: body.snapshot.coversThroughSeq }

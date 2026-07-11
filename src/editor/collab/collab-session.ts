@@ -703,6 +703,14 @@ export class CollabSession {
     } catch (err) {
       if (err instanceof RoomsError && err.status === 410) {
         this.handleEnded();
+        // A STRICT initial sync (join/first resume tick) must NOT silently
+        // succeed on an ended/expired room — otherwise the caller mounts a
+        // blank doc masquerading as a joined session, shows "Joined the
+        // session", and leaves a phantom resumable record. Rethrow so join()
+        // fails and the UI can say the session has ended. Steady-state
+        // catch-ups (rethrow=false) keep swallowing it — handleEnded already
+        // drove the onEnded teardown.
+        if (rethrow) throw err;
         return;
       }
       this.connected = false;

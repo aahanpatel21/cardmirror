@@ -251,8 +251,19 @@ function installWakeHooks(session: CollabSession): () => void {
  *  renders in its own pane. Window-level seams (tagger, presence timer, comment-
  *  id mode) are shared across every live session and retired in `teardownSession`
  *  when the last one ends. `ownerUid` is the map key (the focused doc at start). */
-function installSeams(session: CollabSession, deps: CollabUiDeps, shareCode: string): ActiveSession {
-  const ownerUid = deps.getOwnerUid?.() ?? '';
+/** `ownerUid` is the map key and the doc the seams bind into. It is passed in
+ *  (not re-read from `deps.getOwnerUid()` here) because every caller has already
+ *  awaited a confirm dialog and/or a relay round-trip by this point: re-reading
+ *  focus now would bind the session onto whatever doc the user has since clicked
+ *  into. Callers capture it at the moment that fixes the target — start: the
+ *  focused doc when Start was chosen; join/resume: the freshly-created session
+ *  doc right after newSessionDoc(). */
+function installSeams(
+  session: CollabSession,
+  deps: CollabUiDeps,
+  shareCode: string,
+  ownerUid: string,
+): ActiveSession {
   const ownerView = (): EditorView | null =>
     (ownerUid ? deps.getViewForUid?.(ownerUid) ?? null : null) ?? deps.getView();
   // One shared tagger stamps ANY binding transaction (keyed off the Loro plugin
@@ -402,19 +413,29 @@ function sessionCallbacks(deps: CollabUiDeps, getSess: () => ActiveSession | nul
 export function relayFailureMessage(err: unknown, opts: { initiating: boolean; verb: string }): string {
   if (err instanceof RoomsError && err.status === 401) {
     return opts.initiating
-      ? 'Starting a collaboration session requires a relay. In Settings → Card ' +
-          'Sharing, connect your Debate Decoded account or set up your own relay.'
+      ? 'Starting a collaboration session requires a relay. In Settings → ' +
+          'Collaboration, connect your Debate Decoded account or set up your own relay.'
       : 'The session relay rejected your credentials. In Settings → Collaboration, ' +
           'connect your Debate Decoded account or set up your own relay.';
+  }
+  // 410 = the room was ended (host) or expired (idle GC). Not an error the
+  // user can retry into — tell them the session is over rather than leaking
+  // the raw "rooms request failed: 410".
+  if (err instanceof RoomsError && err.status === 410) {
+    return 'That co-editing session has ended — ask for a fresh invite to start a new one.';
   }
   return `Could not ${opts.verb}: ${(err as Error).message}`;
 }
 
+/** Start-session gate: a session is started FOR a focused document, so a
+ *  live view is required (join/resume create their own doc and do not use
+ *  this). The message holds in both modes — single-pane always has a doc;
+ *  multi-pane hits this only with every slot empty/unfocused. */
 function guardReady(deps: CollabUiDeps): EditorView | null {
   if (!collabEnabled()) return null;
   const view = deps.getView();
   if (!view) {
-    showToast('Collaboration sessions need a single-document window');
+    showToast('Open and focus a document to start a co-editing session');
     return null;
   }
   return view;
@@ -457,7 +478,10 @@ export async function startSessionFlow(deps: CollabUiDeps): Promise<void> {
       client,
       callbacks: sessionCallbacks(deps, () => sessRef),
     });
-    const sess = installSeams(session, deps, shareCode);
+    // ownerUid captured at flow start (line ~427), under the doc that was
+    // focused when Start was chosen — host() shared THAT doc's content, so the
+    // seams must bind to it even if focus has since moved.
+    const sess = installSeams(session, deps, shareCode, ownerUid);
     sessRef = sess;
     // Seed before start(): the first flush then carries the host's
     // existing comment threads alongside the seeded doc — and the doc
@@ -495,32 +519,39 @@ export async function joinSessionFlow(deps: CollabUiDeps): Promise<void> {
 }
 
 /** Join with a code in hand — the prompt flow above and the Receive
- *  pill's invite Join both land here. */
-export async function joinSessionWithCode(deps: CollabUiDeps, code: string): Promise<void> {
-  if (!guardReady(deps)) return;
+ *  pill's invite Join both land here. Returns true when the join actually
+ *  landed (or was handed to a spawned window) — the Receive pill consumes
+ *  the invite only then, so a cancelled slot pick or an unreachable relay
+ *  doesn't burn the share code. No view is required up front: the flow
+ *  creates its own doc via deps.newSessionDoc (multi-pane may be an empty
+ *  workspace at this point). */
+export async function joinSessionWithCode(deps: CollabUiDeps, code: string): Promise<boolean> {
+  if (!collabEnabled()) return false;
   // Don't overwrite the doc you're working in — or bump the session you're
   // already in: unless this window holds the disposable starter, hand the
   // join to a fresh window (which re-enters here with the starter open, so it
   // joins in place). Runs BEFORE the `active` guard and the session creation,
   // so an active-session window opens the new join elsewhere instead of
   // refusing, and the session + binding are born in the window that keeps them.
-  if (deps.spawnJoinWindow?.(code.trim())) return;
+  // (Single-pane desktop only; the multi-pane deps have no spawnJoinWindow.)
+  // Counts as consumed: the join continues in the spawned window.
+  if (deps.spawnJoinWindow?.(code.trim())) return true;
   // Don't overwrite a doc that's ITSELF in a session (spawnJoinWindow already
   // redirected windows holding a real doc; this guards the edge case).
   if (sessionFor(deps.getOwnerUid?.())) {
     showToast('This document is in a session — end or leave it before joining here');
-    return;
+    return false;
   }
   await ensureBakedRelay();
   const client = relayClient();
   if (!client) {
     showToast('Set the relay URL and token in Settings → Collaboration first');
-    return;
+    return false;
   }
   const decoded = decodeShareCode(code);
   if (!decoded) {
     showToast('That does not look like a share code');
-    return;
+    return false;
   }
   // Resolved after newSessionDoc/installSeams; callbacks read it lazily.
   let sessRef: ActiveSession | null = null;
@@ -534,6 +565,9 @@ export async function joinSessionWithCode(deps: CollabUiDeps, code: string): Pro
         callbacks: sessionCallbacks(deps, () => sessRef),
       });
     } catch (err) {
+      // An ENDED/expired room (410) is not an offline condition — the seed
+      // would resume a session that no longer exists. Surface it as ended.
+      if (err instanceof RoomsError && err.status === 410) throw err;
       // Offline (or relay unreachable): fall back to the invite's
       // prefetched seed (§4.1). Everything in it came FROM the room,
       // so resume() with no sentVersion is exact; start() syncs at the
@@ -554,16 +588,20 @@ export async function joinSessionWithCode(deps: CollabUiDeps, code: string): Pro
       });
       joinedOffline = true;
     }
-    void deletePrefetch(decoded.roomId);
-    // Create the fresh unsaved session doc FIRST — its uid is the session owner.
-    // A false return = the user balked at overwriting unsaved edits — unwind
-    // without touching the room.
+    // Create the fresh unsaved session doc — its uid is the session owner
+    // (single-pane swaps this window's doc; multi-pane slot-picks). A false
+    // return = the user balked (overwrite prompt / slot picker) — unwind
+    // without touching the room AND keep the prefetched seed: the invite
+    // stays retryable.
     if (!(await deps.newSessionDoc())) {
       await session.stop();
       showToast('Join cancelled');
-      return;
+      return false;
     }
-    sessRef = installSeams(session, deps, code.trim());
+    // The session owner is the doc newSessionDoc() just created — capture its
+    // uid NOW, before any later focus change, so the seams bind into it.
+    const ownerUid = deps.getOwnerUid?.() ?? '';
+    sessRef = installSeams(session, deps, code.trim(), ownerUid);
     // Add the binding to the fresh doc's view — its init replaces the empty
     // content with the session's CRDT state.
     deps.refreshPlugins();
@@ -574,15 +612,25 @@ export async function joinSessionWithCode(deps: CollabUiDeps, code: string): Pro
     session.start();
     sessRef.lastStatus = { connected: !joinedOffline, queuedUpdates: 0 };
     updateChip({ connected: !joinedOffline, queuedUpdates: 0 });
+    // Only NOW is the seed spent — the join is committed (for the offline
+    // path the seed's content lives on in the session + its persist record).
+    void deletePrefetch(decoded.roomId);
     showToast(
       joinedOffline
         ? 'Joined from the prefetched copy — will sync when you reconnect'
         : 'Joined the session',
     );
     deps.getView()?.focus();
+    return true;
   } catch (err) {
     if (sessRef) void teardownSession(sessRef);
+    // A dead room's invite and seed are useless — purge the seed and report
+    // consumed so the Receive pill clears the row. Every other failure keeps
+    // both, so the user can retry once the network/slot situation changes.
+    const ended = err instanceof RoomsError && err.status === 410;
+    if (ended) void deletePrefetch(decoded.roomId);
     showToast(relayFailureMessage(err, { initiating: false, verb: 'join' }));
+    return ended;
   }
 }
 
@@ -598,7 +646,10 @@ export async function resumeSessionFlow(
   opts?: { existingDoc?: boolean },
 ): Promise<void> {
   if (!collabEnabled()) return; // desktop-only; inert on the web edition
-  if (!guardReady(deps)) return;
+  // No up-front view requirement: unless resuming into an existing doc, the
+  // flow creates its own via deps.newSessionDoc (multi-pane may be an empty
+  // workspace reached from the home screen's Sessions list).
+  if (opts?.existingDoc && !deps.getView()) return;
   if (sessionFor(deps.getOwnerUid?.())) {
     showToast('This document is in a session — end or leave it first');
     return;
@@ -649,7 +700,11 @@ export async function resumeSessionFlow(
       showToast('Resume cancelled');
       return;
     }
-    sessRef = installSeams(session, deps, record.shareCode);
+    // Owner = the doc that will hold the session: for existingDoc (mode-switch
+    // reopen) it is the already-open doc under its original uid; otherwise the
+    // fresh doc newSessionDoc() just made. Capture now, past the awaits.
+    const ownerUid = deps.getOwnerUid?.() ?? '';
+    sessRef = installSeams(session, deps, record.shareCode, ownerUid);
     deps.refreshPlugins();
     sessRef.commentsSync.pull();
     adoptSharedTitle(deps, session);

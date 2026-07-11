@@ -790,6 +790,9 @@ let multiDocGetAllFilenames: (() => (string | null)[]) | null = null;
 /** Resolve one doc uid → its filename (across all panes + stacks). Used by
  *  collab to name a session after its OWNER doc, not the whole-window title. */
 let multiDocGetFilenameForUid: ((uid: string) => string | null) | null = null;
+// Collab join/resume in the workspace (slot-picker session docs).
+let multiDocCreateSessionDoc: (() => Promise<string | null>) | null = null;
+let multiDocSetFilenameForUid: ((uid: string, name: string) => void) | null = null;
 /** App-quit path: the shell prompts to save every unsaved pane, returning false
  *  if the user cancels (abort the quit). null in single-doc mode. */
 let multiDocPromptSaveAllForQuit: (() => Promise<boolean>) | null = null;
@@ -891,6 +894,13 @@ export function enableMultiDocMode(opts: {
    *  Lets collab publish/label a session with its OWNER doc's name rather than
    *  the whole-window title. */
   getFilenameForUid?: (uid: string) => string | null;
+  /** Collab join/resume in the workspace: create a fresh unsaved doc in a
+   *  user-picked slot to hold the session. Returns its uid, or null when the
+   *  user cancels the slot picker. */
+  createSessionDoc?: () => Promise<string | null>;
+  /** Rename the open doc with `uid` wherever it lives — session title adoption
+   *  targets the owner doc, which may no longer be the focused one. */
+  setFilenameForUid?: (uid: string, name: string) => void;
   /** App-quit path: prompt to save every unsaved doc across all panes (without
    *  closing them). Returns false if the user cancels — the quit aborts. */
   promptSaveAllForQuit?: () => Promise<boolean>;
@@ -936,6 +946,8 @@ export function enableMultiDocMode(opts: {
   multiDocSetFocusedDocId = opts.setFocusedDocId ?? null;
   multiDocGetAllFilenames = opts.getAllFilenames ?? null;
   multiDocGetFilenameForUid = opts.getFilenameForUid ?? null;
+  multiDocCreateSessionDoc = opts.createSessionDoc ?? null;
+  multiDocSetFilenameForUid = opts.setFilenameForUid ?? null;
   multiDocPromptSaveAllForQuit = opts.promptSaveAllForQuit ?? null;
   multiDocClearFocusedJournal = opts.clearFocusedJournal ?? null;
   multiDocNotifyFocusedSaved = opts.notifyFocusedSaved ?? null;
@@ -1048,9 +1060,15 @@ function loadCollabUi(): Promise<typeof import('./collab/collab-ui.js')> {
 // Receive-pill invites: hand the share code from a `room-invite` inbox
 // row to the lazy collab module. Registered unconditionally (cheap
 // setter); the pill itself gates the Join button on collabEnabled().
-setCollabInviteJoiner((code) => {
-  void loadCollabUi().then((m) => m.joinSessionWithCode(collabDeps, code));
-});
+// Deps are picked PER CLICK: the multi-pane workspace joins into a
+// user-picked slot; single-pane joins in place (or spawns a window).
+// The returned promise reports success so the pill only consumes the
+// invite (and its share code) when the join actually landed.
+setCollabInviteJoiner((code) =>
+  loadCollabUi().then((m) =>
+    m.joinSessionWithCode(multiDocActive ? makeMultiPaneSessionDeps() : collabDeps, code),
+  ),
+);
 setCollabInviter((target) => {
   void loadCollabUi().then((m) => m.inviteTargetFlow(collabDeps, target));
 });
@@ -1102,6 +1120,12 @@ const collabDeps = {
   // single-window (or the starter already open) → false → join here.
   spawnJoinWindow: (shareCode: string): boolean => {
     const host = getHost();
+    // Three-pane is ONE window: sessions join into slots (the multi-pane deps
+    // below), never a spawned OS window. This gate is defense-in-depth for any
+    // caller that reaches the single-pane deps while the workspace is active —
+    // isPristineStarter is single-pane module state and stale garbage here
+    // (field bug: spawn-to-join dead-ended in "This file is empty…").
+    if (multiDocActive) return false;
     if (!host.canSpawnWindow || isPristineStarter) return false;
     void host
       .spawnWindow({
@@ -1120,6 +1144,48 @@ const collabDeps = {
   },
 };
 
+/** Deps for joining/resuming a session in the multi-pane workspace. The
+ *  session doc is created in a slot the user picks, and every hook resolves
+ *  through THAT doc's uid — never the focused pane, which can change mid-flow
+ *  (same per-uid pattern as the mode-switch auto-resume deps). Single-use:
+ *  build one per join/resume flow — the created doc's uid lives in the
+ *  closure. Field bugs this replaces: the single-pane deps either aborted
+ *  ("Join cancelled" after streaming the whole doc — replaceWithSessionDoc
+ *  bails under multiDocActive) or spawned a second window that dead-ended in
+ *  the empty-file open error (2026-07-10). */
+function makeMultiPaneSessionDeps() {
+  let uid: string | null = null;
+  const viewFor = (u: string | null): EditorView | null =>
+    u ? getSpeechDocResolver().viewForUid(u) : null;
+  return {
+    // Before the session doc exists this is only consulted by guards; the
+    // focused pane's view is fine (and null is allowed — the flows create
+    // their doc via newSessionDoc).
+    getView: () => viewFor(uid) ?? getActiveView(),
+    getOwnerUid: () => uid,
+    getViewForUid: (u: string) => getSpeechDocResolver().viewForUid(u),
+    refreshPlugins: () => {
+      const v = viewFor(uid);
+      if (v) v.updateState(v.state.reconfigure({ plugins: buildEditorPlugins(uid) }));
+    },
+    // Adopt the host-published title on the session doc's own record (by
+    // uid — focus may have moved during the join round-trip).
+    setDocTitle: (title: string) => {
+      if (uid) multiDocSetFilenameForUid?.(uid, title);
+    },
+    // Fresh unsaved doc in a user-picked slot; the Loro binding replaces its
+    // blank content with the session's CRDT state after refreshPlugins.
+    newSessionDoc: async (): Promise<boolean> => {
+      const created = (await multiDocCreateSessionDoc?.()) ?? null;
+      if (!created) return false;
+      uid = created;
+      return true;
+    },
+    // Deliberately no spawnJoinWindow: the workspace is ONE window — sessions
+    // join into slots, never new OS windows.
+  };
+}
+
 const ribbonContext: RibbonContext = {
   highlightColor: () => settings.get('lastHighlightColor'),
   shadingColor: () => settings.get('lastShadingColor'),
@@ -1132,7 +1198,10 @@ const ribbonContext: RibbonContext = {
     void loadCollabUi().then((m) => m.startSessionFlow(collabDeps));
   },
   collabJoinSession: () => {
-    void loadCollabUi().then((m) => m.joinSessionFlow(collabDeps));
+    // Multi-pane joins into a user-picked slot; single-pane in place.
+    void loadCollabUi().then((m) =>
+      m.joinSessionFlow(multiDocActive ? makeMultiPaneSessionDeps() : collabDeps),
+    );
   },
   collabCopyShareCode: () => {
     void loadCollabUi().then((m) => m.copyShareCodeFlow());
@@ -5543,7 +5612,11 @@ const homeCallbacks: HomeScreenCallbacks = {
   },
   resumeSession: (roomId: string) => {
     homeScreen.hide();
-    void loadCollabUi().then((m) => m.resumeSessionFlow(collabDeps, roomId));
+    // Multi-pane resumes into a user-picked slot (the home screen is
+    // reachable there via the Home button); single-pane resumes in place.
+    void loadCollabUi().then((m) =>
+      m.resumeSessionFlow(multiDocActive ? makeMultiPaneSessionDeps() : collabDeps, roomId),
+    );
   },
   manageQuickCards: () => {
     void quickCardsManageUI.open();
@@ -5881,6 +5954,18 @@ async function routeInitialDocIntoWorkspace(): Promise<boolean> {
     payload = null;
   }
   if (!payload) return false;
+  // A spawn-to-join payload landing in a window that booted into the
+  // multi-pane workspace: run the join here through the slot-picker deps.
+  // Without this the empty-bytes payload fell through to the file-open
+  // path and dead-ended in "This file is empty or hasn't finished
+  // downloading…" (field bug, 2026-07-10). Multi-pane windows no longer
+  // spawn join windows themselves, so this only catches stale payloads
+  // and races around a mode toggle — but it catches them correctly.
+  if (payload.joinShareCode) {
+    const m = await loadCollabUi();
+    await m.joinSessionWithCode(makeMultiPaneSessionDeps(), payload.joinShareCode);
+    return true;
+  }
   await routeOpenedFile({
     name: payload.filename,
     bytes: payload.bytes,

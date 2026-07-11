@@ -84,13 +84,16 @@ export function collabPluginsFor(targetUid: string | null | undefined): Plugin[]
  *  share code from a `room-invite` inbox item to the lazily-loaded collab
  *  module. Registered from editor/index.ts alongside the other collab
  *  ribbon wiring; null while the collab gate is closed. */
-let inviteJoiner: ((shareCode: string) => void) | null = null;
+let inviteJoiner: ((shareCode: string) => Promise<boolean>) | null = null;
 
-export function setCollabInviteJoiner(fn: ((shareCode: string) => void) | null): void {
+/** The resolved boolean reports whether the join landed (or was handed off
+ *  to a spawned window) — the Receive pill consumes the invite row only
+ *  then, so a cancelled or failed join keeps the share code retryable. */
+export function setCollabInviteJoiner(fn: ((shareCode: string) => Promise<boolean>) | null): void {
   inviteJoiner = fn;
 }
 
-export function collabInviteJoiner(): ((shareCode: string) => void) | null {
+export function collabInviteJoiner(): ((shareCode: string) => Promise<boolean>) | null {
   return inviteJoiner;
 }
 

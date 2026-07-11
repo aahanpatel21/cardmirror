@@ -2440,6 +2440,44 @@ class MultiPaneShell {
     slot.push(record);
   }
 
+  /** Create a fresh unsaved doc to hold a joining/resuming co-editing
+   *  session: slot picker first, record after. Returns the new record's
+   *  uid, or null when the user cancels the picker. The caller registers
+   *  the session under this uid and refreshes plugins — the Loro binding
+   *  then replaces the blank content with the session's CRDT state. */
+  async createSessionDocIntoSlot(): Promise<string | null> {
+    const target = await this.promptForSlot('collaboration session');
+    if (!target) return null;
+    const doc = makeBlankDoc();
+    const slot = this.slots[target];
+    const record = buildDocRecord('Session', doc, slot, {
+      handle: null,
+      format: null,
+    });
+    slot.push(record);
+    return record.uid;
+  }
+
+  /** Rename the open doc with `uid`, wherever it lives (any pane, any
+   *  stack depth). The collab seams name a joined session doc by the
+   *  host-published title, and by the time that title arrives focus may
+   *  have moved — so this targets the record by uid, not the focused one
+   *  (mirrors setFocusedFilename otherwise). */
+  setFilenameForUid(uid: string, name: string): void {
+    for (const id of SLOT_IDS) {
+      const slot = this.slots[id];
+      for (const rec of slot.stack) {
+        if (rec.uid !== uid) continue;
+        rec.filename = name;
+        // Repaints from the slot's VISIBLE record — correct whether or
+        // not that is the renamed one.
+        slot.refreshChipFilename();
+        pushPaneDocInfo(rec.uid, rec.filename);
+        return;
+      }
+    }
+  }
+
   /** Create a new speech document and mark it as the active speech
    *  doc. Verbatim parallels: `Paperless.NewSpeech` prompts for a
    *  round name ("1NC", "2AC vs Hogwarts", etc.); we do the same
@@ -3013,6 +3051,8 @@ export function mountMultiPaneShell(): void {
     setFocusedDocId: (id) => shell!.setFocusedDocId(id),
     getAllFilenames: () => shell!.getAllFilenames(),
     getFilenameForUid: (uid) => shell!.filenameForUid(uid),
+    createSessionDoc: () => shell!.createSessionDocIntoSlot(),
+    setFilenameForUid: (uid, name) => shell!.setFilenameForUid(uid, name),
     promptSaveAllForQuit: () => shell!.promptSaveAllForQuit(),
     clearFocusedJournal: () => shell!.clearFocusedJournal(),
     onRecoveredDoc: (entry) => shell!.onRecoveredDoc(entry),

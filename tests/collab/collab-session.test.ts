@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { schema } from '../../src/schema/index.js';
-import { RoomsClient } from '../../src/editor/collab/room-client.js';
+import { RoomsClient, RoomsError } from '../../src/editor/collab/room-client.js';
 import { CollabSession } from '../../src/editor/collab/collab-session.js';
 import { decodeShareCode } from '../../src/editor/collab/collab-crypto.js';
 import { startRoomsMock, type RoomsMock } from './_rooms-mock.js';
@@ -57,6 +57,28 @@ async function hostAndJoin(seedDoc = mixedDoc()) {
   await sleep(80);
   return { host, hostView, joiner, joinView };
 }
+
+describe('ended-room join strictness (410)', () => {
+  it('join() rejects on a tombstoned room instead of faking success', async () => {
+    // Regression: the 410 branch in catchUp used to swallow the strict
+    // initial sync, so joining an ended/expired room resolved with an empty,
+    // already-ended session — the UI mounted a blank doc, toasted "Joined
+    // the session", and persisted a phantom resumable record.
+    const { session: host, shareCode } = await CollabSession.host({
+      pmDoc: simpleDoc(),
+      client,
+      ...FAST,
+    });
+    const decoded = decodeShareCode(shareCode)!;
+    await client.deleteRoom(decoded.roomId); // host ended / room GC'd
+    const err = await CollabSession.join({ ...decoded, client, ...FAST }).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(RoomsError);
+    expect((err as RoomsError).status).toBe(410);
+    await host.stop();
+  });
+});
 
 describe('collab session end-to-end', () => {
   it('propagates the seed to a joiner', async () => {
