@@ -10,6 +10,17 @@ see `DETAILED_CHANGELOG.md`.
 Co-editing bug-fix release, focused on the three-pane workspace. (Co-editing
 remains **experimental** — keep your own saved copies.)
 
+### Changed
+
+- **Switching between single-pane and three-pane now closes co-editing
+  sessions cleanly.** Your co-edited documents no longer try to carry their
+  live session across the switch — they close (with your unsynced changes
+  saved) and reappear in the home screen's **Sessions** list, where you reopen
+  them in the new layout. The switch confirmation tells you when this will
+  happen. The old behavior looked seamless but could silently lose edits made
+  during the reload, only ever restored some sessions, and left stray copies
+  of documents from other windows.
+
 ### Fixed
 
 - **Accepting a co-editing invite works in three-pane.** Clicking **Join** in

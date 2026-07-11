@@ -80,6 +80,26 @@ single-pane module state that is stale garbage in the workspace.
   sessions) — now "Open and focus a document to start a co-editing session,"
   and join/resume no longer require an up-front view at all (an empty
   workspace can join straight into a slot).
+- **Mode-switch: co-edited docs close resumable instead of auto-resuming**
+  (`index.ts`, `collab-hooks.ts`, `collab-ui.ts`). The single↔three-pane
+  toggle previously captured live sessions to sessionStorage
+  (`MODE_SWITCH_SESSIONS_KEY`) and auto-resumed them after the reload
+  (`resumePreservedSessions`). Audit-confirmed problems: the binding installed
+  over the doc AFTER it reopened editable, silently replacing anything typed
+  in the reload gap with the CRDT state; only the toggling window's sessions
+  were captured (sessionStorage is per-window), so multi→single restored one
+  arbitrary survivor and single→multi stranded other windows' sessions; and
+  other windows' co-edited docs reopened as static copies beside their live
+  Sessions-list records. New contract via a shared helper
+  (`journalForModeSwitchExcludingSessions`) used at all three
+  journal-for-switch sites (toggling window, Electron please-close handler,
+  web BroadcastChannel coordination): explicitly flush every live session's
+  record, journal open docs, then exclude the co-edited ones from the reopen
+  marker and delete their journals — they close across the toggle and reopen
+  from the Sessions list (which slot-picks in three-pane). The confirm
+  dialogs warn when live sessions exist, via a new synchronous
+  `collabLiveSessionCount` bridge. `resumeSessionFlow`'s `existingDoc` option
+  remains as a caller-less capability.
 
 ## 0.1.0-beta.11 — 2026-07-10
 

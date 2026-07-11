@@ -1107,7 +1107,10 @@ laptop sleeps: your changes queue up and sync the moment you're back online. You
 can even close the app — the session is saved, and you rejoin it later from the
 **Sessions** list on the home screen with your unsynced changes intact. (In
 three-pane, reach the home screen with the **Home** button; rejoining asks which
-pane the document should open into.)
+pane the document should open into.) Switching between single-pane and
+three-pane works the same way: your co-edited documents close across the switch
+— the confirmation dialog reminds you — and you reopen them from the Sessions
+list in the new layout.
 
 **Several documents at once.** Each open document runs its own independent
 session, so you can co-edit more than one at the same time — several documents in
