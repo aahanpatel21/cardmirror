@@ -758,7 +758,7 @@ class SettingsModal {
       return row;
     } else if (meta.kind === 'number') {
       row.appendChild(text);
-      row.appendChild(buildNumberEditor(meta.key as keyof Settings));
+      row.appendChild(buildNumberEditor(meta.key as keyof Settings, meta.min));
       return row;
     } else if (meta.kind === 'defaultZoomPct') {
       row.appendChild(text);
@@ -3142,15 +3142,15 @@ function buildDefaultZoomEditor(): HTMLElement {
   return input;
 }
 
-function buildNumberEditor(key: keyof Settings): HTMLElement {
+function buildNumberEditor(key: keyof Settings, min = 0): HTMLElement {
   const input = document.createElement('input');
   input.type = 'number';
   input.className = 'pmd-line-height-input';
-  input.min = '0';
+  input.min = String(min);
   input.step = '1';
   input.value = String(settings.get(key));
   input.addEventListener('change', () => {
-    const v = Math.max(0, Math.round(parseFloat(input.value)));
+    const v = Math.max(min, Math.round(parseFloat(input.value)));
     if (!Number.isFinite(v)) {
       input.value = String(settings.get(key));
       return;

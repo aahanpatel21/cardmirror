@@ -1101,6 +1101,12 @@ export interface Settings {
   /** OpenRouter model id (e.g. `anthropic/claude-sonnet-4.6`). Required
    *  when OpenRouter is selected; there is no built-in default. */
   openrouterModel: string;
+  /** Max output tokens for AI calls that don't set their own ceiling
+   *  (cite, explain, flashcards, image alt text). Applies to both
+   *  providers. Reasoning models count hidden thinking tokens against
+   *  this budget, so a low value can leave no room for the actual reply
+   *  — hence a 1024 floor and a recommendation to go higher. */
+  aiMaxTokens: number;
   /** Master switch for AI features (the explainer comment shortcut,
    *  @AI mentions inside comments, etc.). When false, no UI for
    *  AI shows up and no API calls happen even if a key is set. */
@@ -1514,6 +1520,7 @@ const DEFAULTS: Settings = {
   aiProvider: 'anthropic',
   openrouterApiKey: '',
   openrouterModel: '',
+  aiMaxTokens: 4096,
   aiFeaturesEnabled: false,
   clodEnabled: false,
   clodActivitiesByTime: { morning: [], day: [], evening: [], night: [] },
@@ -1729,6 +1736,9 @@ export interface SettingMeta {
   /** When set, the row only renders while this boolean setting is on.
    *  Used to hide the console-gated card-cutter rows until enabled. */
   revealWhen?: keyof Settings;
+  /** Floor for `kind: 'number'` editors — the input's `min` and the
+   *  clamp applied on change. Defaults to 0 when unset. */
+  min?: number;
   /** Extra search terms for the command palette. The label often
    *  uses one name for a thing the user might search by another
    *  ("Theme" vs "dark mode", "Line spacing" vs "line height"); these
@@ -2949,6 +2959,22 @@ export const SETTING_METADATA: SettingMeta[] = [
     aliases: ['openrouter model', 'model'],
   },
   {
+    key: 'aiMaxTokens',
+    label: 'Max output tokens',
+    description:
+      'Token budget for AI features that do not set their own (cite, explain, ' +
+      'flashcards, image alt text). Applies to both providers. Reasoning models ' +
+      'spend hidden thinking tokens from this budget, so we recommend higher ' +
+      'values (e.g. 4096-8192) - too low and the model can run out before it ' +
+      'writes the reply. Minimum 1024.',
+    kind: 'number',
+    min: 1024,
+    category: 'comments-ai',
+    mobile: true,
+    dependsOn: 'aiFeaturesEnabled',
+    aliases: ['max tokens', 'output tokens', 'token budget', 'reasoning', 'thinking'],
+  },
+  {
     key: 'clodEnabled',
     label: 'Enable Clod mode',
     description:
@@ -3866,6 +3892,10 @@ function sanitize(s: Settings): Settings {
     openrouterApiKey:
       typeof s.openrouterApiKey === 'string' ? s.openrouterApiKey : DEFAULTS.openrouterApiKey,
     openrouterModel: typeof s.openrouterModel === 'string' ? s.openrouterModel.trim() : '',
+    aiMaxTokens:
+      typeof s.aiMaxTokens === 'number' && Number.isFinite(s.aiMaxTokens)
+        ? Math.max(1024, Math.round(s.aiMaxTokens))
+        : DEFAULTS.aiMaxTokens,
     aiFeaturesEnabled: !!s.aiFeaturesEnabled,
     clodEnabled: !!s.clodEnabled,
     clodActivitiesByTime: sanitizeClodActivitiesByTime(s.clodActivitiesByTime),

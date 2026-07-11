@@ -71,8 +71,20 @@ export interface LlmReply {
  *  it usually needs no change. Users can also override per-install via
  *  the `aiModelOverride` setting (see `resolveAiModel`). */
 export const DEFAULT_MODEL = 'claude-sonnet-4-6';
-const DEFAULT_MAX_TOKENS = 1024;
+/** Floor for the user-configurable output budget. Reasoning models
+ *  count hidden thinking tokens against `max_tokens`, so anything below
+ *  this can leave no room for the actual reply (empty content, a
+ *  `finish_reason: length` cut-off). */
+const MIN_MAX_TOKENS = 1024;
 const ANTHROPIC_VERSION = '2023-06-01';
+
+/** The output-token ceiling for calls that don't set their own, from the
+ *  `aiMaxTokens` setting and never below the floor. Shared by both
+ *  providers so cite/explain/flashcards/image-alt behave the same. */
+function defaultMaxTokens(): number {
+  const n = Math.round(settings.get('aiMaxTokens'));
+  return Number.isFinite(n) ? Math.max(MIN_MAX_TOKENS, n) : MIN_MAX_TOKENS;
+}
 
 /** Loosely validate a model id before trusting a user override: no
  *  whitespace, a plausible length, and only the characters model ids use.
@@ -179,10 +191,22 @@ export function parseOpenRouterReply(json: unknown): LlmReply {
     }
   )?.choices?.[0];
   const text = choice?.message?.content ?? '';
+  const fr = choice?.finish_reason;
   if (!text) {
+    // A reasoning model can spend the entire token budget on hidden
+    // thinking and return empty content with finish_reason: 'length'.
+    // Point the user at the fix rather than a bare "empty response".
+    if (fr === 'length') {
+      throw new LlmError(
+        'The model used its whole token budget on reasoning and returned no text. ' +
+          'Raise "Max output tokens" under Settings -> Comments & AI (reasoning ' +
+          'models need a higher value), or pick a non-reasoning model.',
+        null,
+        'parse',
+      );
+    }
     throw new LlmError('OpenRouter returned an empty response.', null, 'parse');
   }
-  const fr = choice?.finish_reason;
   const stopReason = fr === 'length' ? 'max_tokens' : fr;
   return { text, stopReason };
 }
@@ -191,7 +215,7 @@ async function callAnthropicApi(req: LlmRequest): Promise<LlmReply> {
   const requestedModel = req.model ?? resolveAiModel();
   const body = {
     model: requestedModel,
-    max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
+    max_tokens: req.maxTokens ?? defaultMaxTokens(),
     ...(req.temperature != null ? { temperature: req.temperature } : {}),
     ...(req.system ? { system: req.system } : {}),
     messages: req.messages,
@@ -294,7 +318,7 @@ async function callOpenRouter(req: LlmRequest): Promise<LlmReply> {
   }
   const body = {
     model,
-    max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
+    max_tokens: req.maxTokens ?? defaultMaxTokens(),
     ...(req.temperature != null ? { temperature: req.temperature } : {}),
     messages: toOpenRouterMessages(req),
   };

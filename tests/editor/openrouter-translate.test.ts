@@ -76,4 +76,14 @@ describe('parseOpenRouterReply', () => {
       LlmError,
     );
   });
+
+  it('points at the token budget when a reasoning model returns empty + length', () => {
+    // The real failure: content null, finish_reason length, budget spent on
+    // hidden reasoning. Error should name the "Max output tokens" fix.
+    expect(() =>
+      parseOpenRouterReply({
+        choices: [{ message: { content: null }, finish_reason: 'length' }],
+      }),
+    ).toThrow(/Max output tokens/);
+  });
 });
