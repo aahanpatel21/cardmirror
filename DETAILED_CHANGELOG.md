@@ -7,6 +7,38 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Section-boundary family: flat sibling scans replace O(rest of doc)
+  walks** (perf audit A-12/A-13/A-14/A-49; `headings.ts`,
+  `speech-doc-send.ts`, `drag-editor-surface.ts`, `word-selection-keymap.ts`,
+  `move-container.ts`; tests in `tests/editor/section-boundaries.test.ts` +
+  new PageUp/PageDown suite in `word-selection-keymap.test.ts`). Four sites
+  answered "where does this section end?" with
+  `doc.nodesBetween(headingEnd, doc.content.size, …)` — which can neither
+  stop at the boundary (nodesBetween has no abort; returning false only
+  skips descent) nor avoid descending into every text run before it. New
+  `sectionEndFromHeading(parent, headingIndex, headingEndPos, level)` in
+  headings.ts type-checks SIBLINGS only. Call sites: computeHeadingRange's
+  pocket/hat/block branch; enclosingStructureRange (send/select/copy/
+  delete-current-heading); findContainerAt's heading branch (per-pointermove
+  pickup-drag hover); collectHeadingPositions gets `return !node.isTextblock`
+  (headings can't nest in a textblock); move-container's grabbedHeading
+  (collectHeadings + a per-entry O(doc) scan for EVERY heading, per
+  keypress) is deleted in favor of the existing flat `unitRangeAtPos`, with
+  an explicit zone/view no-op check replacing the old
+  reject-via-alignment-guard path. Measured (1,920-card doc, fragmented
+  ~60-run bodies, equivalence-checked identical outputs): move-container
+  grab 64.96 ms → 0.0005 ms per keypress; section end (worst-case first
+  pocket) 0.432 ms → 0.006 ms (72x); heading collection 3.42 ms → 0.198 ms
+  (17x). Two latent bugs fixed BY CONSTRUCTION and pinned by tests: the old
+  computeHeadingRange scan guarded zones but not live views, so a mirrored
+  heading inside a `self_ref` truncated the enclosing section; the
+  send-current-heading scan had NO opacity guard at all, so zone innards
+  truncated its sections too. Semantic delta (tested): zone-INNER headings
+  now get ranges bounded to their zone instead of escaping into the host
+  doc. Property test: 40 seeded random docs, every top-level heading,
+  new ≡ old reference scan byte-identically; PageUp/PageDown destination
+  parity incl. zone/view innards remaining navigation stops.
+
 - **Regression tests for the hardening rounds + a real bug they caught**
   (`error-surface.ts`, new `tests/editor/error-surface.test.ts`, additions
   to `tests/editor/speech-send-insert.test.ts`). `isFileGoneError` moved

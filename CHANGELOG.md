@@ -7,6 +7,18 @@ see `DETAILED_CHANGELOG.md`.
 
 ## Unreleased
 
+### Changed
+
+- **Structural commands are dramatically faster on large documents.** Finding
+  where a section ends used to scan the rest of the document — now it checks
+  siblings only. Move Container Up/Down drops from a hard freeze per press on
+  tournament master files (~65 ms measured on a mid-size file, hundreds of ms
+  on big ones) to effectively instant; send/select/copy-current-heading and
+  drag-hover over headings are ~70x faster; PageUp/PageDown navigation ~17x.
+  Two subtle bugs fixed along the way: a heading inside a live view could cut
+  an enclosing section short, and send-current-heading could truncate a
+  section at a live zone's mirrored heading.
+
 ### Fixed
 
 - **Renamed or moved folders no longer strand your document.** If a file's

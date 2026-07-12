@@ -205,9 +205,12 @@ function collectHeadingPositions(doc: PMNode): HeadingHit[] {
     if (node.type.name in TYPE_TO_LEVEL) {
       out.push({ pos });
     }
-    // Tags/analytics live inside cards; we need to descend into
-    // cards to find them, so don't blanket-stop on heading types.
-    return true;
+    // Descend through non-textblock containers only (card, analytic_unit,
+    // zone, live view — tags/analytics live inside them), but never into
+    // textblocks: headings can't nest inside a textblock, and descending
+    // visited every text RUN in the doc per keypress (audit A-14). Zone- and
+    // view-inner headings stay navigation destinations, same as before.
+    return !node.isTextblock;
   });
   return out;
 }

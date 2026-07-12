@@ -147,24 +147,48 @@ export function computeHeadingRange(
     if (!wrapper) return null;
     return { from, to: from + wrapper.nodeSize, useNodeSelection: true };
   }
-  // Pocket / Hat / Block: span heading → next equal-or-shallower.
+  // Pocket / Hat / Block: span heading → next equal-or-shallower sibling.
   const from = entry.pos;
-  let to = doc.content.size;
-  const targetLevel = entry.level;
-  doc.nodesBetween(entry.pos + node.nodeSize, doc.content.size, (n, pos) => {
-    if (to !== doc.content.size) return false;
-    const t = n.type.name;
-    // A live zone is an opaque unit: don't descend into it, or its transcluded
-    // child headings (a pocket/hat zone holds hat/block headings) would be
-    // mistaken for this section's boundary and truncate it mid-zone.
-    if (t === 'transclusion_ref') return false;
-    if (t in TYPE_TO_LEVEL && TYPE_TO_LEVEL[t]! <= targetLevel) {
-      to = pos;
-      return false;
-    }
-    return true;
-  });
+  const to = sectionEndFromHeading($pos.parent, $pos.index(), from + node.nodeSize, entry.level);
   return { from, to, useNodeSelection: false };
+}
+
+/**
+ * End position of the section that starts at a pocket/hat/block heading: the
+ * start of the first FOLLOWING SIBLING (within `parent`) whose heading level
+ * is equal-or-shallower, else the end of `parent`'s content.
+ *
+ * Sibling iteration is the whole trick (audit finding A-12/A-13, 2026-07-11):
+ * the old idiom — `doc.nodesBetween(headingEnd, doc.content.size, …)` — could
+ * neither stop at the boundary (nodesBetween has no abort; returning false
+ * only skips descent) nor avoid descending into every text run before it, so
+ * each call cost O(rest of doc) and the callers paid it per keypress or per
+ * pointermove. Sections are sibling spans by construction, so type-checking
+ * siblings answers the question in O(siblings to boundary) with no descent.
+ *
+ * Opacity for free: headings inside a live zone (`transclusion_ref`) or a
+ * live view (`self_ref`) are not siblings of the heading, so they can never
+ * be mistaken for its boundary. The old scan guarded zones explicitly but NOT
+ * live views — a mirrored heading inside a view could truncate the enclosing
+ * section mid-view (latent bug, fixed here by construction).
+ *
+ * `headingEndPos` is the position just after the heading node (its start +
+ * nodeSize); `headingIndex` is its child index within `parent`.
+ */
+export function sectionEndFromHeading(
+  parent: PMNode,
+  headingIndex: number,
+  headingEndPos: number,
+  level: number,
+): number {
+  let pos = headingEndPos;
+  for (let i = headingIndex + 1; i < parent.childCount; i++) {
+    const child = parent.child(i);
+    const lvl = TYPE_TO_LEVEL[child.type.name];
+    if (lvl !== undefined && lvl <= level) return pos;
+    pos += child.nodeSize;
+  }
+  return pos;
 }
 
 /**

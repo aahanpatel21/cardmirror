@@ -25,6 +25,7 @@ import { normalizeSelectionForSend } from './send-normalize.js';
 import { getSpeechDocResolver } from './speech-doc-registry.js';
 import { getElectronHost } from './host/index.js';
 import { alertDialog } from './text-prompt.js';
+import { sectionEndFromHeading } from './headings.js';
 
 // ── Web multi-tab slice transport ──────────────────────────────────────────
 // With no main process to route through, the speech doc may live in another
@@ -79,21 +80,15 @@ function enclosingStructureRange(doc: PMNode, $pos: ResolvedPos): SendRange | nu
     if (t === 'pocket' || t === 'hat' || t === 'block') {
       const from = $pos.before(depth);
       const headingLevel = t === 'pocket' ? 1 : t === 'hat' ? 2 : 3;
-      let to = doc.content.size;
-      doc.nodesBetween(from + node.nodeSize, doc.content.size, (n, p) => {
-        if (to !== doc.content.size) return false;
-        const nt = n.type.name;
-        const nLevel =
-          nt === 'pocket' ? 1
-          : nt === 'hat' ? 2
-          : nt === 'block' ? 3
-          : null;
-        if (nLevel !== null && nLevel <= headingLevel) {
-          to = p;
-          return false;
-        }
-        return true;
-      });
+      // Sibling scan, not an O(rest of doc) nodesBetween — and unlike the old
+      // scan here, headings inside zones/live views can't truncate the section
+      // (sectionEndFromHeading only sees siblings; audit A-13, 2026-07-11).
+      const to = sectionEndFromHeading(
+        $pos.node(depth - 1),
+        $pos.index(depth - 1),
+        from + node.nodeSize,
+        headingLevel,
+      );
       return { from, to };
     }
   }

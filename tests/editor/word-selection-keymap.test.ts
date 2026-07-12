@@ -367,3 +367,77 @@ describe('Ctrl+Left / Ctrl+Right with a non-empty selection', () => {
     expect(sel.from).toBe(b1 + 'first body.'.length);
   });
 });
+
+// ─── PageUp / PageDown destinations (audit A-14, 2026-07-11) ──────
+//
+// collectHeadingPositions stopped descending into textblocks (a per-keypress
+// full-doc text-run walk); the invariant pinned here is that the SAME heading
+// stops are visited, in document order — including tag/analytic markers inside
+// cards and headings inside zones and live views (which differ from
+// headings.ts section semantics: for NAVIGATION they are stops).
+describe('PageUp / PageDown heading navigation', () => {
+  function pocket(text: string) {
+    return schema.nodes['pocket']!.create({ id: newHeadingId() }, schema.text(text));
+  }
+  function block(text: string) {
+    return schema.nodes['block']!.create({ id: newHeadingId() }, schema.text(text));
+  }
+  function buildNavDoc() {
+    return makeDoc([
+      pocket('POCKET'),
+      block('BLOCK ONE'),
+      cardWith(tag('TAG ONE'), cardBody('body one')),
+      schema.nodes['transclusion_ref']!.create({ source_ref: 'other.cmir' }, [
+        block('ZONE BLOCK'),
+        cardWith(tag('ZONE TAG'), cardBody('zone body')),
+      ]),
+      schema.nodes['self_ref']!.create({ source_heading_id: 'X', source_label: 'V' }, [
+        cardWith(tag('VIEW TAG'), cardBody('view body')),
+      ]),
+      cardWith(tag('TAG TWO'), cardBody('body two')),
+    ]);
+  }
+
+  it('PageDown visits every heading marker in order, including zone/view innards', () => {
+    const doc = buildNavDoc();
+    let state = stateWith(doc, 1);
+    const stops: string[] = [];
+    for (;;) {
+      const next = press(state, 'PageDown');
+      if (!next || next.selection.head === state.selection.head) break;
+      state = next;
+      stops.push(state.selection.$head.parent.textContent);
+    }
+    expect(stops).toEqual([
+      'BLOCK ONE',
+      'TAG ONE',
+      'ZONE BLOCK',
+      'ZONE TAG',
+      'VIEW TAG',
+      'TAG TWO',
+    ]);
+  });
+
+  it('PageUp walks the same stops in reverse', () => {
+    const doc = buildNavDoc();
+    // Start inside the last card body.
+    const start = findTextStart(doc, 'body two');
+    let state = stateWith(doc, start + 2);
+    const stops: string[] = [];
+    for (;;) {
+      const next = press(state, 'PageUp');
+      if (!next || next.selection.head === state.selection.head) break;
+      state = next;
+      stops.push(state.selection.$head.parent.textContent);
+    }
+    expect(stops).toEqual([
+      'TAG TWO',
+      'VIEW TAG',
+      'ZONE TAG',
+      'ZONE BLOCK',
+      'TAG ONE',
+      'BLOCK ONE',
+      'POCKET',
+    ]);
+  });
+});

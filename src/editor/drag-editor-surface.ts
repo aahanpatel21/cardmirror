@@ -19,7 +19,7 @@
  */
 
 import type { EditorView } from 'prosemirror-view';
-import { collectHeadings, headingInsertPos, TYPE_TO_LEVEL } from './headings.js';
+import { collectHeadings, headingInsertPos, TYPE_TO_LEVEL, sectionEndFromHeading } from './headings.js';
 import { dragController, type DragItem, type DragSurface } from './drag-controller.js';
 import { isTransclusionNode } from './transclusion.js';
 import { isSelfRef } from './self-transclusion.js';
@@ -763,16 +763,17 @@ export class EditorDragSurface implements DragSurface {
       if (t === 'pocket' || t === 'hat' || t === 'block') {
         const from = $pos.before(depth);
         const targetLevel = TYPE_TO_LEVEL[t]!;
-        let to = doc.content.size;
-        doc.nodesBetween(from + node.nodeSize, doc.content.size, (n, p) => {
-          if (to !== doc.content.size) return false;
-          const nt = n.type.name;
-          if (nt in TYPE_TO_LEVEL && TYPE_TO_LEVEL[nt]! <= targetLevel) {
-            to = p;
-            return false;
-          }
-          return true;
-        });
+        // Sibling scan (audit A-49): this runs per POINTERMOVE during a
+        // pickup-drag hover, where the old O(rest of doc) nodesBetween
+        // saturated the main thread on master files. The zone/self_ref
+        // depth check above already returned for zone-inner positions,
+        // so this branch only sees flat top-level headings.
+        const to = sectionEndFromHeading(
+          $pos.node(depth - 1),
+          $pos.index(depth - 1),
+          from + node.nodeSize,
+          targetLevel,
+        );
         return {
           from,
           to,

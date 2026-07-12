@@ -24,12 +24,8 @@
 import type { Command, EditorState, Transaction } from 'prosemirror-state';
 import { TextSelection } from 'prosemirror-state';
 import type { Node as PMNode } from 'prosemirror-model';
-import {
-  collectHeadings,
-  computeHeadingRange,
-  TYPE_TO_LEVEL,
-  type HeadingEntry,
-} from './headings.js';
+import { TYPE_TO_LEVEL } from './headings.js';
+import { unitRangeAtPos } from './structural-move.js';
 
 /** Loose paragraphs / cite / table at doc level are section *content*, deeper
  *  than any heading — so they're skipped (as part of a sibling's subtree). */
@@ -45,21 +41,6 @@ function docChildLevel(node: PMNode): number {
   return t in TYPE_TO_LEVEL ? TYPE_TO_LEVEL[t]! : CONTENT_LEVEL;
 }
 
-/** The cursor's deepest enclosing outline node (the card / analytic unit, or
- *  the nearest heading whose section contains the cursor), or null. */
-function grabbedHeading(doc: PMNode, pos: number): HeadingEntry | null {
-  let best: HeadingEntry | null = null;
-  let bestFrom = -1;
-  for (const entry of collectHeadings(doc, { skipCite: true })) {
-    const r = computeHeadingRange(doc, entry);
-    if (r && r.from <= pos && pos < r.to && r.from > bestFrom) {
-      best = entry;
-      bestFrom = r.from;
-    }
-  }
-  return best;
-}
-
 function moveContainer(
   state: EditorState,
   dispatch: ((tr: Transaction) => void) | undefined,
@@ -67,11 +48,27 @@ function moveContainer(
 ): boolean {
   const { doc, selection } = state;
   const cursor = selection.head;
-  const grabbed = grabbedHeading(doc, cursor);
-  if (!grabbed) return false;
-  const range = computeHeadingRange(doc, grabbed);
-  if (!range) return false;
-  const level = grabbed.level;
+  // Inside a live zone / live view (and not inside one of its cards — those
+  // hit the depth walk in unitRangeAtPos first, then the top-level alignment
+  // guard below), the command is a no-op: mirrored/transcluded content can't
+  // be reordered from here. The old resolver reached the same outcome by
+  // grabbing a zone-inner range the alignment guard then rejected.
+  const $cursor = doc.resolve(cursor);
+  for (let depth = $cursor.depth; depth >= 1; depth--) {
+    const t = $cursor.node(depth).type.name;
+    if (t === 'card' || t === 'analytic_unit') break;
+    if (t === 'transclusion_ref' || t === 'self_ref') return false;
+  }
+  // Flat top-level resolution (audit A-12, 2026-07-11): the old resolver ran
+  // collectHeadings (full doc walk) + an O(rest of doc) range scan for EVERY
+  // heading in the doc, per keypress — a 250-400ms freeze per press on
+  // tournament masters, queued by key-repeat. unitRangeAtPos answers the same
+  // question ("deepest enclosing card / heading section") from the top-level
+  // child list alone.
+  const unit = unitRangeAtPos(doc, cursor);
+  if (!unit) return false;
+  const range = { from: unit.from, to: unit.to };
+  const level = unit.level;
 
   // Top-level children as {start, end, level}.
   const kids: { start: number; end: number; level: number }[] = [];
