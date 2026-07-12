@@ -35,6 +35,7 @@
 
 import { Plugin, PluginKey, TextSelection } from 'prosemirror-state';
 import type { EditorState } from 'prosemirror-state';
+import type { Node as PMNode } from 'prosemirror-model';
 
 export interface AutocorrectMatch {
   /** Replacement range start — may reach back BEFORE the typed character to
@@ -46,6 +47,45 @@ export interface AutocorrectMatch {
   insert: string;
   /** The literal text the Backspace-revert restores. */
   revertTo: string;
+}
+
+/** Post-match transform: runs after a rule matched, before the conversion
+ *  dispatches. May adjust ONLY `insert` (revertTo must stay the literal the
+ *  user typed, so one Backspace unwinds the whole stack of effects). This is
+ *  how orthogonal corrections compose on one keystroke — auto-capitalization
+ *  decorating a custom text replacement ("fwk" → "Framework" at a tag's
+ *  sentence start) without the rules knowing about each other. */
+export type AutocorrectDecorator = (
+  state: EditorState,
+  m: AutocorrectMatch,
+  to: number,
+  text: string,
+) => AutocorrectMatch;
+
+/** Delimiters that COMMIT the word/sequence before the caret — the trigger
+ *  set for word-level rules (auto-capitalization, custom replacements).
+ *  Quotes are deliberately absent (smart-quotes territory); Enter can never
+ *  appear (keydown, not text input). */
+export const WORD_COMMIT_DELIMITER = /^[ .,;:!?]$/;
+
+/** Whole-range replacement inherits `marksAcross` — uniform marks round-trip
+ *  exactly; mixed marks would collapse to the common subset, eating partial
+ *  marking. Word-level rules skip non-uniform ranges (conservative no-fire). */
+export function marksAreUniform(doc: PMNode, from: number, to: number): boolean {
+  let first: readonly unknown[] | null = null;
+  let uniform = true;
+  doc.nodesBetween(from, to, (node) => {
+    if (!uniform || !node.isText) return uniform;
+    if (first === null) first = node.marks;
+    else if (
+      node.marks.length !== first.length ||
+      !node.marks.every((mk, idx) => mk.eq(first![idx] as never))
+    ) {
+      uniform = false;
+    }
+    return uniform;
+  });
+  return uniform;
 }
 
 export interface AutocorrectRule {
@@ -73,6 +113,7 @@ interface ConvertMeta {
 export function makeAutocorrectPlugin(
   key: PluginKey<AutocorrectState>,
   rules: readonly AutocorrectRule[],
+  decorators: readonly AutocorrectDecorator[] = [],
 ): Plugin<AutocorrectState> {
   return new Plugin<AutocorrectState>({
     key,
@@ -97,8 +138,9 @@ export function makeAutocorrectPlugin(
         for (const rule of rules) {
           if (!rule.triggers(text)) continue;
           if (!rule.enabled()) continue;
-          const m = rule.match(view.state, from, to, text);
+          let m = rule.match(view.state, from, to, text);
           if (!m) continue;
+          for (const decorate of decorators) m = decorate(view.state, m, to, text);
           const tr = view.state.tr.insertText(m.insert, m.replaceFrom, to);
           const end = m.replaceFrom + m.insert.length;
           tr.setSelection(TextSelection.create(tr.doc, end));

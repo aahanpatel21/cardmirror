@@ -2394,6 +2394,55 @@ code {
   white-space: nowrap;
 }
 
+/* Custom autocorrect table (Settings → Editing → Typing). */
+.pmd-autocorrect-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.pmd-autocorrect-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.pmd-autocorrect-list-disabled { opacity: 0.55; }
+.pmd-autocorrect-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pmd-autocorrect-row-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pmd-autocorrect-empty { opacity: 0.7; font-style: italic; }
+.pmd-autocorrect-add-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pmd-autocorrect-input {
+  width: 90px;
+  min-width: 0;
+}
+.pmd-autocorrect-input-to { flex: 1; }
+/* Clash flags: duplicates block with the message line; reachability issues
+   (a char-triggered rule consumes the key as it's typed) warn per row. */
+.pmd-autocorrect-warning {
+  color: var(--pmd-c-warning);
+  font-size: 0.85em;
+  padding-left: 4px;
+}
+.pmd-autocorrect-message {
+  color: var(--pmd-c-error);
+  font-size: 0.85em;
+}
+
 /* "Match heading" checkbox inline with the numbering-color swatch. */
 .pmd-inline-color-match {
   display: inline-flex;

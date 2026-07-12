@@ -214,6 +214,7 @@ import { typeOverBoundaryPlugin } from './type-over-boundary.js';
 import { smartQuotesPlugin } from './smart-quotes-plugin.js';
 import { customDashPlugin } from './custom-dash-plugin.js';
 import { autoCapitalizePlugin } from './auto-capitalize-plugin.js';
+import { customAutocorrectPlugin } from './custom-autocorrect-plugin.js';
 import { footnotePopoverPlugin } from './footnote-popover.js';
 import { wordSelectionKeymap } from './word-selection-keymap.js';
 import { highlightFrequencyPlugin } from './highlight-frequency-plugin.js';
@@ -4813,6 +4814,12 @@ export function buildEditorPlugins(targetUid?: string | null): Plugin[] {
   // Custom dash autoformat — converts a typed `---` when the customDash settings
   // are on (inert otherwise; the plugin checks per keystroke).
   plugins.push(customDashPlugin());
+  // Custom autocorrections — user-defined replace-as-you-type entries, with
+  // the auto-capitalize decorator composing over expansions. ORDER MATTERS
+  // across the autocorrect family: char-triggered rules (smart quotes,
+  // custom dash) run before commit-triggered ones (this, then standalone
+  // auto-capitalization) — first match wins per keystroke.
+  plugins.push(customAutocorrectPlugin());
   // Auto-capitalization in tags/analytics — sentence starts + standalone `i`,
   // gated on `autoCapitalizeSentences` (inert otherwise).
   plugins.push(autoCapitalizePlugin());

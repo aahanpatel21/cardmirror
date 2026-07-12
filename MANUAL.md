@@ -382,6 +382,20 @@ default and reversible with a single **Backspace** right after they fire:
   an en or em dash, with or without surrounding spaces (your choice), the moment
   you type the third hyphen.
 
+- **Custom autocorrect** (Settings → Editing → "Custom autocorrect") is
+  Word's "replace text as you type": define your own entries — `fwk` →
+  `framework`, `--` → `---`, `(c)` → `©` — and they expand the moment you
+  finish the sequence with a space or punctuation. Lowercase entries adapt to
+  how you typed them (`Fwk` → `Framework`, `FWK` → `FRAMEWORK`). Entries
+  apply everywhere, including card bodies — an expansion is something you
+  asked for by name. The table warns you about clashes: adding a second
+  entry for the same input is refused outright, and an entry that another
+  typing aid would intercept (say `--` → `---` while Custom dash converts on
+  the second hyphen) gets a ⚠ explaining why it can't fire. If
+  Auto-capitalize is also on, an expansion at a sentence start in a tag or
+  analytic comes out capitalized (`fwk` → `Framework`) — and one Backspace
+  still restores exactly what you typed.
+
 - **Auto-capitalize tags and analytics** (Settings → Editing) capitalizes the
   first word of each sentence — and a standalone `i` — in **tags and analytics
   only**, the moment you finish the word with a space or punctuation. Card
@@ -1927,6 +1941,9 @@ Typing helpers and the behavior of the cutting and condense commands
 - **Auto-capitalize tags and analytics** — sentence starts (and a
   standalone `i`) capitalize as you finish each word, in tags and
   analytics only; Backspace right after reverts. Off by default.
+- **Custom autocorrect** — your own replace-as-you-type entries, with
+  duplicate-entry refusal and clash warnings against the other typing
+  aids; Backspace right after reverts to what you typed. Off by default.
 
 **New paragraph on Enter**
 

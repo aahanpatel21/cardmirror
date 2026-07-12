@@ -34,13 +34,15 @@
 
 import { PluginKey } from 'prosemirror-state';
 import type { Plugin } from 'prosemirror-state';
-import type { Node as PMNode } from 'prosemirror-model';
 import { settings } from './settings.js';
-import { makeAutocorrectPlugin, type AutocorrectRule, type AutocorrectState } from './autocorrect.js';
-
-/** Delimiters that commit the word before the caret. Quotes are deliberately
- *  absent (smart-quotes territory); Enter can't appear here at all. */
-const DELIMITER = /^[ .,;:!?]$/;
+import {
+  makeAutocorrectPlugin,
+  marksAreUniform,
+  WORD_COMMIT_DELIMITER,
+  type AutocorrectDecorator,
+  type AutocorrectRule,
+  type AutocorrectState,
+} from './autocorrect.js';
 
 const WORD_CHAR = /[\p{L}\p{N}'’]/u;
 const SENTENCE_END = /[.!?]/;
@@ -116,29 +118,10 @@ export function capitalizationFor(before: string): CapitalizationHit | null {
   return { wordStart: ws, word, cap };
 }
 
-/** Whole-word replacement inherits `marksAcross` the range — uniform marks
- *  round-trip exactly; mixed marks would collapse to the common subset. */
-function marksAreUniform(doc: PMNode, from: number, to: number): boolean {
-  let first: readonly unknown[] | null = null;
-  let uniform = true;
-  doc.nodesBetween(from, to, (node) => {
-    if (!uniform || !node.isText) return uniform;
-    if (first === null) first = node.marks;
-    else if (
-      node.marks.length !== first.length ||
-      !node.marks.every((m, idx) => m.eq(first![idx] as never))
-    ) {
-      uniform = false;
-    }
-    return uniform;
-  });
-  return uniform;
-}
-
 export const autoCapitalizeKey = new PluginKey<AutocorrectState>('pmd-auto-capitalize');
 
 const autoCapitalizeRule: AutocorrectRule = {
-  triggers: (text) => DELIMITER.test(text),
+  triggers: (text) => WORD_COMMIT_DELIMITER.test(text),
   enabled: () => settings.get('autoCapitalizeSentences'),
   match(state, from, _to, text) {
     const $from = state.doc.resolve(from);
@@ -156,3 +139,27 @@ const autoCapitalizeRule: AutocorrectRule = {
 export function autoCapitalizePlugin(): Plugin<AutocorrectState> {
   return makeAutocorrectPlugin(autoCapitalizeKey, [autoCapitalizeRule]);
 }
+
+/**
+ * Decorator form: capitalizes the leading word of ANOTHER rule's pending
+ * insert (a custom text replacement) under exactly the standalone rule's
+ * conditions — same setting, same tag/analytic scope, same sentence-start
+ * guards, evaluated against the hypothetical committed text. `revertTo` is
+ * untouched, so Backspace restores the literal the user typed and unwinds
+ * both the replacement and the capitalization in one step.
+ */
+export const autoCapitalizeDecorator: AutocorrectDecorator = (state, m, _to, text) => {
+  if (!settings.get('autoCapitalizeSentences')) return m;
+  const $pos = state.doc.resolve(m.replaceFrom);
+  const pt = $pos.parent.type.name;
+  if (pt !== 'tag' && pt !== 'analytic') return m;
+  const body = m.insert.slice(0, m.insert.length - text.length);
+  const lead = body.match(/^[\p{L}\p{N}'’]+/u)?.[0];
+  if (!lead) return m;
+  const before = $pos.parent.textBetween(0, $pos.parentOffset, undefined, '￼');
+  const hit = capitalizationFor(before + lead);
+  // Only when the capitalization lands exactly on the insert's leading word
+  // (i.e. the REPLACEMENT starts the sentence, not some earlier word).
+  if (!hit || hit.wordStart !== before.length) return m;
+  return { ...m, insert: hit.cap + body.slice(lead.length) + text };
+};

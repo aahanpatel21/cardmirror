@@ -658,6 +658,13 @@ export interface Settings {
    *  ANALYTICS only — the user's own prose. Card bodies / cites are source
    *  excerpts whose casing must be preserved verbatim. Off by default. */
   autoCapitalizeSentences: boolean;
+  /** Word-style "replace text as you type": user-defined expansions from the
+   *  customAutocorrects table, committed by a delimiter. Off by default. */
+  customAutocorrectEnabled: boolean;
+  /** The replacement table. `from` keys are whitespace-free (≤64 chars),
+   *  unique case-insensitively; `to` ≤256 chars. Applies everywhere (an
+   *  expansion is explicit user intent, unlike auto-capitalization). */
+  customAutocorrects: Array<{ from: string; to: string }>;
   /** Custom dash autoformat — when you type `---`, replace it (on the third
    *  hyphen) with a chosen dash output (en/em dash, with or without surrounding
    *  spaces). Backspace right after reverts to the literal `---`. Off by
@@ -1419,6 +1426,8 @@ const DEFAULTS: Settings = {
   editorSpellcheck: false,
   smartQuotes: false,
   autoCapitalizeSentences: false,
+  customAutocorrectEnabled: false,
+  customAutocorrects: [],
   customDashEnabled: false,
   enterAfterPocket: 'normal',
   enterAfterHat: 'normal',
@@ -1606,6 +1615,7 @@ export interface SettingMeta {
     | 'number'
     | 'defaultZoomPct'
     | 'customDash'
+    | 'customAutocorrect'
     | 'accessibilityRenderer'
     | 'level'
     | 'readers'
@@ -2538,6 +2548,16 @@ export const SETTING_METADATA: SettingMeta[] = [
     category: 'editing',
     section: 'Typing',
     aliases: ['autocapitalize', 'capitalize sentences', 'auto capitalization', 'capitalise'],
+  },
+  {
+    key: 'customAutocorrectEnabled',
+    label: 'Custom autocorrect',
+    description:
+      'Replace text as you type, Word-style: define your own entries (like "fwk" → "framework", or "--" → "---") and they expand the moment you finish the sequence with a space or punctuation. Press Backspace right after to get back exactly what you typed. Applies everywhere. If Auto-capitalize is also on, an expansion at the start of a sentence in a tag or analytic is capitalized too. Off by default.',
+    kind: 'customAutocorrect',
+    category: 'editing',
+    section: 'Typing',
+    aliases: ['autocorrect', 'text replacement', 'replace as you type', 'custom autocorrect', 'expansion', 'abbreviation'],
   },
   {
     key: 'enterAfterPocket',
@@ -3475,6 +3495,28 @@ export class SettingsStore {
   }
 }
 
+/** customAutocorrects sanitizer: drop malformed rows, trim keys, forbid
+ *  whitespace in keys, cap sizes, and dedupe case-insensitively (first
+ *  entry wins — matches the settings table's add-time duplicate refusal). */
+function sanitizeCustomAutocorrects(raw: unknown): Array<{ from: string; to: string }> {
+  if (!Array.isArray(raw)) return [];
+  const out: Array<{ from: string; to: string }> = [];
+  const seen = new Set<string>();
+  for (const row of raw) {
+    if (typeof row !== 'object' || row === null) continue;
+    const from = String((row as { from?: unknown }).from ?? '').trim();
+    const to = String((row as { to?: unknown }).to ?? '');
+    if (!from || from.length > 64 || /\s/.test(from)) continue;
+    if (!to || to.length > 256) continue;
+    const key = from.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ from, to });
+    if (out.length >= 200) break;
+  }
+  return out;
+}
+
 function sanitize(s: Settings): Settings {
   return {
     navWidth: clamp(s.navWidth, 150, 800),
@@ -3603,6 +3645,8 @@ function sanitize(s: Settings): Settings {
     editorSpellcheck: !!s.editorSpellcheck,
     smartQuotes: !!s.smartQuotes,
     autoCapitalizeSentences: !!s.autoCapitalizeSentences,
+    customAutocorrectEnabled: !!s.customAutocorrectEnabled,
+    customAutocorrects: sanitizeCustomAutocorrects(s.customAutocorrects),
     customDashEnabled: !!s.customDashEnabled,
     enterAfterPocket: sanitizeEnterAfter(s.enterAfterPocket),
     enterAfterHat: sanitizeEnterAfter(s.enterAfterHat),

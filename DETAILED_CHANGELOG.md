@@ -7,6 +7,35 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Custom autocorrections + engine decorator phase** (new
+  `custom-autocorrect-plugin.ts`; `autocorrect.ts` gains decorators +
+  shared `marksAreUniform`/`WORD_COMMIT_DELIMITER`; settings
+  `customAutocorrectEnabled` + `customAutocorrects` table (sanitized:
+  whitespace-free keys ≤64, values ≤256, ≤200 rows, case-insensitive
+  dedupe); table widget in settings-ui (kind `customAutocorrect`); 20
+  tests in `tests/editor/custom-autocorrect.test.ts`). Commit-time
+  replacement: suffix match against the entry table at the delimiter,
+  longest key wins, boundaries per key shape (word-led keys need a word
+  boundary; punctuation-led keys refuse inside a run of their lead char),
+  case adaptation for lowercase keys (First-cap/ALL-CAPS; other mixed
+  refuses), atoms break matching, mixed-mark sequences skip. Scope:
+  everywhere (an expansion is explicit intent — unlike autocap). CLASH
+  DESIGN: deterministic priority (registration order: quotes → dash →
+  custom → autocap; first match wins; conversions are atomic and output
+  is never re-fed, so no cascades); `entryConflictWarnings` statically
+  detects UNREACHABLE entries (keys containing straight quotes under
+  smart quotes, or the active dash trigger's hyphen run) → per-row ⚠ in
+  the table; duplicate keys are REFUSED at add time with an inline error
+  naming the existing entry (user requirement). COMPOSITION: engine
+  decorator phase — decorators may adjust only `insert`, `revertTo`
+  stays the typed literal; `autoCapitalizeDecorator` capitalizes an
+  expansion's leading word under the standalone rule's exact conditions
+  (fwk → Framework at a tag's sentence start), and one Backspace unwinds
+  replacement + capitalization together. Runtime clash tests enact the
+  motivating scenario both ways: dash-trigger `--` beats the `--`→`---`
+  entry deterministically (entry unreachable, warned in UI); trigger
+  `---` coexists with it; the entry's output never cascades.
+
 - **Auto-capitalization for tags/analytics** (new
   `auto-capitalize-plugin.ts` — the third rule on the shared autocorrect
   engine; `settings.ts`, registration in `index.ts`, MANUAL typing-aids +

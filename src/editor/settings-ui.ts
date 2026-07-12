@@ -8,6 +8,7 @@
  */
 
 import { confirmDialog } from './text-prompt.js';
+import { entryConflictWarnings } from './custom-autocorrect-plugin.js';
 import {
   CUSTOMIZABLE_COLOR_TOKENS,
   DISPLAY_COLOR_TOKEN_TO_KEY,
@@ -766,6 +767,10 @@ class SettingsModal {
     } else if (meta.kind === 'customDash') {
       row.appendChild(text);
       row.appendChild(buildCustomDashEditor());
+      return row;
+    } else if (meta.kind === 'customAutocorrect') {
+      row.appendChild(text);
+      row.appendChild(buildCustomAutocorrectEditor());
       return row;
     } else if (meta.kind === 'voiceInputDevice') {
       row.appendChild(text);
@@ -3134,6 +3139,155 @@ function buildCustomDashEditor(): HTMLElement {
   });
   row.append(cb, replaceText, triggerSelect, withText, select);
   return row;
+}
+
+/** Enable checkbox + the user's replacement table: rows of "from → to" with
+ *  remove buttons and an add row. CLASH FLAGGING (user requirement,
+ *  2026-07-13): adding a key that already exists is REFUSED with an inline
+ *  error naming the existing entry — two rebindings of the same input can
+ *  never coexist; and rows whose key a char-triggered rule would consume as
+ *  it's typed (straight quotes under Smart quotes; hyphen runs under the
+ *  active Custom dash trigger) show a non-blocking ⚠ warning, since the
+ *  entry can't fire until that feature is toggled off. Warnings are
+ *  recomputed on every list render (add/remove and dialog reopen). */
+function buildCustomAutocorrectEditor(): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'pmd-autocorrect-editor';
+
+  const enableRow = document.createElement('label');
+  enableRow.className = 'pmd-multi-doc-layout-mode-row';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = settings.get('customAutocorrectEnabled');
+  const cbLabel = document.createElement('span');
+  cbLabel.className = 'pmd-multi-doc-layout-mode-row-label';
+  cbLabel.textContent = 'Replace text as you type';
+  enableRow.append(cb, cbLabel);
+  wrap.appendChild(enableRow);
+
+  const list = document.createElement('div');
+  list.className = 'pmd-autocorrect-list';
+  wrap.appendChild(list);
+
+  const addRow = document.createElement('div');
+  addRow.className = 'pmd-autocorrect-add-row';
+  const fromInput = document.createElement('input');
+  fromInput.type = 'text';
+  fromInput.placeholder = 'Replace…';
+  fromInput.maxLength = 64;
+  fromInput.className = 'pmd-autocorrect-input';
+  const arrow = document.createElement('span');
+  arrow.textContent = '→';
+  const toInput = document.createElement('input');
+  toInput.type = 'text';
+  toInput.placeholder = 'with…';
+  toInput.maxLength = 256;
+  toInput.className = 'pmd-autocorrect-input pmd-autocorrect-input-to';
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'pmd-settings-btn';
+  addBtn.textContent = 'Add';
+  addRow.append(fromInput, arrow, toInput, addBtn);
+  wrap.appendChild(addRow);
+
+  const message = document.createElement('div');
+  message.className = 'pmd-autocorrect-message';
+  message.hidden = true;
+  wrap.appendChild(message);
+
+  const setMessage = (msg: string | null): void => {
+    message.hidden = !msg;
+    message.textContent = msg ?? '';
+  };
+
+  const conflictContext = () => ({
+    smartQuotes: settings.get('smartQuotes'),
+    customDashEnabled: settings.get('customDashEnabled'),
+    customDashTrigger: settings.get('customDashTrigger'),
+  });
+
+  function renderList(): void {
+    list.textContent = '';
+    const entries = settings.get('customAutocorrects');
+    if (entries.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'pmd-autocorrect-empty';
+      empty.textContent = 'No entries yet.';
+      list.appendChild(empty);
+    }
+    const ctx = conflictContext();
+    entries.forEach((entry, idx) => {
+      const row = document.createElement('div');
+      row.className = 'pmd-autocorrect-row';
+      const label = document.createElement('span');
+      label.className = 'pmd-autocorrect-row-label';
+      label.textContent = `${entry.from} → ${entry.to}`;
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'pmd-settings-btn';
+      remove.textContent = '✕';
+      remove.setAttribute('aria-label', `Remove entry ${entry.from}`);
+      remove.addEventListener('click', () => {
+        const next = settings.get('customAutocorrects').filter((_, i) => i !== idx);
+        settings.set('customAutocorrects', next);
+        setMessage(null);
+        renderList();
+      });
+      row.append(label, remove);
+      list.appendChild(row);
+      for (const warning of entryConflictWarnings(entry.from, ctx)) {
+        const warn = document.createElement('div');
+        warn.className = 'pmd-autocorrect-warning';
+        warn.textContent = `⚠ ${warning}`;
+        list.appendChild(warn);
+      }
+    });
+  }
+
+  const syncDisabled = (): void => {
+    const off = !cb.checked;
+    fromInput.disabled = off;
+    toInput.disabled = off;
+    addBtn.disabled = off;
+    list.classList.toggle('pmd-autocorrect-list-disabled', off);
+  };
+
+  addBtn.addEventListener('click', () => {
+    const from = fromInput.value.trim();
+    const to = toInput.value;
+    if (!from || !to) {
+      setMessage('Both fields are required.');
+      return;
+    }
+    if (/\s/.test(from)) {
+      setMessage(`The "replace" text can't contain spaces.`);
+      return;
+    }
+    const entries = settings.get('customAutocorrects');
+    const existing = entries.find((e) => e.from.toLowerCase() === from.toLowerCase());
+    if (existing) {
+      // Two rebindings of the same input can never coexist — refuse, and
+      // name the entry so the user can remove or reconsider it.
+      setMessage(
+        `An entry for "${existing.from}" already exists (→ ${existing.to}). Remove it first to rebind.`,
+      );
+      return;
+    }
+    settings.set('customAutocorrects', [...entries, { from, to }]);
+    fromInput.value = '';
+    toInput.value = '';
+    setMessage(null);
+    renderList();
+    fromInput.focus();
+  });
+  cb.addEventListener('change', () => {
+    settings.set('customAutocorrectEnabled', cb.checked);
+    syncDisabled();
+  });
+
+  renderList();
+  syncDisabled();
+  return wrap;
 }
 
 /** Clamped 50–300% / step-10 number input for the default document zoom. */

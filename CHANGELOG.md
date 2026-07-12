@@ -9,6 +9,17 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Added
 
+- **Custom autocorrect** (Settings → Editing → Typing, off by default).
+  Word-style "replace text as you type" with your own entries — `fwk` →
+  `framework`, `--` → `---` — expanding when you finish the sequence with a
+  space or punctuation, everywhere in the document. Lowercase entries adapt
+  to your typed casing. The table flags clashes: a second entry for the same
+  input is refused, and entries another typing aid would intercept show a
+  warning explaining why they can't fire. Works together with
+  Auto-capitalize (an expansion starting a sentence in a tag comes out
+  capitalized), and Backspace right after any conversion restores exactly
+  what you typed.
+
 - **Auto-capitalization for tags and analytics** (Settings → Editing, off by
   default). The first word of each sentence — and a standalone `i` — is
   capitalized the moment you finish the word with a space or punctuation, in
