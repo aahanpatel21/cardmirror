@@ -3142,12 +3142,11 @@ export const SETTING_METADATA: SettingMeta[] = [
     key: 'pairingConnectedUntil',
     label: 'Debate Decoded account (optional in beta)',
     description:
-      'Optional while CardMirror is in beta: no feature requires it — card sharing and ' +
-      'co-editing work exactly the same whether or not this machine is linked. Linking just ' +
-      'readies this machine in case the hosted relay asks for accounts after the beta. To ' +
-      'link, open debate-decoded.ghost.io/cardmirror-connect, sign in, and paste the code it ' +
-      'shows you here. Each membership covers two machines; linking a third asks before ' +
-      'unlinking the oldest.',
+      'Optional while CardMirror is in beta, will be required for collaboration features in ' +
+      'v1.0. Linking this machine allows you to access collaboration features seamlessly when ' +
+      'the application exits beta. To link, open debate-decoded.ghost.io/cardmirror-connect, ' +
+      'sign in, and paste the code it shows you here. Each membership covers two machines; ' +
+      'linking a third asks before unlinking the oldest.',
     kind: 'pairingAccount',
     category: 'pairing',
     electronOnly: true,
