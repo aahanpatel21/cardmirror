@@ -43,12 +43,19 @@ export function isFileGoneError(err: unknown): boolean {
   return (typeof message === 'string' && message.includes('ENOENT')) || name === 'NotFoundError';
 }
 
+/** Benign browser noise that arrives as a window `error` event without
+ *  anything actually being broken: ResizeObserver fires this whenever
+ *  layout observers need another tick (both wordings, per browser).
+ *  Toasting it would cry wolf on every launch. */
+const BENIGN_ERROR = /^ResizeObserver loop (completed with undelivered notifications|limit exceeded)/;
+
 export function installGlobalErrorSurface(): void {
   window.addEventListener('unhandledrejection', (e) => {
     surface('unhandled rejection', (e as PromiseRejectionEvent).reason);
   });
   window.addEventListener('error', (e) => {
     // Runtime script errors only — resource load errors don't bubble here.
+    if (BENIGN_ERROR.test((e as ErrorEvent).message ?? '')) return;
     surface('uncaught error', (e as ErrorEvent).error ?? (e as ErrorEvent).message);
   });
 }

@@ -80,6 +80,24 @@ describe('installGlobalErrorSurface', () => {
     expect(toasts().some((t) => t.includes('third'))).toBe(true);
   });
 
+  it('ignores benign ResizeObserver loop noise entirely (no toast, no record)', () => {
+    // Chromium dispatches these as message-only error events (no .error)
+    // on healthy launches — they must not trip the "something went
+    // wrong" toast. Both browser wordings.
+    window.dispatchEvent(
+      new ErrorEvent('error', {
+        message: 'ResizeObserver loop completed with undelivered notifications.',
+      }),
+    );
+    window.dispatchEvent(new ErrorEvent('error', { message: 'ResizeObserver loop limit exceeded' }));
+    expect(consoleSpy).not.toHaveBeenCalled();
+    expect(toasts()).toEqual([]);
+    // A real error right after still surfaces — the filter is not a gate
+    // on the throttle.
+    window.dispatchEvent(new ErrorEvent('error', { error: new Error('real failure') }));
+    expect(toasts().some((t) => t.includes('real failure'))).toBe(true);
+  });
+
   it('an unhandled rejection event is surfaced without throwing', () => {
     // jsdom has no PromiseRejectionEvent constructor; the handler must cope
     // with whatever event object arrives (reads .reason, possibly undefined).

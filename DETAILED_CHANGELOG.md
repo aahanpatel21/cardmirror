@@ -7,6 +7,15 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Global error surface: benign ResizeObserver noise filtered**
+  (`error-surface.ts`). Chromium dispatches "ResizeObserver loop
+  completed with undelivered notifications" (older wording: "loop limit
+  exceeded") as a window `error` event with no `.error` object on
+  perfectly healthy launches; the beta.12 last-resort surface toasted it
+  as "Something went wrong…". Both wordings are now dropped before the
+  console record + toast; a regression test asserts the filter doesn't
+  gate real errors behind the throttle.
+
 - **Relay auth architecture activated — enforcement stays off**
   (`pairing-ipc.ts`, new `pairing-entitlement.ts`; 18 tests across
   `tests/desktop/pairing-entitlement.test.ts` +

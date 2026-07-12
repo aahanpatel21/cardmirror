@@ -100,6 +100,12 @@ see `DETAILED_CHANGELOG.md`.
 
 ### Fixed
 
+- **A harmless browser notice no longer triggers the error toast.** The
+  "something went wrong" safety net added in beta.12 could fire on launch
+  for a benign internal browser message (`ResizeObserver loop…`) that
+  signals nothing broken. It's now ignored, so that toast only ever means
+  a real failure.
+
 - **Autocorrect polish (smart quotes + custom dashes).** The
   Backspace-revert (press Backspace right after a conversion to get the
   literal characters back) no longer dies silently when background activity —
