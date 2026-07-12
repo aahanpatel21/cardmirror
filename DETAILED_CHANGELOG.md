@@ -7,6 +7,27 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Fail-safe hardening: close/quit, mode switch, startup recovery**
+  (`index.ts`). Follow-up to the error-surfacing pass — these three flows
+  needed to fail SAFE, not just loud, because their half-completed state is
+  itself the damage. (1) `handleUserCloseRequest` (the `host:close-request`
+  handler): every path must end in `closeSelf()` or `cancelClose()`; an
+  escaped throw ran neither, leaving a pending macOS quit waiting forever.
+  Now wrapped — crash alerts and cancels the close (window stays open,
+  nothing lost). (2) `handleModeSwitch`: only the journaling middle was
+  guarded; a throw before it (confirm dialog, session-count bridge) or at
+  the marker write left `modeSwitchInFlight` stuck true — every later
+  toggle a silent no-op for the session, with the setting flipped but no
+  switch. Outer wrapper reverts the setting and unsticks the guard.
+  (3) `runStartupRecovery`: scan layers were already per-entry guarded
+  (main skips corrupt journals; multi-doc reopen guarded per doc), but the
+  single-doc mode-switch branch's WINNER reopen was not — one unreadable
+  journal stranded every other healthy doc behind it; and all reopen
+  failures were console-only. Winner now guarded (spawn loop proceeds),
+  the whole flow wrapped (crash → toast; journals persist so the offer
+  defers to next launch), and every per-doc reopen failure now toasts
+  naming the document.
+
 - **Error-surfacing hardening: no invisible failures** (new
   `error-surface.ts`; `index.ts`, `multi-pane-shell.ts`). Field bug
   2026-07-12: a user's Save, Save As, AND autosave all did literally

@@ -25,6 +25,15 @@ see `DETAILED_CHANGELOG.md`.
   developer console — so "I clicked it and nothing happened" always comes with
   an error message we can act on.
 
+- **Closing, quitting, switching layouts, and startup recovery are
+  crash-proofed.** An unexpected error while closing a window or quitting now
+  cancels the close cleanly (window stays open, with a message) instead of
+  leaving the quit hanging; a failed layout switch reverts to the current
+  layout and — fixing a subtle one — no longer silently disables the toggle
+  for the rest of the session; and startup recovery now reopens every
+  readable draft even if one journal is unreadable, telling you about any
+  document it couldn't restore instead of skipping it silently.
+
 - **Autosave failures are no longer silent.** When an autosave can't write
   (stale path, permissions, full disk), CardMirror now shows a toast the
   first time it happens, and the autosave button turns red with a solid

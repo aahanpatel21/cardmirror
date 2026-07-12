@@ -7248,6 +7248,29 @@ function pushNativeMenuBindings(): void {
 async function handleUserCloseRequest(): Promise<void> {
   const electronHost = getElectronHost();
   if (!electronHost) return;
+  try {
+    await handleUserCloseRequestInner(electronHost);
+  } catch (err) {
+    // Fail SAFE. Every path through the close flow must end in closeSelf()
+    // or cancelClose(); an escaped throw ran NEITHER — a pending macOS quit
+    // would wait forever on this window's verdict. Cancel the close: the
+    // window stays open, nothing is lost, and the user sees why.
+    console.error('Close-request handling crashed:', err);
+    void alertDialog(
+      `Couldn't close this window cleanly: ${err instanceof Error ? err.message : err}\n\n` +
+        'The window stays open and your document is untouched. Save manually, then try again.',
+    );
+    try {
+      await electronHost.cancelClose?.();
+    } catch {
+      /* best-effort — cancelClose is itself a bridge call */
+    }
+  }
+}
+
+async function handleUserCloseRequestInner(
+  electronHost: NonNullable<ReturnType<typeof getElectronHost>>,
+): Promise<void> {
   // Multi-pane: `currentDocDirty` only tracks the single-doc view, so the quit
   // must ask the SHELL to prompt for every unsaved pane before closing —
   // otherwise closing the window silently discards their work. (Sessions persist
@@ -8037,6 +8060,25 @@ settings.subscribe((s, meta) => {
 const MODE_SWITCH_MARKER_KEY = 'cardmirror:mode-switch-recovery';
 
 async function handleModeSwitch(newValue: boolean): Promise<void> {
+  try {
+    await handleModeSwitchInner(newValue);
+  } catch (err) {
+    // A throw anywhere outside the inner journaling try (the confirm dialog,
+    // the live-session-count bridge, the marker write) used to leave
+    // modeSwitchInFlight stuck true — every later toggle a silent no-op for
+    // the session — with the setting flipped but no switch performed. Fail
+    // safe: revert the setting (subscriber skips: flag still set, value
+    // matches boot) and unstick the guard.
+    console.error('Mode switch crashed:', err);
+    void alertDialog(
+      `Couldn't switch modes: ${err instanceof Error ? err.message : err}\n\nStaying in the current layout.`,
+    );
+    settings.set('multiDocWorkspace', BOOT_MULTI_DOC_WORKSPACE);
+    modeSwitchInFlight = false;
+  }
+}
+
+async function handleModeSwitchInner(newValue: boolean): Promise<void> {
   modeSwitchInFlight = true;
   const electron = !!getElectronHost();
   let message: string;
@@ -8203,6 +8245,20 @@ async function journalAllForModeSwitch(): Promise<ModeSwitchDoc[]> {
  *  discard it. Drafts left undecided when the sidebar closes
  *  remain in the journal store for the next launch. */
 async function runStartupRecovery(): Promise<void> {
+  try {
+    await runStartupRecoveryInner();
+  } catch (err) {
+    // Journals survive on disk — a recovery crash defers the offer to the
+    // next launch rather than losing anything. Say so instead of dying mute
+    // (an escaped throw here used to vanish into the boot IIFE).
+    console.error('Startup recovery failed:', err);
+    showToast(
+      'Startup recovery hit an error — your drafts are safe and will be offered on the next launch.',
+    );
+  }
+}
+
+async function runStartupRecoveryInner(): Promise<void> {
   // No recovery offers on mobile — the sidebar is a desktop surface
   // (it would fight the mobile chrome), and the view-first shell is
   // the wrong place to adjudicate drafts. Journals stay put and
@@ -8429,6 +8485,7 @@ async function autoRecoverAll(
         console.log(`[cardmirror] modeswitch: reopened "${entry.filename}" in a pane`);
       } catch (err) {
         console.warn(`Failed to auto-recover ${entry.uid}:`, err);
+        showToast(`Couldn't reopen "${entry.filename}" — it may still be available from Recents.`);
       }
     }
     return;
@@ -8440,9 +8497,16 @@ async function autoRecoverAll(
   );
   const winner = sorted[0];
   if (!winner) return;
-  await applyRecovery(winner, { markDirty: wasDirty(winner.uid) });
-  await dropIfClean(winner.uid);
-  console.log(`[cardmirror] modeswitch: reopened "${winner.filename}" in this window`);
+  try {
+    await applyRecovery(winner, { markDirty: wasDirty(winner.uid) });
+    await dropIfClean(winner.uid);
+    console.log(`[cardmirror] modeswitch: reopened "${winner.filename}" in this window`);
+  } catch (err) {
+    // One unreadable journal must not strand the rest — the spawn loop
+    // below still reopens the other docs. The journal stays on disk.
+    console.warn(`Failed to auto-recover ${winner.uid}:`, err);
+    showToast(`Couldn't reopen "${winner.filename}" — it may still be available from Recents.`);
+  }
   if (!host.canSpawnWindow) return;
   for (const entry of sorted.slice(1)) {
     try {
@@ -8463,6 +8527,7 @@ async function autoRecoverAll(
       console.log(`[cardmirror] modeswitch: spawned a window for "${entry.filename}"`);
     } catch (err) {
       console.warn(`Failed to spawn window for recovered ${entry.uid}:`, err);
+      showToast(`Couldn't reopen "${entry.filename}" — it may still be available from Recents.`);
     }
   }
 }
