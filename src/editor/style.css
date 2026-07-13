@@ -6615,6 +6615,13 @@ body.pmd-steady-cursor .pmd-italic-caret,
   flex-wrap: wrap;
 }
 
+/* Code left, Copy/Regenerate pushed to the right edge — the auto margin
+   absorbs the free space after the pill without stretching its
+   background (same left-field / right-button shape as the account row). */
+.pmd-pairing-owncode .pmd-pairing-owncode-value {
+  margin-right: auto;
+}
+
 .pmd-shrink-protection-pattern {
   flex: 1 1 6rem;
   min-width: 4rem;
