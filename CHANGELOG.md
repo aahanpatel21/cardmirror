@@ -16,6 +16,10 @@ see `DETAILED_CHANGELOG.md`.
     name — CardMirror tells you the file is gone and offers **Save As…**
     so you choose where the document lives now. (Previously you could
     end up with two quietly diverging copies.)
+  - **Save As… now opens next to the document** — in the file's own
+    folder normally and, when the old location is gone (a renamed or
+    moved folder), in the closest folder that still exists, right where
+    the file used to be — instead of wherever you last saved something.
   - If a file changes on disk while it's open — edited on another
     device, by another program, or replaced by a sync service like
     Dropbox — Save now asks before replacing it: **Overwrite**,

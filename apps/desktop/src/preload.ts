@@ -209,7 +209,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveAs: (
     suggestedName: string,
     bytes: Uint8Array,
-    opts: { filters: FileFilter[] },
+    opts: { filters: FileFilter[]; nearPath?: string },
   ) => ipcRenderer.invoke('host:save-as', suggestedName, bytes, opts),
 
   saveExisting: (handle: string, bytes: Uint8Array, opts?: { force?: boolean }) =>

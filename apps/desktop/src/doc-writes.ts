@@ -171,6 +171,29 @@ export function saveNewDoc(
   });
 }
 
+/** The deepest existing DIRECTORY on `fromPath`'s ancestor chain —
+ *  `fromPath`'s own folder when the path is intact, or the nearest
+ *  surviving parent after a rename/move/delete broke some segment.
+ *  Used to open the Save-As dialog next to wherever the document's
+ *  old location went (Word does the same on a stale-path save).
+ *  Null only if nothing on the chain exists (unmounted volume). */
+export async function nearestExistingDir(fromPath: string): Promise<string | null> {
+  let dir = path.resolve(fromPath);
+  for (;;) {
+    try {
+      // isDirectory guard: an existing FILE on the chain (fromPath
+      // itself, or a file squatting on an ancestor name) is not a
+      // place a save dialog can open.
+      if ((await fs.stat(dir)).isDirectory()) return dir;
+    } catch {
+      /* segment gone — keep walking up */
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return null; // hit the filesystem root
+    dir = parent;
+  }
+}
+
 /** Test seam — clears both maps so vitest cases start cold. */
 export function resetDocWritesForTests(): void {
   knownDiskState.clear();

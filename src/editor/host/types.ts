@@ -76,6 +76,14 @@ export interface SaveAsOptions {
    *  usually used as the default format if the user doesn't pick
    *  a specific one. */
   filters?: FileFilter[];
+  /** A path the dialog should open NEAR (Electron only; the web picker
+   *  has no equivalent). Usually the active doc's own on-disk path: the
+   *  dialog opens in the deepest ancestor folder that still exists — the
+   *  doc's own folder when the path is intact, or (Word-style) the
+   *  nearest surviving parent after a rename/move/delete broke it, so
+   *  the stale-path rescue lands the user next to wherever their file
+   *  went. Omit for docs with no path (today's last-used-dir default). */
+  nearPath?: string;
 }
 
 /** A crash-recovery journal entry. Written every few seconds while

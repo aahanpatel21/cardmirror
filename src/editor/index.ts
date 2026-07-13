@@ -6592,6 +6592,9 @@ async function runSaveAsFlowInner(): Promise<boolean> {
     );
     const result = await getHost().saveAs(choice.filename, bytes, {
       filters: saveFiltersForFormat(choice.format),
+      // Open the dialog next to the doc's current path (or, after a
+      // rename/move broke it, the nearest surviving parent folder).
+      ...(typeof file.handle === 'string' && file.handle ? { nearPath: file.handle } : {}),
     });
     if (!result) return false;
     if (isFullSave) {
@@ -6709,6 +6712,7 @@ export async function runSaveSendDocFlow(): Promise<boolean> {
         // same folder/format) — defer to the dialog so the user can rename.
         result = await getHost().saveAs(filename, bytes, {
           filters: saveFiltersForFormat(format),
+          ...(sourceHandle ? { nearPath: sourceHandle } : {}),
         });
       } else {
         result = silent;
@@ -6718,6 +6722,7 @@ export async function runSaveSendDocFlow(): Promise<boolean> {
       // non-Electron host → let the OS dialog pick the location.
       result = await getHost().saveAs(filename, bytes, {
         filters: saveFiltersForFormat(format),
+        ...(sourceHandle ? { nearPath: sourceHandle } : {}),
       });
     }
     if (!result) return false;
@@ -6790,6 +6795,7 @@ export async function runSaveMarkedCardsFlow(): Promise<boolean> {
       if (silent === 'collision') {
         result = await getHost().saveAs(filename, bytes, {
           filters: saveFiltersForFormat(format),
+          ...(sourceHandle ? { nearPath: sourceHandle } : {}),
         });
       } else {
         result = silent;
@@ -6797,6 +6803,7 @@ export async function runSaveMarkedCardsFlow(): Promise<boolean> {
     } else {
       result = await getHost().saveAs(filename, bytes, {
         filters: saveFiltersForFormat(format),
+        ...(sourceHandle ? { nearPath: sourceHandle } : {}),
       });
     }
     if (!result) return false;
@@ -8531,7 +8538,13 @@ async function saveRecoveryEntry(entry: JournalEntry): Promise<boolean> {
       choice.format === 'cmir'
         ? [{ name: 'CardMirror native (.cmir)', extensions: ['cmir'] }]
         : [{ name: 'Microsoft Word (.docx)', extensions: ['docx'] }];
-    const result = await host.saveAs(choice.filename, bytes, { filters });
+    const result = await host.saveAs(choice.filename, bytes, {
+      filters,
+      // Land the dialog near the draft's original location (or its
+      // nearest surviving parent, when the gone-file fallback routed
+      // us here after a rename/move).
+      ...(typeof entry.handle === 'string' && entry.handle ? { nearPath: entry.handle } : {}),
+    });
     if (!result) return false;
     await host.deleteJournal(entry.uid).catch(() => {
       /* best-effort */

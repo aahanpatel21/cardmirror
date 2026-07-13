@@ -50,6 +50,19 @@ in each release, see `CHANGELOG.md`.
   `saveExisting`) moved to `writeFileAtPath`, since in-place saves now
   require the file to exist.
 
+- **Save-As dialog opens next to the document** (`SaveAsOptions.nearPath`;
+  `nearestExistingDir` in `doc-writes.ts`). The OS save dialog used to
+  get a bare filename as `defaultPath`, i.e. it opened at the app's
+  last-used dialog directory — unrelated to the document, and
+  actively unhelpful mid-rescue. The doc save flows (Save As, the
+  send-doc/marked-cards dialog fallbacks, the recovery sidebar's
+  Save As) now pass the doc's own path; main walks up its ancestor
+  chain to the deepest directory that still exists and opens there.
+  Intact path → the file's own folder; folder renamed/moved → the
+  nearest surviving parent, beside wherever the file went (Word's
+  behavior on a stale-path save). Electron-only — the web
+  `showSaveFilePicker` has no equivalent for a gone file.
+
 - **Edits made while a save is writing no longer marked clean** (new
   `src/editor/save-clean-token.ts`; `index.ts`, `multi-pane-shell.ts`;
   tests in `tests/editor/save-clean-token.test.ts`). Every save is

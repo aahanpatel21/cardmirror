@@ -1731,7 +1731,8 @@ and headings instead of importing flat text.
   save can't find the old location. CardMirror will tell you what happened
   and offer **Save As…** so you can put the document somewhere new —
   nothing is lost, and the app never silently recreates a file at the old
-  location.
+  location. The Save As dialog opens as close to the old location as still
+  exists, so the file's new home is usually a click away.
 - **If the file changes on disk while it's open** — edited on another
   device, by another program, or replaced by a sync service — Save asks
   before replacing it: **Overwrite** (keep this window's version),

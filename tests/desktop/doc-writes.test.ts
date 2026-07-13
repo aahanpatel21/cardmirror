@@ -26,6 +26,7 @@ import {
   chainDocWrite,
   recordDiskStateFromDisk,
   resetDocWritesForTests,
+  nearestExistingDir,
   CHANGED_ON_DISK_MARKER,
 } from '../../apps/desktop/src/doc-writes.js';
 
@@ -166,6 +167,36 @@ describe('atomic writes', () => {
     await fs.chmod(p, 0o600);
     await saveExistingDoc(p, Buffer.from('v2'));
     expect((await fs.stat(p)).mode & 0o777).toBe(0o600);
+  });
+});
+
+describe('nearestExistingDir — where the Save-As dialog should open', () => {
+  it("an intact file path resolves to the file's own folder", async () => {
+    const p = await openedDoc();
+    expect(await nearestExistingDir(p)).toBe(caseDir);
+  });
+
+  it('a deleted file still resolves to its (surviving) folder', async () => {
+    const p = await openedDoc();
+    await fs.unlink(p);
+    expect(await nearestExistingDir(p)).toBe(caseDir);
+  });
+
+  it('a renamed folder resolves to the nearest surviving ancestor (the Word behavior)', async () => {
+    // caseDir/tubs/aff/Aff.cmir, then "tubs" gets renamed — the deepest
+    // survivor on the old path's chain is caseDir itself.
+    const old = path.join(caseDir, 'tubs', 'aff', 'Aff.cmir');
+    await fs.mkdir(path.dirname(old), { recursive: true });
+    await fs.writeFile(old, 'doc');
+    await fs.rename(path.join(caseDir, 'tubs'), path.join(caseDir, 'tubs-2026'));
+    expect(await nearestExistingDir(old)).toBe(caseDir);
+  });
+
+  it('walks past a FILE squatting on an ancestor name', async () => {
+    // caseDir/notes is a file; the stale doc path claims it as a folder.
+    await fs.writeFile(path.join(caseDir, 'notes'), 'plain file');
+    const stale = path.join(caseDir, 'notes', 'phantom', 'Aff.cmir');
+    expect(await nearestExistingDir(stale)).toBe(caseDir);
   });
 });
 

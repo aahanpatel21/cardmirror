@@ -36,7 +36,12 @@ import {
 } from './accessibility-pref.js';
 import { installMacAccessibilitySuppression } from './ax-suppress-mac.js';
 import { resolveCmirCandidates, isWithin } from './transclusion-path.js';
-import { saveExistingDoc, saveNewDoc, recordDiskStateFromDisk } from './doc-writes.js';
+import {
+  saveExistingDoc,
+  saveNewDoc,
+  recordDiskStateFromDisk,
+  nearestExistingDir,
+} from './doc-writes.js';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { gzip as zlibGzip, gunzip as zlibGunzip } from 'node:zlib';
@@ -1171,11 +1176,22 @@ ipcMain.handle(
     event,
     suggestedName: string,
     bytes: unknown,
-    opts: { filters?: FileFilter[] },
+    opts: { filters?: FileFilter[]; nearPath?: string },
   ) => {
     const win = ownerWindow(event.sender);
+    // Open the dialog next to the doc's own path when we have one: its
+    // folder while the path is intact, or (Word-style) the nearest
+    // surviving ancestor after a rename/move broke it — so the
+    // stale-path rescue lands the user beside wherever the file went.
+    // No nearPath (or nothing on its chain exists) → bare filename,
+    // i.e. the OS's last-used-directory default, as before.
+    let defaultPath = suggestedName;
+    if (typeof opts?.nearPath === 'string' && opts.nearPath) {
+      const dir = await nearestExistingDir(opts.nearPath);
+      if (dir) defaultPath = path.join(dir, suggestedName);
+    }
     const result = await dialog.showSaveDialog(win ?? new BrowserWindow({ show: false }), {
-      defaultPath: suggestedName,
+      defaultPath,
       filters: opts?.filters?.length ? opts.filters : [],
     });
     if (result.canceled || !result.filePath) return null;

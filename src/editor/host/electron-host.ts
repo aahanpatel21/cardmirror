@@ -197,7 +197,7 @@ interface ElectronAPI {
   saveAs(
     suggestedName: string,
     bytes: Uint8Array,
-    opts: { filters: FileFilter[] },
+    opts: { filters: FileFilter[]; nearPath?: string },
   ): Promise<{ name: string; handle: string } | null>;
   saveExisting(handle: string, bytes: Uint8Array, opts?: { force?: boolean }): Promise<void>;
   saveSendDoc(
@@ -581,6 +581,7 @@ export class ElectronHost implements Host {
   ): Promise<SaveResult | null> {
     const result = await api().saveAs(suggestedName, bytes, {
       filters: opts.filters ?? [],
+      ...(opts.nearPath ? { nearPath: opts.nearPath } : {}),
     });
     if (!result) return null;
     return { name: result.name, handle: result.handle };
