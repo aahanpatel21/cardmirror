@@ -7,6 +7,14 @@ see `DETAILED_CHANGELOG.md`.
 
 ## Unreleased
 
+### Added
+
+- **Web app: download + GitHub buttons.** The web edition's top-right
+  button cluster gains a download button that fetches the right desktop
+  installer for your computer (or asks — Windows, macOS Apple
+  Silicon/Intel, or Linux — when the browser can't tell), and a GitHub
+  button that opens the CardMirror repository. Desktop app unchanged.
+
 ### Changed
 
 - **The web app moved to [cardmirror.app](https://cardmirror.app).** The

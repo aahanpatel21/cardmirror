@@ -7,6 +7,25 @@ in each release, see `CHANGELOG.md`.
 
 ## Unreleased
 
+- **Web-edition download + GitHub header buttons** (new
+  `web-download.ts`; `index.html`, `icons.css`; 9 tests in
+  `tests/editor/web-download.test.ts`). The ribbon's right-hand grid
+  grows a third column on the web (download above GitHub, left of the
+  shortcuts/timer column); both buttons start hidden and are revealed
+  only when no Electron host is present, so the desktop app never
+  advertises its own installer. Download resolves platform + chip via
+  Chromium's high-entropy `userAgentData.architecture` — the ONLY
+  reliable Apple-Silicon signal (`navigator.platform` reports
+  "MacIntel" on M-series too) — and falls back to a route-style picker
+  (Windows / macOS ARM / macOS Intel / Linux AppImage) when ambiguous,
+  including phones. Asset URLs come from the GitHub releases LIST API
+  at click time (`/releases/latest` is a trap: it only serves full
+  releases, and every CardMirror release is a pre-release), matched by
+  extension + arch marker so version-stamped filenames and
+  .blockmap/.yml siblings can't confuse it; any failure opens the
+  releases page. Navigation uses the anchor-click pattern (reliable in
+  installed-PWA windows where `window.open` can be blocked).
+
 - **Web app rehosted: GitHub Pages → Cloudflare Workers static assets at
   `cardmirror.app`** (new `wrangler.jsonc` + `.node-version`;
   `vite.config.ts` base default now `/`; `web-redirect/`;

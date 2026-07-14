@@ -1267,6 +1267,13 @@ html:has(body.pmd-speech-banner-visible) {
   gap: 2px 3px;
   align-content: center;
 }
+/* Web edition: the download / GitHub buttons open a third column on the
+   left (row-major DOM order puts them first in each row). Gated on the
+   class web-download.ts adds alongside un-hiding the buttons, so the
+   desktop app keeps its 2×2. */
+.ribbon-right-grid.pmd-web-buttons {
+  grid-template-columns: repeat(3, auto);
+}
 #ribbon .ribbon-right-grid button {
   width: 1.6rem;
   height: 1.45rem;

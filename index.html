@@ -252,10 +252,21 @@
                 shortcuts   settings
                 timer       home
              Home is single-doc only — CSS hides it in multi-doc,
-             which leaves the timer alone in the bottom row. -->
+             which leaves the timer alone in the bottom row.
+             On the WEB edition two extra buttons open a third column
+             on the left (download desktop app / GitHub repo) — they
+             start hidden and web-download.ts reveals them (plus the
+             grid's pmd-web-buttons class) when there's no Electron
+             host, so the desktop app never shows them:
+                download   shortcuts   settings
+                github     timer       home       -->
         <div class="ribbon-right-grid">
+          <button id="download-app-btn" type="button" hidden
+                  title="Download the desktop app" aria-label="Download the desktop app"><span class="pmd-icon pmd-icon-download" aria-hidden="true"></span></button>
           <button id="reference-btn" type="button" title="Keyboard shortcuts" aria-label="Keyboard shortcuts"><span class="pmd-icon pmd-icon-shortcuts" aria-hidden="true"></span></button>
           <button id="settings-btn" type="button" title="Settings" aria-label="Settings"><span class="pmd-icon pmd-icon-settings" aria-hidden="true"></span></button>
+          <button id="github-btn" type="button" hidden
+                  title="CardMirror on GitHub" aria-label="CardMirror on GitHub"><span class="pmd-icon pmd-icon-github" aria-hidden="true"></span></button>
           <button id="timer-toggle-btn" type="button" aria-pressed="false"
                   title="Show / hide the timer panel" aria-label="Toggle timer panel"><span class="pmd-icon pmd-icon-timer" aria-hidden="true"></span></button>
           <button id="home-btn" type="button" class="ribbon-home-btn"

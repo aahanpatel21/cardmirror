@@ -266,11 +266,16 @@ import {
   isFileChangedOnDiskError,
 } from './error-surface.js';
 import { captureCleanToken } from './save-clean-token.js';
+import { wireWebEditionHeaderButtons } from './web-download.js';
 import { computeSelectionChrome, type SelectionChrome } from './selection-chrome.js';
 
 // Install the last-resort error hooks before ANY app wiring — an exception
 // during boot or in a fire-and-forget flow must never be invisible again.
 installGlobalErrorSurface();
+
+// Web edition only: reveal + wire the "Download the desktop app" and
+// GitHub buttons in the ribbon's right-hand grid (no-op under Electron).
+wireWebEditionHeaderButtons();
 
 // Tag the body with the host kind so CSS can gate platform-specific chrome
 // (e.g. the Paste Text button appears only in the browser edition).
