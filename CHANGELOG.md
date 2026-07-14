@@ -5,7 +5,7 @@ changes in each release, written for users of the editor. For
 in-depth rationale and implementation context behind each entry,
 see `DETAILED_CHANGELOG.md`.
 
-## Unreleased
+## 0.1.0-beta.14 — 2026-07-13
 
 ### Added
 
@@ -50,7 +50,10 @@ see `DETAILED_CHANGELOG.md`.
   is on, each numbered card's row in the outline carries the same
   computed number or letter as the editor, in your configured format.
   Toggling numbering or changing its format updates the outline
-  immediately.
+  immediately. You can also number from the outline directly:
+  Shift-click or Ctrl/Cmd-click several tags, then hit the number or
+  substructure toggle — it applies to all selected cards at once, and
+  the selection persists for repeated toggles.
 
 - **New numbering option: Bold substructure letters** (Settings →
   Appearance → Card numbering). On by default: substructure letters now

@@ -272,14 +272,21 @@ never changes your card text, and you can turn it off any time.
 Turn it on from the **numbering** cluster in the ribbon (or search "numbering"
 in the command bar). You mark which cards carry a number, mark sub-parts to get
 a lettered sub-number, and set where numbering starts over; CardMirror computes
-the numbers and keeps them current as you reorder.
+the numbers and keeps them current as you reorder. The same numbers appear next
+to each card in the **navigation pane**, so the outline reads like your speech
+doc.
+
+You can also number straight from the outline: **Shift-click or Ctrl/Cmd-click
+several tags in the navigation pane**, then hit the number or substructure
+button (or their shortcuts) — the toggle applies to every selected card at
+once, and the selection stays put so you can toggle again.
 
 Tune how they look in **Settings → Appearance → Card numbering**: independent
 formats for the number and its substructure, the separator between them (period,
-dash, colon, and more), whether the substructure is capitalized, the number
-color, and how far each is indented — all display settings that change how the
-numbers *look*, never the card content. Numbers also carry through to Word on
-export.
+dash, colon, and more), whether the substructure is capitalized and whether it's
+bold, the number color, and how far each is indented — all display settings that
+change how the numbers *look*, never the card content. Numbers also carry
+through to Word on export.
 
 ---
 
