@@ -150,6 +150,7 @@
       "owner": "ant981228",
       "repo": "cardmirror"
     },
+    "afterPack": "scripts/clean-xattr.cjs",
     "afterSign": "scripts/sign-mac.js"
   },
   "dependencies": {

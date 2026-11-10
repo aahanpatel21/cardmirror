@@ -41,6 +41,7 @@ apps/desktop/dist/
 
 # Electron-builder artifacts (Phase 5).
 release/
+apps/desktop/release
 
 # macOS AX-suppression dylib — compiled from native/ax-suppress.m by
 # apps/desktop/scripts/build-ax-suppress.cjs at build time (the .m source

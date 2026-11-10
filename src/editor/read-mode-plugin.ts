@@ -37,14 +37,11 @@ import { Plugin } from 'prosemirror-state';
 import type { Command } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
 import type { Node as PMNode } from 'prosemirror-model';
-import { AddMarkStep, RemoveMarkStep } from 'prosemirror-transform';
-import type { Transaction } from 'prosemirror-state';
 import { undo, redo, undoDepth, redoDepth } from 'prosemirror-history';
 import { changedRange, expandToTopLevel } from './decoration-range.js';
 import { isSyncOrigin } from './sync-origin.js';
 import { NORMALIZER_META } from './normalizer-guard.js';
-import { settings } from './settings.js';
-import { readKeptMarks } from './read-mode-rules.js';
+import { settings, DEFAULT_DISPLAY_SIZES } from './settings.js';
 import {
   toggleReadingMarker,
   isReadingMarkerColor,
@@ -128,9 +125,7 @@ export const readModePlugin: Plugin<ReadModeState> = new Plugin<ReadModeState>({
     // blocks edits via `filterTransaction` below. Space and Enter do
     // nothing else here, so they're the effortless way to drop/remove a
     // reading-position marker at the podium. The command's bound shortcut
-    // (Mod-Shift-D) still works via the normal keymap. This runs at the
-    // DOM level — ahead of every keymap — so a bare Enter reaches the
-    // marker before any Enter-bound editing command claims it.
+    // (Mod-Shift-D) still works via the normal keymap.
     handleDOMEvents: {
       keydown(view, event) {
         if (!readModePlugin.getState(view.state)?.on) return false;
@@ -141,36 +136,30 @@ export const readModePlugin: Plugin<ReadModeState> = new Plugin<ReadModeState>({
             return true;
           }
         }
+        // Swallow bare editing keys at the DOM level. `filterTransaction`
+        // already guarantees no doc change, but the view is EDITABLE in
+        // read mode (both layouts since 2026-07-27 — the caret must be
+        // placeable), so without this the browser would mutate the DOM,
+        // PM would parse the mutation, the filter would reject it, and
+        // PM would redraw to revert — wasted churn per keystroke, and
+        // the first such mutation trips PM's checkCSS console warning
+        // (single-pane read mode deliberately resets white-space to
+        // `normal` for chunk-separator collapsing). Shift is allowed
+        // (shifted letters are still typing); real chords, navigation
+        // keys, and F-keys all pass through untouched.
+        const noChord = !event.ctrlKey && !event.metaKey && !event.altKey;
+        if (
+          noChord &&
+          (event.key.length === 1 ||
+            event.key === 'Enter' ||
+            event.key === 'Backspace' ||
+            event.key === 'Delete')
+        ) {
+          event.preventDefault();
+          return true;
+        }
         return false;
       },
-    },
-    // Swallow bare editing keys. `filterTransaction` already guarantees
-    // no doc change, but the view is EDITABLE in read mode (both layouts
-    // since 2026-07-27 — the caret must be placeable), so without this
-    // the browser would mutate the DOM, PM would parse the mutation, the
-    // filter would reject it, and PM would redraw to revert — wasted
-    // churn per keystroke, and the first such mutation trips PM's
-    // checkCSS console warning (single-pane read mode deliberately
-    // resets white-space to `normal` for chunk-separator collapsing).
-    // Shift is allowed (shifted letters are still typing); real chords,
-    // navigation keys, and F-keys all pass through untouched.
-    //
-    // A `handleKeyDown` prop, not a DOM-level handler, so that keymaps
-    // registered BEFORE this plugin see the key first: a bare key bound
-    // to a ribbon command or macro (Send to Speech's default is the
-    // backtick) still runs in read mode — the command doesn't touch this
-    // document, and if one did, `filterTransaction` would stop it. Only
-    // a bare key nobody claimed is swallowed here.
-    handleKeyDown(view, event) {
-      if (!readModePlugin.getState(view.state)?.on) return false;
-      const noChord = !event.ctrlKey && !event.metaKey && !event.altKey;
-      return (
-        noChord &&
-        (event.key.length === 1 ||
-          event.key === 'Enter' ||
-          event.key === 'Backspace' ||
-          event.key === 'Delete')
-      );
     },
   },
   // Read mode's lock: while on, reject any document change except the
@@ -185,12 +174,6 @@ export const readModePlugin: Plugin<ReadModeState> = new Plugin<ReadModeState>({
   // output (a normalizer only fires in response to a transaction this
   // filter already admitted; blocking the fix-up would strand the doc
   // half-normalized until read mode exits).
-  //
-  // Comments pass too: adding or deleting one only adds or removes a
-  // `comment_range` mark — the text you're reading is untouched, same as
-  // a private note or a flashcard, which never enter the document at all.
-  // Judged on the steps, not a meta flag, so nothing but comment marks
-  // can ride through on it.
   filterTransaction(tr, state) {
     if (!readModePlugin.getState(state)?.on) return true;
     if (!tr.docChanged) return true;
@@ -199,22 +182,10 @@ export const readModePlugin: Plugin<ReadModeState> = new Plugin<ReadModeState>({
       tr.getMeta(NORMALIZER_META) === true ||
       tr.getMeta(READING_MARKER_META) === true ||
       tr.getMeta(READ_MODE_UNDO_META) === true ||
-      tr.getMeta(READ_MODE_DRAG_META) === true ||
-      isCommentMarkOnly(tr)
+      tr.getMeta(READ_MODE_DRAG_META) === true
     );
   },
 });
-
-/** True when every step of `tr` adds or removes a `comment_range` mark and
- *  nothing else — the shape of adding or deleting a comment. */
-export function isCommentMarkOnly(tr: Transaction): boolean {
-  if (tr.steps.length === 0) return false;
-  return tr.steps.every(
-    (step) =>
-      (step instanceof AddMarkStep || step instanceof RemoveMarkStep) &&
-      step.mark.type.name === 'comment_range',
-  );
-}
 
 /** Undo — but in read mode, only as far back as the markers dropped since
  *  read mode was entered (never earlier edits). Outside read mode, plain
@@ -241,14 +212,75 @@ export const readModeAwareRedo: Command = (state, dispatch, view) => {
   return redo(state, dispatch, view);
 };
 
+/**
+ * Whether a text run is considered bold: carries the `bold` mark (and not
+ * `bold_off`), or carries an emphasis/underline mark whose display typography
+ * setting renders bold.
+ */
+function isBoldRun(node: PMNode): boolean {
+  if (!node.isText) return false;
+  if (node.marks.some((m) => m.type.name === 'bold_off')) return false;
+  if (node.marks.some((m) => m.type.name === 'bold')) return true;
+  const typo = settings.get('displayTypography');
+  const emphasisBold = typo ? typo.emphasisBold : true;
+  if (node.marks.some((m) => m.type.name === 'emphasis_mark') && emphasisBold) return true;
+  const underlineBold = typo ? typo.underlineBold : false;
+  if (node.marks.some((m) => m.type.name === 'underline_mark') && underlineBold) return true;
+  return false;
+}
+
+/**
+ * Effective font-size (in pt) for an inline run:
+ *   1. `font_size` mark on the run (halfPoints / 2).
+ *   2. Named-style mark on the run (cite, underline, emphasis, etc.) from `displaySizes`.
+ *   3. Enclosing paragraph's natural style size.
+ *   4. Fallback to normal display size (default 11pt).
+ */
+export function getRunPt(node: PMNode, parent?: PMNode): number {
+  const fs = node.marks.find((m) => m.type.name === 'font_size');
+  if (fs) {
+    return Number(fs.attrs['halfPoints'] ?? 22) / 2;
+  }
+  const sizes = settings.get('displaySizes') ?? DEFAULT_DISPLAY_SIZES;
+  for (const m of node.marks) {
+    switch (m.type.name) {
+      case 'cite_mark': return sizes.cite ?? 13;
+      case 'underline_mark': return sizes.underline ?? 11;
+      case 'emphasis_mark': return sizes.emphasis ?? 11;
+      case 'undertag_mark': return sizes.undertag ?? 12;
+      case 'analytic_mark': return sizes.analytic ?? 13;
+    }
+  }
+  if (parent) {
+    switch (parent.type.name) {
+      case 'pocket': return sizes.pocket ?? 26;
+      case 'hat': return sizes.hat ?? 22;
+      case 'block': return sizes.block ?? 16;
+      case 'tag': return sizes.tag ?? 13;
+      case 'analytic': return sizes.analytic ?? 13;
+      case 'undertag': return sizes.undertag ?? 12;
+      case 'cite_paragraph': return sizes.cite ?? 13;
+      default: return sizes.normal ?? 11;
+    }
+  }
+  return sizes.normal ?? 11;
+}
+
+/** Whether a text node is bold and has an effective font size of 12.5pt or over. */
+export function isBoldLarge(child: PMNode, parent?: PMNode): boolean {
+  return isBoldRun(child) && getRunPt(child, parent) >= 12.5;
+}
+
 /** Read mode keeps a text node visible iff it carries the paragraph's
  *  read-aloud mark — or is a red reading-position marker (so the marker
  *  you drop while reading actually shows) — or, with "Read mode: show
  *  background color" on, carries background color (`shading`), so a
  *  highlighting pass locked to background stays visible beside a
- *  re-highlight. The setting is read at decoration time; both shells
- *  rebuild the set when it flips. */
-function isReadKept(child: PMNode, markNames: readonly string[]): boolean {
+ *  re-highlight — or is bolded text with a font size of 12.5pt or over.
+ *  The setting is read at decoration time; both shells rebuild the
+ *  set when it flips. */
+function isReadKept(child: PMNode, markNames: readonly string[], parent?: PMNode): boolean {
+  if (settings.get('readModeAuthorFix') && isBoldLarge(child, parent)) return true;
   const keepShading = settings.get('readModeShowBackground');
   return child.marks.some(
     (m) =>
@@ -258,20 +290,12 @@ function isReadKept(child: PMNode, markNames: readonly string[]): boolean {
   );
 }
 
-/** "Read mode: keep entire cite" — a cite paragraph with ANY read-aloud
- *  run shows all of its text (qualifications, source, date), not just the
- *  marked runs. A cite with nothing marked still collapses, like a body
- *  paragraph with nothing highlighted, so an unmarked cite never shows as
- *  a stray line. "Read mode: show undertags" — every undertag paragraph
- *  shows whole (the block itself comes back through the host's
- *  `pmd-rm-show-undertags` class; style.css). Both settings are read at
- *  decoration time; both shells rebuild the set when either flips. */
 function keepsWholeParagraph(para: PMNode, markNames: readonly string[]): boolean {
   if (para.type.name === 'undertag') return settings.get('readModeShowUndertags');
   if (para.type.name !== 'cite_paragraph' || !settings.get('readModeKeepEntireCite')) return false;
   let any = false;
   para.forEach((child) => {
-    if (!any && child.isText && !!child.text && isReadKept(child, markNames)) any = true;
+    if (!any && child.isText && !!child.text && isReadKept(child, markNames, para)) any = true;
   });
   return any;
 }
@@ -280,18 +304,37 @@ function computeFullSet(doc: PMNode): DecorationSet {
   return DecorationSet.create(doc, computeDecorationsInRange(doc, 0, doc.content.size));
 }
 
+/** Textblocks whose text read mode always shows (headings / structural
+ *  labels — no rm-keep/hide decoration; block-level CSS shows them). */
+const READ_MODE_HEADING_BLOCKS = new Set(['tag', 'analytic', 'pocket', 'hat', 'block']);
+
+/** Marks whose text a cite paragraph reads aloud: the cite mark, and —
+ *  since 1.0 — highlights too, so a highlighted phrase inside a cite no
+ *  longer vanishes in read mode (field find, 2026-08-14). */
+const CITE_KEPT_MARKS: readonly string[] = ['cite_mark', 'highlight'];
+const BODY_KEPT_MARKS: readonly string[] = ['highlight'];
+
+/** The read-aloud marks a textblock is filtered by, `'heading'` if its
+ *  text is always shown, or null if it isn't read-mode content. Mirrors
+ *  computeDecorationsInRange's per-node decision. */
+function readKeptKind(nodeName: string): readonly string[] | 'heading' | null {
+  if (READ_MODE_HEADING_BLOCKS.has(nodeName)) return 'heading';
+  if (nodeName === 'cite_paragraph') return CITE_KEPT_MARKS;
+  if (nodeName === 'card_body' || nodeName === 'paragraph' || nodeName === 'undertag') {
+    return BODY_KEPT_MARKS;
+  }
+  return null;
+}
+
 /** Whether read mode keeps this inline text node of `parent` visible.
- *  `prev` is the parent's previous sibling in ITS container (null at the
- *  start, or when the caller has no container — a lone paragraph can't
- *  be a bold cite). Shared with destructive conversions, copy and export
- *  so their audible-text rule cannot drift from the display-only mode;
- *  the per-paragraph rules themselves live in read-mode-rules.ts. */
-export function isReadModeKeptText(child: PMNode, parent: PMNode, prev: PMNode | null = null): boolean {
+ *  Shared with destructive conversions so their audible-text rule cannot
+ *  drift from the display-only mode. */
+export function isReadModeKeptText(child: PMNode, parent: PMNode): boolean {
   if (!child.isText) return false;
-  const kind = readKeptMarks(parent, prev);
+  const kind = readKeptKind(parent.type.name);
   if (kind === 'heading') return true;
   if (kind === null) return false;
-  return isReadKept(child, kind) || keepsWholeParagraph(parent, kind);
+  return isReadKept(child, kind, parent) || keepsWholeParagraph(parent, kind);
 }
 
 /**
@@ -317,8 +360,8 @@ export function nearestReadKeptPos(doc: PMNode, pos: number): number | null {
       best = cand;
     }
   };
-  doc.nodesBetween(from, to, (node, nodePos, parent, index) => {
-    const kind = readKeptMarks(node, parent?.maybeChild(index - 1) ?? null);
+  doc.nodesBetween(from, to, (node, nodePos) => {
+    const kind = readKeptKind(node.type.name);
     if (kind === null) return true; // a container — descend
     if (kind === 'heading') {
       if (node.content.size > 0) {
@@ -333,7 +376,7 @@ export function nearestReadKeptPos(doc: PMNode, pos: number): number | null {
     const whole = keepsWholeParagraph(node, kind);
     node.forEach((child, offset) => {
       if (!child.isText || !child.text) return;
-      if (!whole && !isReadKept(child, kind)) return;
+      if (!whole && !isReadKept(child, kind, node)) return;
       const start = nodePos + 1 + offset;
       const end = start + child.nodeSize;
       consider(Math.max(start, Math.min(clamped, end)));
@@ -359,9 +402,9 @@ export function firstReadKeptPos(doc: PMNode, from: number, to: number): number 
   const lo = Math.max(0, Math.min(from, size));
   const hi = Math.max(lo, Math.min(to, size));
   let found: number | null = null;
-  doc.nodesBetween(lo, hi, (node, nodePos, parent, index) => {
+  doc.nodesBetween(lo, hi, (node, nodePos) => {
     if (found !== null) return false;
-    const kind = readKeptMarks(node, parent?.maybeChild(index - 1) ?? null);
+    const kind = readKeptKind(node.type.name);
     if (kind === null) return true; // container — descend
     if (kind === 'heading') {
       if (node.content.size > 0) found = Math.max(lo, nodePos + 1);
@@ -371,7 +414,7 @@ export function firstReadKeptPos(doc: PMNode, from: number, to: number): number 
     node.forEach((child, offset) => {
       if (found !== null) return;
       if (!child.isText || !child.text) return;
-      if (!whole && !isReadKept(child, kind)) return;
+      if (!whole && !isReadKept(child, kind, node)) return;
       const end = nodePos + 1 + offset + child.nodeSize;
       if (end <= lo) return; // entirely above the scan start
       found = Math.max(lo, nodePos + 1 + offset);
@@ -398,8 +441,8 @@ export function firstReadKeptPos(doc: PMNode, from: number, to: number): number 
  */
 function computeDecorationsInRange(doc: PMNode, from: number, to: number): Decoration[] {
   const decos: Decoration[] = [];
-  doc.nodesBetween(from, to, (node, pos, parent, index) => {
-    const kind = readKeptMarks(node, parent?.maybeChild(index - 1) ?? null);
+  doc.nodesBetween(from, to, (node, pos) => {
+    const kind = readKeptKind(node.type.name);
     if (kind !== null && kind !== 'heading') {
       decorateParagraph(node, pos, kind, decos);
       // We've already walked this paragraph's inline children; don't
@@ -440,7 +483,7 @@ function decorateParagraph(
   const whole = keepsWholeParagraph(para, markNames);
   para.forEach((child, offset) => {
     if (!child.isText || !child.text) return;
-    const keep = whole || isReadKept(child, markNames);
+    const keep = whole || isReadKept(child, markNames, para);
     items.push({ pos: paraPos + 1 + offset, nodeSize: child.nodeSize, keep });
   });
   for (let i = 0; i < items.length; i++) {
