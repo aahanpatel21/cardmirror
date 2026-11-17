@@ -9739,7 +9739,7 @@ export function confirmCloseUnsaved(): Promise<'save' | 'saveAs' | 'discard' | '
  *  removes ambiguity about which one is closing (multi-pane). */
 function confirmCloseCoEditedDoc(
   docName: string,
-  info: { role: 'host' | 'participant'; unsynced: number },
+  info: { role: 'host' | 'participant' | 'spectator'; unsynced: number },
 ): Promise<'keep' | 'end' | 'cancel'> {
   const name = docName ? `"${docName}"` : 'this document';
   const leaveLabel = info.role === 'host' ? 'End session' : 'Leave session';

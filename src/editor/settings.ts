@@ -1023,13 +1023,10 @@ export interface Settings {
    *  Convert Cards to Read Mode follows it. Off by default: the marked
    *  runs are what most people read at the podium. */
   readModeKeepEntireCite: boolean;
-  /** When true (default), read mode treats hand-bolded text in the cite
-   *  slot as a cite: a cite paragraph or card body right after a tag /
-   *  undertag with no underline or emphasis anywhere, some bold, and (for a
-   *  body) a digit in the bold, shows its bold runs. Catches imports whose
-   *  cites are bold plain text instead of the Cite style. Display-only;
-   *  Convert Cards to Read Mode, read-mode copy and export follow it. */
-  readModeBoldCites: boolean;
+  /** When true (default), read mode will show any text that is bolded and
+   *  12pt and above. Fixes formatting issues leading to author names not
+   *  showing in read mode. */
+  readModeAuthorFix: boolean;
   /** When true, read mode shows undertag paragraphs — every run of them,
    *  in cards, analytic units and at document level — instead of hiding
    *  them. Display-only, like keep-entire-cite; Convert Cards to Read
@@ -1985,7 +1982,7 @@ const DEFAULTS: Settings = {
   hideEmphasisBordersInReadMode: false,
   readModeParagraphIntegrity: false,
   readModeKeepEntireCite: false,
-  readModeBoldCites: true,
+  readModeAuthorFix: true,
   readModeShowUndertags: false,
   readModeShowBackground: false,
   readModeCopyVisible: true,
@@ -2585,14 +2582,14 @@ export const SETTING_METADATA: SettingMeta[] = [
     aliases: ['whole cite', 'full cite', 'entire cite', 'read mode cite', 'quals'],
   },
   {
-    key: 'readModeBoldCites',
-    label: 'Read mode: treat bold as a cite',
+    key: 'readModeAuthorFix',
+    label: 'Read mode: Fix Hidden Authors',
     description:
-      'When on, read mode shows hand-bolded text in the cite slot as if it were cite-marked: in the paragraph right after a tag or undertag, if nothing is underlined or emphasized and some text is bold, the bold runs are read aloud (in a body paragraph the bold must include a number, like a date). Catches imported files whose cites are bold plain text instead of the Cite style, which read mode otherwise hides. On by default. Display-only, like the rest of read mode; Convert Cards to Read Mode, read-mode copy and read-mode export follow it.',
+      'When on (DEFAULT), read mode will show any text that is bolded and 12pt and above. This exists to fix formatting issues that lead to author names not showing in read mode.',
     kind: 'toggle',
     category: 'general',
     section: 'Editor behavior',
-    aliases: ['bold cite', 'bolded cite', 'read mode bold', 'missing cite in read mode', 'cite not showing'],
+    aliases: ['author fix', 'read mode author fix'],
   },
   {
     key: 'readModeShowUndertags',
@@ -5115,7 +5112,7 @@ function sanitize(s: Settings): Settings {
     hideEmphasisBordersInReadMode: !!s.hideEmphasisBordersInReadMode,
     readModeParagraphIntegrity: !!s.readModeParagraphIntegrity,
     readModeKeepEntireCite: !!s.readModeKeepEntireCite,
-    readModeBoldCites: s.readModeBoldCites !== false,
+    readModeAuthorFix: s.readModeAuthorFix === false ? false : true,
     readModeShowUndertags: !!s.readModeShowUndertags,
     readModeShowBackground: !!s.readModeShowBackground,
     readModeCopyVisible: s.readModeCopyVisible !== false,

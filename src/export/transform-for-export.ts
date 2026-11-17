@@ -38,6 +38,7 @@ import {
 } from '../schema/reading-marker.js';
 import { computeUnreadDecorations } from '../editor/mark-unread-plugin.js';
 import { readKeptMarks } from '../editor/read-mode-rules.js';
+import { isReadModeKeptText } from '../editor/read-mode-plugin.js';
 
 export interface ExportTransformOptions {
   includeComments: boolean;
@@ -204,7 +205,7 @@ function filterInlinesByMarks(node: PMNode, markNames: readonly string[], schema
   const kept: PMNode[] = [];
   node.forEach((child) => {
     if (
-      (child.isText && child.marks.some((m) => markNames.includes(m.type.name))) ||
+      (child.isText && (child.marks.some((m) => markNames.includes(m.type.name)) || isReadModeKeptText(child, node))) ||
       isReadingMarker(child)
     ) {
       appendToMergeBuffer(kept, child, schema);

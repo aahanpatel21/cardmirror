@@ -25,6 +25,8 @@
  */
 
 import type { Node as PMNode } from 'prosemirror-model';
+import { settings } from './settings.js';
+import { isBoldLarge } from './read-mode-plugin.js';
 
 /** Read-aloud words split by which speed they're read at. */
 export interface ReadAloudCounts {
@@ -128,13 +130,18 @@ function readAloudBucket(node: PMNode, parent: PMNode): 'body' | 'other' | null 
     const hasHighlight = node.marks.some((m) => m.type.name === 'highlight');
     const hasShading = node.marks.some((m) => m.type.name === 'shading');
     if (hasHighlight && !hasShading) return 'body';
+    const authorFix = settings.get('readModeAuthorFix');
+    if (authorFix && isBoldLarge(node, parent) && !hasShading) return 'other';
     return node.marks.some((m) => m.type.name === 'cite_mark') ? 'other' : null;
   }
   if (node.marks.some((m) => m.type.name === 'cite_mark')) return 'other';
   if (parentType === 'card_body' || parentType === 'paragraph' || parentType === 'undertag') {
     const hasHighlight = node.marks.some((m) => m.type.name === 'highlight');
     const hasShading = node.marks.some((m) => m.type.name === 'shading');
-    return hasHighlight && !hasShading ? 'body' : null;
+    if (hasHighlight && !hasShading) return 'body';
+    const authorFix = settings.get('readModeAuthorFix');
+    if (authorFix && isBoldLarge(node, parent) && !hasShading) return 'other';
+    return null;
   }
   return null;
 }

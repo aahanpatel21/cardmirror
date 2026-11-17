@@ -48,7 +48,7 @@ const UNDERLINE_FAMILY = new Set(['underline_mark', 'underline_direct', 'emphasi
  * entire cite" treats a bold run as the run that unlocks the whole cite.
  */
 export function isBoldCiteParagraph(para: PMNode, prev: PMNode | null | undefined): boolean {
-  if (!settings.get('readModeBoldCites')) return false;
+  if (!settings.get('readModeAuthorFix')) return false;
   if (!prev || (prev.type.name !== 'tag' && prev.type.name !== 'undertag')) return false;
   const name = para.type.name;
   if (name !== 'cite_paragraph' && name !== 'card_body') return false;

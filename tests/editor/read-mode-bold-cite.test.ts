@@ -15,7 +15,6 @@ import { EditorView } from 'prosemirror-view';
 import type { Node as PMNode } from 'prosemirror-model';
 import { schema, newHeadingId } from '../../src/schema/index.js';
 import { readModePlugin, PMD_READ_MODE_TOGGLE, isReadModeKeptText } from '../../src/editor/read-mode-plugin.js';
-import { isBoldCiteParagraph, readKeptMarks } from '../../src/editor/read-mode-rules.js';
 import { convertCard } from '../../src/editor/convert-cards-to-read-mode.js';
 import { transformForExport } from '../../src/export/transform-for-export.js';
 import { settings } from '../../src/editor/settings.js';
@@ -25,6 +24,8 @@ const U = () => schema.marks['underline_mark']!.create();
 const E = () => schema.marks['emphasis_mark']!.create();
 const C = () => schema.marks['cite_mark']!.create();
 const HL = () => schema.marks['highlight']!.create({ color: 'yellow' });
+
+const FS = (pt: number) => schema.marks['font_size']!.create({ halfPoints: pt * 2 });
 
 const tag = (t = 'Tag') => schema.nodes['tag']!.create({ id: newHeadingId() }, schema.text(t));
 const undertag = (...c: PMNode[]) => schema.nodes['undertag']!.create(null, c);
@@ -52,45 +53,36 @@ function classOf(view: EditorView, needle: string): string | null {
 
 afterEach(() => {
   for (const v of open.splice(0)) v.destroy();
-  settings.set('readModeBoldCites', true);
+  settings.set('readModeAuthorFix', true);
   settings.set('readModeKeepEntireCite', false);
 });
 
-describe('isBoldCiteParagraph / readKeptMarks', () => {
-  it('a bold cite paragraph after a tag qualifies on bold alone', () => {
+describe('readModeAuthorFix: Fix Hidden Authors (bolded and 12pt and above)', () => {
+  it('a bold run in cite_paragraph (natural 13pt) is kept', () => {
     const p = cite(t('Smith', B()), t(', professor of things'));
-    expect(isBoldCiteParagraph(p, tag())).toBe(true);
-    expect(readKeptMarks(p, tag())).toEqual(['cite_mark', 'highlight', 'bold']);
+    expect(isReadModeKeptText(p.child(0), p)).toBe(true);
+    expect(isReadModeKeptText(p.child(1), p)).toBe(false);
   });
 
-  it('a card body after a tag needs a digit in the bold', () => {
-    expect(isBoldCiteParagraph(body(t('Smith 2024', B()), t(' writes')), tag())).toBe(true);
-    expect(isBoldCiteParagraph(body(t('Smith', B()), t(' writes')), tag())).toBe(false);
-    expect(readKeptMarks(body(t('Smith', B())), tag())).toEqual(['highlight']);
+  it('a bold run in card_body with 12pt font size is kept', () => {
+    const p = body(t('Smith 2024', B(), FS(12)), t(' writes'));
+    expect(isReadModeKeptText(p.child(0), p)).toBe(true);
+    expect(isReadModeKeptText(p.child(1), p)).toBe(false);
   });
 
-  it('after an undertag counts too; after a body or with no sibling does not', () => {
-    const p = cite(t('Smith 24', B()));
-    expect(isBoldCiteParagraph(p, undertag(t('under')))).toBe(true);
-    expect(isBoldCiteParagraph(p, body(t('x')))).toBe(false);
-    expect(isBoldCiteParagraph(p, null)).toBe(false);
+  it('a bold run in card_body below 12pt (e.g. default 11pt) is hidden', () => {
+    const p = body(t('Smith 2024', B()), t(' writes'));
+    expect(isReadModeKeptText(p.child(0), p)).toBe(false);
   });
 
-  it('any underline or emphasis in the paragraph disqualifies it', () => {
-    expect(isBoldCiteParagraph(cite(t('Smith 24', B()), t(' said', U())), tag())).toBe(false);
-    expect(isBoldCiteParagraph(cite(t('Smith 24', B()), t(' said', E())), tag())).toBe(false);
+  it('non-bold text is hidden even if 12pt', () => {
+    const p = body(t('Smith 2024', FS(12)), t(' writes'));
+    expect(isReadModeKeptText(p.child(0), p)).toBe(false);
   });
 
-  it('no bold, or a table, or the setting off → not a bold cite', () => {
-    expect(isBoldCiteParagraph(cite(t('Smith 24')), tag())).toBe(false);
-    settings.set('readModeBoldCites', false);
-    expect(isBoldCiteParagraph(cite(t('Smith 24', B())), tag())).toBe(false);
-  });
-
-  it('isReadModeKeptText follows it when given the sibling, and not without', () => {
-    const p = cite(t('Smith 24', B()), t(' filler'));
-    expect(isReadModeKeptText(p.child(0), p, tag())).toBe(true);
-    expect(isReadModeKeptText(p.child(1), p, tag())).toBe(false);
+  it('when setting is off, bold 12pt text is hidden', () => {
+    settings.set('readModeAuthorFix', false);
+    const p = body(t('Smith 2024', B(), FS(12)), t(' writes'));
     expect(isReadModeKeptText(p.child(0), p)).toBe(false);
   });
 });
@@ -103,24 +95,19 @@ describe('display plugin', () => {
     expect(classOf(view, 'body')).toBe('hide');
   });
 
-  it('shows a bold cite typed into a body paragraph when the bold has a digit', () => {
-    const view = readModeView(docOf(card(tag(), body(t('Smith 2024', B()), t(' explains')), body(t('rest')))));
+  it('shows a bold cite in a body paragraph when bold and 12pt', () => {
+    const view = readModeView(docOf(card(tag(), body(t('Smith 2024', B(), FS(12)), t(' explains')), body(t('rest')))));
     expect(classOf(view, 'Smith 2024')).toBe('keep');
     expect(classOf(view, 'explains')).toBe('hide');
   });
 
-  it('a bolded statistic in a body (no digit-free bold, but underlined text present) stays hidden', () => {
+  it('a bolded statistic in a body below 12pt stays hidden', () => {
     const view = readModeView(docOf(card(tag(), body(t('40%', B()), t(' of states ', U()), t('agree')))));
     expect(classOf(view, '40%')).toBe('hide');
   });
 
-  it('a second paragraph after the cite is not in the cite slot', () => {
-    const view = readModeView(docOf(card(tag(), cite(t('Real', C())), body(t('Bold 2024', B()), t(' body')))));
-    expect(classOf(view, 'Bold 2024')).toBe('hide');
-  });
-
-  it('the setting off restores the old behavior', () => {
-    settings.set('readModeBoldCites', false);
+  it('the setting off restores the old behavior (hides bold 12pt)', () => {
+    settings.set('readModeAuthorFix', false);
     const view = readModeView(docOf(card(tag(), cite(t('Smith 2024', B()), t(' filler')))));
     expect(classOf(view, 'Smith 2024')).toBe('hide');
   });
@@ -149,7 +136,7 @@ describe('Convert Cards to Read Mode and export agree with the display', () => {
     expect(out.child(2).textContent).toBe('read');
   });
 
-  it('convertCard drops a bold body cite without a digit, like the display', () => {
+  it('convertCard drops a bold body cite below 12pt, like the display', () => {
     const c = card(tag(), body(t('Smith', B()), t(' writes')), body(t('read', HL())));
     const out = convertCard(c);
     expect(out.textContent).toBe('Tagread');
@@ -161,7 +148,7 @@ describe('Convert Cards to Read Mode and export agree with the display', () => {
     const c = out.firstChild!;
     expect(c.child(1).type.name).toBe('cite_paragraph');
     expect(c.child(1).textContent).toBe('Smith 2024');
-    settings.set('readModeBoldCites', false);
+    settings.set('readModeAuthorFix', false);
     const off = transformForExport(doc, { includeComments: false, includeAnalytics: false, includeUndertags: false, readMode: true });
     expect(off.firstChild!.childCount).toBe(2); // tag + body; the cite has nothing kept
   });

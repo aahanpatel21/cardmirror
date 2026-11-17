@@ -6,6 +6,7 @@ Thumbs.db
 *~
 .vscode/
 .idea/
+postcss.config.cjs
 
 # Node / future build artifacts (placeholders for when we have code)
 node_modules

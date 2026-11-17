@@ -136,30 +136,36 @@ export const readModePlugin: Plugin<ReadModeState> = new Plugin<ReadModeState>({
             return true;
           }
         }
-        // Swallow bare editing keys at the DOM level. `filterTransaction`
-        // already guarantees no doc change, but the view is EDITABLE in
-        // read mode (both layouts since 2026-07-27 — the caret must be
-        // placeable), so without this the browser would mutate the DOM,
-        // PM would parse the mutation, the filter would reject it, and
-        // PM would redraw to revert — wasted churn per keystroke, and
-        // the first such mutation trips PM's checkCSS console warning
-        // (single-pane read mode deliberately resets white-space to
-        // `normal` for chunk-separator collapsing). Shift is allowed
-        // (shifted letters are still typing); real chords, navigation
-        // keys, and F-keys all pass through untouched.
-        const noChord = !event.ctrlKey && !event.metaKey && !event.altKey;
-        if (
-          noChord &&
-          (event.key.length === 1 ||
-            event.key === 'Enter' ||
-            event.key === 'Backspace' ||
-            event.key === 'Delete')
-        ) {
-          event.preventDefault();
-          return true;
-        }
         return false;
       },
+    },
+    // Swallow bare editing keys. `filterTransaction` already guarantees
+    // no doc change, but the view is EDITABLE in read mode (both layouts
+    // since 2026-07-27 — the caret must be placeable), so without this
+    // the browser would mutate the DOM, PM would parse the mutation, the
+    // filter would reject it, and PM would redraw to revert — wasted
+    // churn per keystroke, and the first such mutation trips PM's
+    // checkCSS console warning (single-pane read mode deliberately
+    // resets white-space to `normal` for chunk-separator collapsing).
+    // Shift is allowed (shifted letters are still typing); real chords,
+    // navigation keys, and F-keys all pass through untouched.
+    //
+    // A `handleKeyDown` prop, not a DOM-level handler, so that keymaps
+    // registered BEFORE this plugin see the key first: a bare key bound
+    // to a ribbon command or macro (Send to Speech's default is the
+    // backtick) still runs in read mode — the command doesn't touch this
+    // document, and if one did, `filterTransaction` would stop it. Only
+    // a bare key nobody claimed is swallowed here.
+    handleKeyDown(view, event) {
+      if (!readModePlugin.getState(view.state)?.on) return false;
+      const noChord = !event.ctrlKey && !event.metaKey && !event.altKey;
+      return (
+        noChord &&
+        (event.key.length === 1 ||
+          event.key === 'Enter' ||
+          event.key === 'Backspace' ||
+          event.key === 'Delete')
+      );
     },
   },
   // Read mode's lock: while on, reject any document change except the
@@ -266,9 +272,9 @@ export function getRunPt(node: PMNode, parent?: PMNode): number {
   return sizes.normal ?? 11;
 }
 
-/** Whether a text node is bold and has an effective font size of 12.5pt or over. */
+/** Whether a text node is bold and has an effective font size of 12pt or over. */
 export function isBoldLarge(child: PMNode, parent?: PMNode): boolean {
-  return isBoldRun(child) && getRunPt(child, parent) >= 12.5;
+  return isBoldRun(child) && getRunPt(child, parent) >= 11.99;
 }
 
 /** Read mode keeps a text node visible iff it carries the paragraph's
@@ -276,7 +282,7 @@ export function isBoldLarge(child: PMNode, parent?: PMNode): boolean {
  *  you drop while reading actually shows) — or, with "Read mode: show
  *  background color" on, carries background color (`shading`), so a
  *  highlighting pass locked to background stays visible beside a
- *  re-highlight — or is bolded text with a font size of 12.5pt or over.
+ *  re-highlight — or is bolded text with a font size of 12pt or over.
  *  The setting is read at decoration time; both shells rebuild the
  *  set when it flips. */
 function isReadKept(child: PMNode, markNames: readonly string[], parent?: PMNode): boolean {
@@ -329,7 +335,7 @@ function readKeptKind(nodeName: string): readonly string[] | 'heading' | null {
 /** Whether read mode keeps this inline text node of `parent` visible.
  *  Shared with destructive conversions so their audible-text rule cannot
  *  drift from the display-only mode. */
-export function isReadModeKeptText(child: PMNode, parent: PMNode): boolean {
+export function isReadModeKeptText(child: PMNode, parent: PMNode, _prev?: PMNode | null): boolean {
   if (!child.isText) return false;
   const kind = readKeptKind(parent.type.name);
   if (kind === 'heading') return true;

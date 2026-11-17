@@ -113,6 +113,8 @@ export function renderPluginsPanel(container: HTMLElement): void {
   list.className = 'pmd-plugins-list';
 
   const devRow = document.createElement('div');
+  const keyboardPluginsSection = document.createElement('div');
+  keyboardPluginsSection.className = 'pmd-plugins-keyboard';
   devRow.className = 'pmd-plugins-dev';
   const devDesc = document.createElement('p');
   devDesc.className = 'pmd-settings-row-desc';
@@ -123,12 +125,15 @@ export function renderPluginsPanel(container: HTMLElement): void {
   devBtn.textContent = 'Load plugin from file…';
   devRow.append(devDesc, devBtn);
 
+  // Renders the three current sections - Install a plugin, Installed plugins, Developer
   container.append(
     sectionTitle('Install a plugin'),
     installRow,
     errorEl,
     sectionTitle('Installed plugins'),
     list,
+    sectionTitle('Keyboard plugins'),
+    keyboardPluginsSection,
     sectionTitle('Developer'),
     devRow,
   );
@@ -308,8 +313,8 @@ export function renderPluginsPanel(container: HTMLElement): void {
     const p = res.plugin;
     const consent = await confirmDialog(
       `Install ${p.name} v${p.version} by ${p.author ?? 'an unknown author'} ` +
-        `from github.com/${res.ownerRepo}? ` +
-        'This plugin runs with full access to CardMirror and your documents.',
+      `from github.com/${res.ownerRepo}? ` +
+      'This plugin runs with full access to CardMirror and your documents.',
     );
     if (!consent) {
       await host!.pluginInstallDiscard(res.pending);
